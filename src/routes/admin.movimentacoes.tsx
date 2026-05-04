@@ -1,0 +1,89 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { Activity, Printer } from "lucide-react";
+import { PageHeader, EmptyState } from "@/components/layout/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { getMovements } from "@/services/api";
+import type { Movement } from "@/types";
+
+export const Route = createFileRoute("/admin/movimentacoes")({
+  head: () => ({ meta: [{ title: "Movimentações · Cinépolis" }] }),
+  component: MovsPage,
+});
+
+function MovsPage() {
+  const [movs, setMovs] = useState<Movement[]>([]);
+  useEffect(() => { getMovements().then(setMovs); }, []);
+
+  return (
+    <>
+      <PageHeader
+        title="Movimentações"
+        subtitle="Histórico completo de entradas e saídas"
+        actions={<Button variant="outline" className="gap-2"><Printer className="h-4 w-4" /> Imprimir relatório</Button>}
+      />
+      <div className="rounded-xl bg-card border shadow-[var(--shadow-soft)] overflow-hidden">
+        <div className="p-4 border-b flex flex-wrap gap-2 items-center">
+          <Input type="date" className="w-auto" />
+          <Select>
+            <SelectTrigger className="w-[180px]"><SelectValue placeholder="Categoria" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              <SelectItem value="Pipoca">Pipoca</SelectItem>
+              <SelectItem value="Bebidas">Bebidas</SelectItem>
+              <SelectItem value="Doces">Doces</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select>
+            <SelectTrigger className="w-[160px]"><SelectValue placeholder="Tipo" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="entrada">Entrada</SelectItem>
+              <SelectItem value="saida">Saída</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {movs.length === 0 ? (
+          <EmptyState icon={Activity} title="Sem movimentações" description="As movimentações aparecerão aqui após a primeira entrada ou saída." />
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Produto</TableHead>
+                <TableHead>Tipo</TableHead>
+                <TableHead>Quantidade</TableHead>
+                <TableHead>Responsável</TableHead>
+                <TableHead>Data</TableHead>
+                <TableHead>Hora</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {movs.map((m) => (
+                <TableRow key={m.id}>
+                  <TableCell>{m.productName}</TableCell>
+                  <TableCell>
+                    <Badge variant={m.type === "entrada" ? "default" : "destructive"}>
+                      {m.type === "entrada" ? "Entrada" : "Saída"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{m.quantity}</TableCell>
+                  <TableCell>{m.userName}</TableCell>
+                  <TableCell>{new Date(m.createdAt).toLocaleDateString("pt-BR")}</TableCell>
+                  <TableCell>{new Date(m.createdAt).toLocaleTimeString("pt-BR")}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+    </>
+  );
+}
