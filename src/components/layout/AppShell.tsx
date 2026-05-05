@@ -48,7 +48,7 @@ export function AppShell({ variant, children }: AppShellProps) {
   return (
     <div className="min-h-screen flex w-full bg-background">
       {/* Sidebar desktop */}
-      <aside className="hidden lg:flex flex-col w-64 bg-sidebar text-sidebar-foreground shrink-0">
+      <aside className="hidden lg:flex fixed top-0 left-0 h-screen w-64 flex-col bg-sidebar text-sidebar-foreground shadow-lg">
         <div className="h-16 flex items-center gap-2 px-5 border-b border-sidebar-border">
           <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center shadow-[var(--shadow-elegant)]">
             <Film className="h-5 w-5 text-primary-foreground" />
@@ -136,7 +136,7 @@ export function AppShell({ variant, children }: AppShellProps) {
       )}
 
       {/* Main */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 lg:ml-64">
         <header className="h-16 border-b bg-card flex items-center gap-3 px-4 sm:px-6 sticky top-0 z-30">
           <button
             className="lg:hidden p-2 -ml-2 rounded-md hover:bg-muted"

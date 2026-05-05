@@ -274,13 +274,13 @@ export async function setUserStatus(id: number, ativo: boolean): Promise<SystemU
   });
   return mapUser(r);
 }
-
 export async function getUserByMatricula(matricula: string) {
   const res = await fetch(`${API_URL}/usuarios/${matricula}`);
+
   const body = await res.json();
 
   if (!res.ok || body.success === false) {
-    throw new Error(body?.message || "Usuário não encontrado");
+    throw new Error(body.message || "Usuário não encontrado");
   }
 
   return body.data;

@@ -1,6 +1,34 @@
 const usuarioService = require("../services/usuarioService");
 const { ok, created, fail } = require("../utils/response");
 
+
+const { pool } = require("../database/connection");
+
+async function buscarPorMatricula(req, res) {
+  const { matricula } = req.params;
+
+  const [rows] = await pool.query(
+    "SELECT id, matricula, nome, tipo FROM usuarios WHERE matricula = ? LIMIT 1",
+    [matricula]
+  );
+
+  if (rows.length === 0) {
+    return res.status(404).json({
+      success: false,
+      message: "Usuário não encontrado",
+      data: null,
+      error: null,
+    });
+  }
+
+  return res.json({
+    success: true,
+    message: "Usuário encontrado",
+    data: rows[0],
+    error: null,
+  });
+}
+
 async function listar(_req, res) {
   const rows = await usuarioService.listAll();
   return ok(res, rows);
@@ -60,4 +88,10 @@ async function alterarStatus(req, res) {
   return ok(res, atualizado, "Status atualizado");
 }
 
-module.exports = { listar, criar, atualizar, alterarStatus };
+module.exports = {
+  buscarPorMatricula,
+  listar,
+  criar,
+  atualizar,
+  alterarStatus
+};

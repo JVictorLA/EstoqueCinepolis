@@ -10,7 +10,7 @@ const usuarioCtrl = require("../controllers/usuarioController");
 const categoriaCtrl = require("../controllers/categoriaController");
 
 const router = Router();
-
+router.get("/usuarios/:matricula", asyncHandler(usuarioCtrl.buscarPorMatricula));
 // Categorias
 router.get("/categorias", asyncHandler(categoriaCtrl.listar));
 

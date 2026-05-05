@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { BarcodeInput } from "@/components/scanner/BarcodeInput";
 import { toast } from "sonner";
-import { getProductByBarcode, registerMovement } from "@/services/api";
+import { getProductByBarcode, getUserByMatricula, registerMovement } from "@/services/api";
 import type { Product } from "@/types";
 
 interface MovementFormProps {
@@ -28,6 +28,30 @@ export function MovementForm({ type }: MovementFormProps) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
+const [user, setUser] = useState<any>(null);
+const [loadingUser, setLoadingUser] = useState(false);
+
+useEffect(() => {
+  if (!matricula) {
+    setUser(null);
+    return;
+  }
+
+  const t = setTimeout(async () => {
+    setLoadingUser(true);
+    try {
+      const u = await getUserByMatricula(matricula);
+      setUser(u);
+    } catch {
+      setUser(null);
+    } finally {
+      setLoadingUser(false);
+    }
+  }, 400);
+
+  return () => clearTimeout(t);
+}, [matricula]);
+
 
   useEffect(() => {
     if (!barcode) { setProduct(null); return; }
@@ -163,9 +187,34 @@ export function MovementForm({ type }: MovementFormProps) {
               </div>
             )}
             <div className="rounded-lg bg-muted p-3 text-sm">
-              <div className="text-muted-foreground text-xs">Funcionário</div>
-              <div className="font-medium">{matricula ? `Matrícula ${matricula}` : "—"}</div>
-            </div>
+  <div className="text-muted-foreground text-xs">Funcionário</div>
+
+  <div className="font-medium">
+    {loadingUser && "Buscando..."}
+
+    {!loadingUser && user && (
+      <>
+        <div className="font-medium">
+  {loadingUser && "Buscando..."}
+
+  {!loadingUser && user && user.nome}
+
+  {!loadingUser && matricula && !user && (
+    <span className="text-red-500">Usuário não encontrado</span>
+  )}
+
+  {!matricula && "—"}
+</div>
+      </>
+    )}
+
+    {!loadingUser && matricula && !user && (
+      <span className="text-red-500">Usuário não encontrado</span>
+    )}
+
+    {!matricula && "—"}
+  </div>
+</div>
             <div className="space-y-2">
               <Label>Senha do funcionário</Label>
               <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus />
