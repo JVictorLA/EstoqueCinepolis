@@ -77,6 +77,34 @@ async function atualizar(req, res) {
   return ok(res, atualizado, "Usuário atualizado");
 }
 
+const bcrypt = require("bcrypt");
+
+async function alterarSenha(req, res) {
+  const id = Number(req.params.id);
+  const { senhaAtual, novaSenha } = req.body;
+
+  if (!id) return fail(res, 400, "ID inválido");
+  if (!senhaAtual || !novaSenha) {
+    return fail(res, 400, "Informe senhaAtual e novaSenha");
+  }
+
+  // 🔥 AGORA BUSCA COM SENHA
+  const user = await usuarioService.findByIdWithPassword(id);
+
+  if (!user) return fail(res, 404, "Usuário não encontrado");
+
+  // 🔥 USA senha_hash
+  const senhaValida = await bcrypt.compare(senhaAtual, user.senha_hash);
+
+  if (!senhaValida) {
+    return fail(res, 401, "Senha atual incorreta");
+  }
+
+  // 🔥 PASSA senha normal (service faz hash)
+  await usuarioService.update(id, { senha: novaSenha });
+
+  return ok(res, null, "Senha atualizada com sucesso");
+}
 async function alterarStatus(req, res) {
   const id = Number(req.params.id);
   if (!id) return fail(res, 400, "id inválido");
@@ -88,10 +116,13 @@ async function alterarStatus(req, res) {
   return ok(res, atualizado, "Status atualizado");
 }
 
+
+
 module.exports = {
   buscarPorMatricula,
   listar,
   criar,
   atualizar,
-  alterarStatus
+  alterarStatus,
+  alterarSenha
 };

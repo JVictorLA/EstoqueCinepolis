@@ -285,3 +285,20 @@ export async function getUserByMatricula(matricula: string) {
 
   return body.data;
 }
+
+export async function changeUserPassword(
+  id: number,
+  senhaAtual: string,
+  novaSenha: string
+): Promise<void> {
+  await request<void>(`/usuarios/${id}/senha`, {
+    method: "PUT",
+    auth: true,
+    body: JSON.stringify({
+      senhaAtual,
+      novaSenha,
+    }),
+  });
+
+}
+

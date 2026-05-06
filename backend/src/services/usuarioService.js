@@ -92,10 +92,20 @@ async function validateCredentials(matricula, senha) {
   return safe;
 }
 
+async function findByIdWithPassword(id) {
+  const [rows] = await pool.query(
+    `SELECT id, matricula, nome, email, senha_hash, tipo, ativo
+     FROM usuarios WHERE id = ? LIMIT 1`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   listAll,
   findById,
   findByMatricula,
+  findByIdWithPassword,
   existsByMatricula,
   create,
   update,

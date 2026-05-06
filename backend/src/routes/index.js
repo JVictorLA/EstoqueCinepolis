@@ -10,13 +10,18 @@ const usuarioCtrl = require("../controllers/usuarioController");
 const categoriaCtrl = require("../controllers/categoriaController");
 
 const router = Router();
-router.get("/usuarios/:matricula", asyncHandler(usuarioCtrl.buscarPorMatricula));
+
 // Categorias
 router.get("/categorias", asyncHandler(categoriaCtrl.listar));
 
 // Health
 router.get("/health", (_req, res) =>
-  res.json({ success: true, message: "API online", data: { ts: new Date() }, error: null })
+  res.json({
+    success: true,
+    message: "API online",
+    data: { ts: new Date() },
+    error: null,
+  })
 );
 
 // Auth (somente admin)
@@ -33,33 +38,68 @@ router.post(
 );
 
 // Movimentações
-// POST não exige JWT — autentica pela matrícula+senha do operador/admin no body.
 router.post("/movimentacoes", asyncHandler(movCtrl.criar));
 router.get("/movimentacoes", asyncHandler(movCtrl.listar));
 
 // Estoque
 router.get("/estoque", asyncHandler(estoqueCtrl.listar));
 
-// Usuários (apenas admin autenticado)
+// ================= USUÁRIOS =================
+
+// Listar usuários
 router.get(
   "/usuarios",
-  auth.authMiddleware, auth.adminOnly,
+  auth.authMiddleware,
+  auth.adminOnly,
   asyncHandler(usuarioCtrl.listar)
 );
+
+// Criar usuário
 router.post(
   "/usuarios",
-  auth.authMiddleware, auth.adminOnly,
+  auth.authMiddleware,
+  auth.adminOnly,
   asyncHandler(usuarioCtrl.criar)
 );
+
+// Atualizar usuário
 router.put(
   "/usuarios/:id",
-  auth.authMiddleware, auth.adminOnly,
+  auth.authMiddleware,
+  auth.adminOnly,
   asyncHandler(usuarioCtrl.atualizar)
 );
+
+// Alterar senha
+router.put(
+  "/usuarios/:id/senha",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(usuarioCtrl.alterarSenha)
+);
+
+// Alterar status
 router.patch(
   "/usuarios/:id/status",
-  auth.authMiddleware, auth.adminOnly,
+  auth.authMiddleware,
+  auth.adminOnly,
   asyncHandler(usuarioCtrl.alterarStatus)
 );
+
+ // 🔥 IMPORTANTE: DEIXAR POR ÚLTIMO
+
+router.get(
+  "/usuarios/:matricula",
+  asyncHandler(usuarioCtrl.buscarPorMatricula)
+);
+
+
+/* 
+// ✅ ALTERNATIVA MAIS SEGURA (recomendado)
+router.get(
+  "/usuarios/matricula/:matricula",
+  asyncHandler(usuarioCtrl.buscarPorMatricula)
+); */
+
 
 module.exports = router;

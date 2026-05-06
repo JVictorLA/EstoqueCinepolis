@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { createUser } from "@/services/api";
+import { createUser, updateUser, changeUserPassword } from "@/services/api";
 import { Users, Plus } from "lucide-react";
 import { PageHeader, EmptyState } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -22,41 +22,39 @@ import type { SystemUser } from "@/types";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/usuarios")({
-  head: () => ({ meta: [{ title: "Usuários · Cinépolis" }] }),
   component: UsuariosPage,
 });
 
 function UsuariosPage() {
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [open, setOpen] = useState(false);
-  useEffect(() => { getUsers().then(setUsers); }, []);
+  const [editUser, setEditUser] = useState<SystemUser | null>(null);
+  const [deleteUser, setDeleteUser] = useState<SystemUser | null>(null);
 
   const loadUsers = async () => {
-  const data = await getUsers();
-  setUsers(data);
-};
+    const data = await getUsers();
+    setUsers(data);
+  };
 
-useEffect(() => {
-  loadUsers();
-  
-}, []);
-  
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
   const toggleUserStatus = async (id: number, ativo: boolean) => {
-  try {
-    await setUserStatus(id, ativo);
+    try {
+      await setUserStatus(id, ativo);
 
-    // atualiza a lista local (sem precisar recarregar tudo)
-    setUsers((prev) =>
-      prev.map((u) =>
-        u.id === id ? { ...u, active: ativo } : u
-      )
-    );
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === id ? { ...u, active: ativo } : u
+        )
+      );
 
-    toast.success(`Usuário ${ativo ? "ativado" : "desativado"}`);
-  } catch (error: any) {
-    toast.error(error.message || "Erro ao atualizar status");
-  }
-};
+      toast.success(`Usuário ${ativo ? "ativado" : "desativado"}`);
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao atualizar status");
+    }
+  };
 
   return (
     <>
@@ -66,15 +64,18 @@ useEffect(() => {
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-              <Button className="gap-2"><Plus className="h-4 w-4" /> Novo usuário</Button>
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" /> Novo usuário
+              </Button>
             </DialogTrigger>
             <NewUserDialog onClose={() => setOpen(false)} onSuccess={loadUsers} />
           </Dialog>
         }
       />
+
       <div className="rounded-xl bg-card border shadow-[var(--shadow-soft)] overflow-hidden">
         {users.length === 0 ? (
-          <EmptyState icon={Users} title="Nenhum usuário cadastrado" description="Adicione o primeiro usuário para liberar acessos ao sistema." />
+          <EmptyState icon={Users} title="Nenhum usuário cadastrado" />
         ) : (
           <Table>
             <TableHeader>
@@ -86,24 +87,44 @@ useEffect(() => {
                 <TableHead>Ações</TableHead>
               </TableRow>
             </TableHeader>
+
             <TableBody>
               {users.map((u) => (
                 <TableRow key={u.id}>
                   <TableCell>{u.name}</TableCell>
-                  <TableCell className="font-mono text-sm">{u.matricula}</TableCell>
+                  <TableCell>{u.matricula}</TableCell>
+
                   <TableCell>
                     <Badge variant={u.role === "admin" ? "default" : "secondary"}>
                       {u.role === "admin" ? "Administrador" : "Operador"}
                     </Badge>
                   </TableCell>
+
                   <TableCell>
                     <Switch
-  checked={u.active}
-  onCheckedChange={(checked) => toggleUserStatus(u.id, checked)}
-/>
+                      checked={u.active}
+                      onCheckedChange={(checked) =>
+                        toggleUserStatus(u.id, checked)
+                      }
+                    />
                   </TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="sm">Editar</Button>
+
+                  <TableCell className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditUser(u)}
+                    >
+                      Editar
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setDeleteUser(u)}
+                    >
+                      
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -111,88 +132,190 @@ useEffect(() => {
           </Table>
         )}
       </div>
+
+
+      <Dialog open={!!editUser} onOpenChange={() => setEditUser(null)}>
+        {editUser && (
+          <EditUserDialog
+            user={editUser}
+            onClose={() => setEditUser(null)}
+            onSuccess={loadUsers}
+          />
+        )}
+      </Dialog>
+      
     </>
+    
   );
 }
 
-function NewUserDialog({ 
-  onClose, 
-  onSuccess 
+function EditUserDialog({ user, onClose, onSuccess }: any) {
+  const [name, setName] = useState(user.name);
+  const [role, setRole] = useState(user.role);
 
-  
-}: { 
-  onClose: () => void;
-  onSuccess: () => void;
-}) {
+  const [changePassword, setChangePassword] = useState(false);
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
 
-  
-  const [name, setName] = useState("");
-  const [matricula, setMatricula] = useState("");
-  const [role, setRole] = useState<"admin" | "operador">("operador");
-  const [password, setPassword] = useState("");
-const resetForm = () => {
-  setName("");
-  setMatricula("");
-  setRole("operador");
-  setPassword("");
-};
-useEffect(() => {
-  resetForm();
-}, []);
-  const submit = async (e: React.FormEvent) => {
-  e.preventDefault();
+  const submit = async (e: any) => {
+    e.preventDefault();
 
-  
+    try {
+      await updateUser(user.id, {
+        nome: name,
+        tipo: role,
+      });
 
+      if (changePassword) {
+        await changeUserPassword(user.id, oldPassword, newPassword);
+      }
 
+      toast.success("Usuário atualizado");
 
-  if (!name || !matricula || !password) {
-    toast.error("Preencha todos os campos");
-    return;
-  }
-
-  try {
-  await createUser({
-    nome: name,
-    matricula,
-    senha: password,
-    tipo: role,
-    ativo: true,
-    email: "",
-  });
-
-  toast.success("Usuário cadastrado com sucesso");
-
-  
-  onSuccess();
-  onClose();
-  resetForm(); // 🔥 limpa tudo
-
-} catch (error: any) {
-  toast.error(error.message || "Erro ao cadastrar usuário");
-}
-};
+      onSuccess();
+      onClose();
+    } catch (error: any) {
+      toast.error(error.message || "Erro ao atualizar");
+    }
+  };
 
   return (
     <DialogContent>
-      <DialogHeader><DialogTitle>Novo usuário</DialogTitle></DialogHeader>
+      <DialogHeader>
+        <DialogTitle>Editar usuário</DialogTitle>
+      </DialogHeader>
+
       <form onSubmit={submit} className="space-y-4">
-        <div className="space-y-2"><Label>Nome completo</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2"><Label>Matrícula</Label><Input value={matricula} onChange={(e) => setMatricula(e.target.value)} /></div>
-          <div className="space-y-2">
-            <Label>Tipo</Label>
-            <Select value={role} onValueChange={(v: any) => setRole(v)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="operador">Operador</SelectItem>
-                <SelectItem value="admin">Administrador</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+
+        <div>
+          <Label>Nome</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} />
         </div>
-        <div className="space-y-2"><Label>Senha inicial</Label><Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></div>
-        <DialogFooter><Button type="submit">Cadastrar</Button></DialogFooter>
+
+        <div>
+          <Label>Matrícula</Label>
+          <Input value={user.matricula} disabled />
+        </div>
+
+        <div>
+          <Label>Tipo</Label>
+          <Select value={role} onValueChange={setRole}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="operador">Operador</SelectItem>
+              <SelectItem value="admin">Administrador</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setChangePassword(!changePassword)}
+        >
+          Alterar senha
+        </Button>
+
+        {changePassword && (
+          <>
+            <Input
+              type="password"
+              placeholder="Senha atual"
+              value={oldPassword}
+              onChange={(e) => setOldPassword(e.target.value)}
+            />
+            <Input
+              type="password"
+              placeholder="Nova senha"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+          </>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit">
+            Salvar
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  );
+}
+
+
+function NewUserDialog({ onClose, onSuccess }: any) {
+  const [name, setName] = useState("");
+  const [matricula, setMatricula] = useState("");
+  const [role, setRole] = useState<"admin" | "operador">("operador");
+
+  const resetForm = () => {
+    setName("");
+    setMatricula("");
+    setRole("operador");
+  };
+
+  const submit = async (e: any) => {
+    e.preventDefault();
+
+    try {
+      await createUser({
+        nome: name,
+        matricula,
+        senha: "123456", // ✅ SENHA PADRÃO
+        tipo: role,
+        ativo: true,
+        email: "",
+      });
+
+      toast.success("Usuário criado com senha padrão: 123456");
+
+      onSuccess();
+      onClose();
+      resetForm();
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>Novo usuário</DialogTitle>
+      </DialogHeader>
+
+      <form onSubmit={submit} className="space-y-4">
+        <Input
+          placeholder="Nome"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+
+        <Input
+          placeholder="Matrícula"
+          value={matricula}
+          onChange={(e) => setMatricula(e.target.value)}
+        />
+
+        <Select value={role} onValueChange={(v) => setRole(v as "admin" | "operador")}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="operador">Operador</SelectItem>
+            <SelectItem value="admin">Administrador</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* 🔥 AVISO VISUAL */}
+        <div className="text-sm text-yellow-600 bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
+          ⚠️ O usuário será criado com a senha padrão: <b>123456</b>
+        </div>
+
+        <DialogFooter>
+          <Button type="submit">Cadastrar</Button>
+        </DialogFooter>
       </form>
     </DialogContent>
   );

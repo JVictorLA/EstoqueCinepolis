@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
+
 type NavItem = { to: string; label: string; icon: any };
 
 const adminNav: NavItem[] = [
