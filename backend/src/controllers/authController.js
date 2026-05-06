@@ -37,6 +37,9 @@ async function login(req, res) {
       email: result.email,
       tipo: result.tipo,
       ativo: !!result.ativo,
+
+      // 👇 ESSA LINHA É A CHAVE
+      precisaTrocarSenha: !!result.precisa_trocar_senha
     },
   }, "Login realizado");
 }

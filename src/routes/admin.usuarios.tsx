@@ -269,6 +269,7 @@ function NewUserDialog({ onClose, onSuccess }: any) {
         tipo: role,
         ativo: true,
         email: "",
+        
       });
 
       toast.success("Usuário criado com senha padrão: 123456");

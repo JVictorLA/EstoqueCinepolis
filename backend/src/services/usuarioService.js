@@ -43,15 +43,24 @@ async function existsByMatricula(matricula) {
 
 async function create({ matricula, nome, email, senha, tipo, ativo }) {
   const senha_hash = await bcrypt.hash(senha, 10);
+
   const [result] = await pool.query(
     `INSERT INTO usuarios
-      (matricula, nome, email, senha_hash, tipo, ativo, criado_em)
-     VALUES (?, ?, ?, ?, ?, ?, NOW())`,
-    [matricula, nome, email, senha_hash, tipo, ativo ? 1 : 0]
+      (matricula, nome, email, senha_hash, tipo, ativo, precisa_trocar_senha, criado_em)
+     VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+    [
+      matricula,
+      nome,
+      email,
+      senha_hash,
+      tipo,
+      ativo ? 1 : 0,
+      1 // 👈 usuário novo precisa trocar senha
+    ]
   );
+
   return findById(result.insertId);
 }
-
 async function update(id, { matricula, nome, email, senha, tipo, ativo }) {
   const fields = [];
   const values = [];
