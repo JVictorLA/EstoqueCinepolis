@@ -46,7 +46,7 @@ async function create({ matricula, nome, email, senha, tipo, ativo }) {
 
   const [result] = await pool.query(
     `INSERT INTO usuarios
-      (matricula, nome, email, senha_hash, tipo, ativo, precisa_trocar_senha, criado_em)
+      (matricula, nome, email, senha_hash, tipo, ativo,  criado_em, precisa_trocar_senha)
      VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
     [
       matricula,
