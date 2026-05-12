@@ -54,6 +54,8 @@ export interface AuthUser {
   id: number;
   matricula: string;
   nome: string;
-  email?: string | null;
+  email?: string;
   tipo: UserRole;
+  ativo: boolean;
+  precisaTrocarSenha?: boolean;
 }

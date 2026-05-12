@@ -93,6 +93,13 @@ router.get(
   asyncHandler(usuarioCtrl.buscarPorMatricula)
 );
 
+router.patch(
+  "/usuarios/:id/resetar-senha",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(usuarioCtrl.resetarSenha)
+);
+
 
 /* 
 // ✅ ALTERNATIVA MAIS SEGURA (recomendado)

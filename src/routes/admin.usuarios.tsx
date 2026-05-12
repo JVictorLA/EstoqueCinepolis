@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { createUser, updateUser, changeUserPassword } from "@/services/api";
+import { createUser, updateUser, changeUserPassword, resetUserPassword } from "@/services/api";
 import { Users, Plus } from "lucide-react";
 import { PageHeader, EmptyState } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -123,7 +123,7 @@ function UsuariosPage() {
                       size="sm"
                       onClick={() => setDeleteUser(u)}
                     >
-                      
+
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -143,9 +143,9 @@ function UsuariosPage() {
           />
         )}
       </Dialog>
-      
+
     </>
-    
+
   );
 }
 
@@ -156,6 +156,8 @@ function EditUserDialog({ user, onClose, onSuccess }: any) {
   const [changePassword, setChangePassword] = useState(false);
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [resetPassword, setResetPassword] =
+    useState(false);
 
   const submit = async (e: any) => {
     e.preventDefault();
@@ -170,6 +172,9 @@ function EditUserDialog({ user, onClose, onSuccess }: any) {
         await changeUserPassword(user.id, oldPassword, newPassword);
       }
 
+      if (resetPassword) {
+        await resetUserPassword(user.id);
+      }
       toast.success("Usuário atualizado");
 
       onSuccess();
@@ -207,15 +212,36 @@ function EditUserDialog({ user, onClose, onSuccess }: any) {
             </SelectContent>
           </Select>
         </div>
+        <div className="flex gap-2 mt-2">
+          <div className="flex gap-2 mt-2">
+  <Button
+    type="button"
+    variant="outline"
+    onClick={() =>
+      setChangePassword(!changePassword)
+    }
+  >
+    Alterar senha
+  </Button>
 
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => setChangePassword(!changePassword)}
-        >
-          Alterar senha
-        </Button>
-
+  <Button
+    type="button"
+    variant="destructive"
+    onClick={() =>
+      setResetPassword(!resetPassword)
+    }
+  >
+    Resetar senha
+  </Button>
+</div>
+        </div>
+        {resetPassword && (
+          <div className="text-sm text-yellow-600 bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
+            ⚠️ A senha será redefinida para: <b>123456</b>
+            <br />
+            O usuário será obrigado a criar uma nova senha no próximo acesso.
+          </div>
+        )}
         {changePassword && (
           <>
             <Input
@@ -269,7 +295,7 @@ function NewUserDialog({ onClose, onSuccess }: any) {
         tipo: role,
         ativo: true,
         email: "",
-        
+
       });
 
       toast.success("Usuário criado com senha padrão: 123456");

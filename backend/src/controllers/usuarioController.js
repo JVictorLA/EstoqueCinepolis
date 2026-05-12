@@ -8,7 +8,15 @@ async function buscarPorMatricula(req, res) {
   const { matricula } = req.params;
 
   const [rows] = await pool.query(
-    "SELECT id, matricula, nome, tipo FROM usuarios WHERE matricula = ? LIMIT 1",
+    `SELECT
+      id,
+      matricula,
+      nome,
+      tipo,
+      precisa_trocar_senha
+     FROM usuarios
+     WHERE matricula = ?
+     LIMIT 1`,
     [matricula]
   );
 
@@ -116,6 +124,27 @@ async function alterarStatus(req, res) {
   return ok(res, atualizado, "Status atualizado");
 }
 
+async function resetarSenha(req, res) {
+  const id = Number(req.params.id);
+
+  if (!id) {
+    return fail(res, 400, "ID inválido");
+  }
+
+  const existing = await usuarioService.findById(id);
+
+  if (!existing) {
+    return fail(res, 404, "Usuário não encontrado");
+  }
+
+  await usuarioService.resetPassword(id);
+
+  return ok(
+    res,
+    null,
+    "Senha resetada para 123456"
+  );
+}
 
 
 module.exports = {
@@ -124,5 +153,6 @@ module.exports = {
   criar,
   atualizar,
   alterarStatus,
-  alterarSenha
+  alterarSenha,
+  resetarSenha
 };

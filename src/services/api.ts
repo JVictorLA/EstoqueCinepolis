@@ -151,15 +151,24 @@ function mapUser(r: RawUser): SystemUser {
 
 /* ----------------- AUTH ----------------- */
 
-export async function adminLogin(matricula: string, senha: string): Promise<AuthUser> {
-  const data = await request<{ token: string; usuario: AuthUser }>("/login", {
+export async function adminLogin(
+  matricula: string,
+  senha: string
+): Promise<AuthUser> {
+
+  const data = await request<{
+    token: string;
+    usuario: AuthUser;
+  }>("/login", {
     method: "POST",
     body: JSON.stringify({ matricula, senha }),
   });
+
   if (typeof window !== "undefined") {
     localStorage.setItem(TOKEN_KEY, data.token);
     localStorage.setItem(USER_KEY, JSON.stringify(data.usuario));
   }
+
   return data.usuario;
 }
 
@@ -300,5 +309,17 @@ export async function changeUserPassword(
     }),
   });
 
+}
+
+export async function resetUserPassword(
+  id: number
+): Promise<void> {
+  await request<void>(
+    `/usuarios/${id}/resetar-senha`,
+    {
+      method: "PATCH",
+      auth: true,
+    }
+  );
 }
 
