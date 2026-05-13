@@ -58,9 +58,11 @@ function MovsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Produto</TableHead>
+                <TableHead>Estoque</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Quantidade</TableHead>
                 <TableHead>Responsável</TableHead>
+                <TableHead>Observacao</TableHead>
                 <TableHead>Data</TableHead>
                 <TableHead>Hora</TableHead>
               </TableRow>
@@ -69,6 +71,7 @@ function MovsPage() {
               {movs.map((m) => (
                 <TableRow key={m.id}>
                   <TableCell>{m.productName}</TableCell>
+                  <TableCell>{m.estoqueNome ?? "-"}</TableCell>
                   <TableCell>
                     <Badge variant={m.type === "entrada" ? "default" : "destructive"}>
                       {m.type === "entrada" ? "Entrada" : "Saída"}
@@ -76,6 +79,7 @@ function MovsPage() {
                   </TableCell>
                   <TableCell>{m.quantity}</TableCell>
                   <TableCell>{m.userName}</TableCell>
+                  <TableCell className="max-w-[240px] truncate">{m.note ?? "-"}</TableCell>
                   <TableCell>{new Date(m.createdAt).toLocaleDateString("pt-BR")}</TableCell>
                   <TableCell>{new Date(m.createdAt).toLocaleTimeString("pt-BR")}</TableCell>
                 </TableRow>

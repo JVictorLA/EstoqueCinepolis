@@ -1,19 +1,33 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import {
-  LayoutDashboard, Package, ArrowDownToLine, ArrowUpFromLine,
-  ListOrdered, ClipboardList, Users, Settings, Search, HelpCircle,
-  LogOut, Menu, X, History, Film,
+  LayoutDashboard,
+  Package,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  ListOrdered,
+  ClipboardList,
+  Users,
+  Settings,
+  Search,
+  HelpCircle,
+  LogOut,
+  Menu,
+  X,
+  History,
+  Film,
+  Warehouse,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-
+import { clearSession, getStoredUser } from "@/services/api";
 
 type NavItem = { to: string; label: string; icon: any };
 
 const adminNav: NavItem[] = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/admin/estoques", label: "Estoques", icon: Warehouse },
   { to: "/admin/produtos", label: "Produtos", icon: Package },
   { to: "/admin/entrada", label: "Entrada de Produtos", icon: ArrowDownToLine },
   { to: "/admin/retirada", label: "Retirada de Produtos", icon: ArrowUpFromLine },
@@ -39,12 +53,48 @@ export function AppShell({ variant, children }: AppShellProps) {
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [operatorStockName, setOperatorStockName] = useState<string | null>(null);
+  const [adminName, setAdminName] = useState("Administrador");
 
-  const userLabel = variant === "admin" ? "Administrador" : "Modo Operador";
-  const initials = variant === "admin" ? "AD" : "OP";
+  const userLabel = variant === "admin" ? adminName : "Modo Operador";
+  const initials =
+    variant === "admin"
+      ? adminName
+          .split(" ")
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => part[0])
+          .join("")
+          .toUpperCase() || "AD"
+      : "OP";
 
   const isActive = (to: string) =>
     to === `/${variant}` ? path === to : path === to || path.startsWith(to + "/");
+
+  useEffect(() => {
+    if (variant !== "operador") return;
+    const raw = localStorage.getItem("cinepolis.estoque");
+    const estoque = raw ? JSON.parse(raw) : null;
+    setOperatorStockName(estoque?.nome ?? null);
+  }, [variant, path]);
+
+  useEffect(() => {
+    if (variant !== "admin") return;
+    const user = getStoredUser();
+    setAdminName(user?.nome || "Administrador");
+  }, [variant, path]);
+
+  const changeOperatorStock = () => {
+    localStorage.removeItem("cinepolis.estoque");
+    setOperatorStockName(null);
+    navigate({ to: "/operador" });
+  };
+
+  const signOut = () => {
+    clearSession();
+    localStorage.removeItem("cinepolis.estoque");
+    navigate({ to: "/" });
+  };
 
   return (
     <div className="min-h-screen flex w-full bg-background">
@@ -81,7 +131,7 @@ export function AppShell({ variant, children }: AppShellProps) {
         </nav>
         <div className="p-3 border-t border-sidebar-border">
           <button
-            onClick={() => navigate({ to: "/" })}
+            onClick={signOut}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition"
           >
             <LogOut className="h-4 w-4" />
@@ -127,7 +177,7 @@ export function AppShell({ variant, children }: AppShellProps) {
               })}
             </nav>
             <button
-              onClick={() => navigate({ to: "/" })}
+              onClick={signOut}
               className="m-3 flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent"
             >
               <LogOut className="h-4 w-4" /> Sair
@@ -150,9 +200,28 @@ export function AppShell({ variant, children }: AppShellProps) {
             <Input placeholder="Buscar produtos, códigos…" className="pl-9 bg-muted/50 border-0" />
           </div>
           <div className="flex-1" />
-          <Button variant="ghost" size="sm" className="hidden sm:inline-flex gap-2 text-muted-foreground">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="hidden sm:inline-flex gap-2 text-muted-foreground"
+          >
             <HelpCircle className="h-4 w-4" /> Ajuda
           </Button>
+          {variant === "operador" && operatorStockName && (
+            <div className="hidden md:flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs">
+              <span className="text-muted-foreground">Estoque atual:</span>
+              <span className="font-medium">{operatorStockName}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={changeOperatorStock}
+              >
+                Trocar estoque
+              </Button>
+            </div>
+          )}
           <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block leading-tight">
               <div className="text-sm font-medium">{userLabel}</div>
@@ -168,9 +237,7 @@ export function AppShell({ variant, children }: AppShellProps) {
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-x-hidden">
-          {children}
-        </main>
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-x-hidden">{children}</main>
       </div>
     </div>
   );

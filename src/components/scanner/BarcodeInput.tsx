@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { ScanLine } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,13 @@ export function BarcodeInput({
 }: BarcodeInputProps) {
   const isMobile = useIsMobileOrTablet();
   const [open, setOpen] = useState(false);
+  const closeScanner = useCallback(() => setOpen(false), []);
+  const handleDetected = useCallback(
+    (code: string) => {
+      onChange(code.trim());
+    },
+    [onChange],
+  );
 
   return (
     <div className="space-y-2">
@@ -49,8 +56,8 @@ export function BarcodeInput({
       </div>
       <BarcodeScanner
         open={open}
-        onClose={() => setOpen(false)}
-        onDetected={(code) => onChange(code)}
+        onClose={closeScanner}
+        onDetected={handleDetected}
       />
     </div>
   );

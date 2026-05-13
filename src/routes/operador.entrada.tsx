@@ -7,7 +7,7 @@ export const Route = createFileRoute("/operador/entrada")({
   component: () => (
     <>
       <PageHeader title="Entrada de Produtos" subtitle="Adicione quantidade ao estoque (matrícula e senha obrigatórias)" />
-      <MovementForm type="entrada" requireAuth />
+      <MovementForm type="entrada" requireAuth useStoredStock />
     </>
   ),
 });

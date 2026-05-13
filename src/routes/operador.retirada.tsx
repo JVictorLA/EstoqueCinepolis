@@ -7,7 +7,7 @@ export const Route = createFileRoute("/operador/retirada")({
   component: () => (
     <>
       <PageHeader title="Retirada de Produtos" subtitle="Registre saídas (matrícula e senha obrigatórias)" />
-      <MovementForm type="saida" requireAuth />
+      <MovementForm type="saida" requireAuth useStoredStock />
     </>
   ),
 });

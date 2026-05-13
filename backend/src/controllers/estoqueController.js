@@ -1,5 +1,6 @@
 const produtoService = require("../services/produtoService");
-const { ok } = require("../utils/response");
+const estoqueService = require("../services/estoqueService");
+const { ok, created, fail } = require("../utils/response");
 
 /**
  * GET /estoque — posição atual de estoque com status de alerta.
@@ -19,11 +20,48 @@ async function listar(_req, res) {
     ativo: !!p.ativo,
     sem_estoque: !!p.sem_estoque,
     estoque_baixo: !!p.estoque_baixo,
-    status:
-      p.sem_estoque ? "sem_estoque" :
-      p.estoque_baixo ? "baixo_estoque" : "ok",
+    status: p.sem_estoque ? "sem_estoque" : p.estoque_baixo ? "baixo_estoque" : "ok",
   }));
   return ok(res, data);
 }
 
-module.exports = { listar };
+async function listarEstoques(_req, res) {
+  const rows = await estoqueService.listAll();
+  return ok(res, rows);
+}
+
+async function criar(req, res) {
+  const { nome, ativo } = req.body || {};
+  const nomeNormalizado = nome ? String(nome).trim() : "";
+
+  if (!nomeNormalizado) {
+    return fail(res, 400, "nome e obrigatorio");
+  }
+
+  if (await estoqueService.existsByName(nomeNormalizado)) {
+    return fail(res, 409, "Estoque ja cadastrado");
+  }
+
+  const novo = await estoqueService.create({
+    nome: nomeNormalizado,
+    ativo: ativo === undefined ? true : !!ativo,
+  });
+
+  return created(res, novo, "Estoque criado");
+}
+
+async function alterarStatus(req, res) {
+  const id = Number(req.params.id);
+  if (!id) return fail(res, 400, "id invalido");
+
+  const { ativo } = req.body || {};
+  if (ativo === undefined) return fail(res, 400, "Informe 'ativo' (true/false)");
+
+  const existing = await estoqueService.findById(id);
+  if (!existing) return fail(res, 404, "Estoque nao encontrado");
+
+  const atualizado = await estoqueService.setStatus(id, !!ativo);
+  return ok(res, atualizado, "Status atualizado");
+}
+
+module.exports = { listar, listarEstoques, criar, alterarStatus };

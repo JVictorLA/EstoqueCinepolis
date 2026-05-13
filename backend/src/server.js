@@ -1,10 +1,12 @@
 const app = require("./app");
 const config = require("./config");
 const { testConnection } = require("./database/connection");
+const { ensureDatabaseSchema } = require("./database/ensureSchema");
 
 (async () => {
   try {
     await testConnection();
+    await ensureDatabaseSchema();
     // eslint-disable-next-line no-console
     console.log(
       `[DB] Conectado em ${config.db.host}:${config.db.port}/${config.db.database}`

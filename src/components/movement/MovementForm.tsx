@@ -1,14 +1,23 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   Package,
   CheckCircle2,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 import {
   Dialog,
@@ -18,6 +27,17 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
 import { BarcodeInput } from "@/components/scanner/BarcodeInput";
 
 import { toast } from "sonner";
@@ -26,21 +46,33 @@ import {
   getProductByBarcode,
   getUserByMatricula,
   registerMovement,
+  transferStock,
   changeUserPassword,
+  getEstoques,
+  getStoredUser,
 } from "@/services/api";
 
-import type { Product } from "@/types";
+import type { Estoque, Product } from "@/types";
 
 interface MovementFormProps {
   type: "entrada" | "saida";
   requireAuth?: boolean;
+  useStoredStock?: boolean;
+  useLoggedUser?: boolean;
 }
 
 export function MovementForm({
   type,
+  useStoredStock = false,
+  useLoggedUser = false,
 }: MovementFormProps) {
+  const navigate = useNavigate();
 
   const [barcode, setBarcode] = useState("");
+  const [estoques, setEstoques] = useState<Estoque[]>([]);
+  const [selectedEstoqueId, setSelectedEstoqueId] = useState("");
+  const [targetEstoqueId, setTargetEstoqueId] = useState("");
+  const [operation, setOperation] = useState<"saida" | "transferencia">("saida");
 
   const [product, setProduct] =
     useState<Product | null>(null);
@@ -58,6 +90,9 @@ export function MovementForm({
     useState("");
 
   const [confirmOpen, setConfirmOpen] =
+    useState(false);
+
+  const [reviewOpen, setReviewOpen] =
     useState(false);
 
   const [password, setPassword] =
@@ -86,6 +121,50 @@ export function MovementForm({
     useState<number | null>(null);
 
   useEffect(() => {
+    getEstoques().then((data) => {
+      setEstoques(data);
+      if (useStoredStock) {
+        const raw = localStorage.getItem("cinepolis.estoque");
+        const stored = raw ? JSON.parse(raw) : null;
+        if (stored?.id) {
+          setSelectedEstoqueId(String(stored.id));
+        } else {
+          navigate({ to: "/operador" });
+        }
+        return;
+      }
+
+      const firstActive = data.find((estoque) => estoque.ativo) ?? data[0];
+      if (firstActive) setSelectedEstoqueId(String(firstActive.id));
+    });
+  }, [navigate, useStoredStock]);
+
+  useEffect(() => {
+    if (type !== "saida" || operation !== "transferencia") return;
+
+    const firstTarget = estoques.find(
+      (estoque) => estoque.ativo && String(estoque.id) !== selectedEstoqueId
+    );
+
+    if (firstTarget && (!targetEstoqueId || targetEstoqueId === selectedEstoqueId)) {
+      setTargetEstoqueId(String(firstTarget.id));
+    }
+  }, [estoques, operation, selectedEstoqueId, targetEstoqueId, type]);
+
+  useEffect(() => {
+    if (!useLoggedUser) return;
+    const storedUser = getStoredUser();
+    if (!storedUser) {
+      navigate({ to: "/" });
+      return;
+    }
+
+    setMatricula(storedUser.matricula);
+    setUser(storedUser);
+  }, [navigate, useLoggedUser]);
+
+  useEffect(() => {
+    if (useLoggedUser) return;
     if (!matricula) {
       setUser(null);
       return;
@@ -109,10 +188,10 @@ export function MovementForm({
 
     return () => clearTimeout(t);
 
-  }, [matricula]);
+  }, [matricula, useLoggedUser]);
 
   useEffect(() => {
-    if (!barcode) {
+    if (!barcode || !selectedEstoqueId) {
       setProduct(null);
       return;
     }
@@ -121,7 +200,7 @@ export function MovementForm({
       setSearching(true);
 
       try {
-        const p = await getProductByBarcode(barcode);
+        const p = await getProductByBarcode(barcode, selectedEstoqueId);
 
         setProduct(p);
 
@@ -135,13 +214,29 @@ export function MovementForm({
 
     return () => clearTimeout(t);
 
-  }, [barcode]);
+  }, [barcode, selectedEstoqueId]);
 
   const handleConfirmClick = () => {
     if (!barcode) {
       return toast.error(
         "Informe o código de barras"
       );
+    }
+
+    if (!selectedEstoqueId) {
+      return toast.error(
+        "Selecione o estoque"
+      );
+    }
+
+    if (operation === "transferencia") {
+      if (!targetEstoqueId) {
+        return toast.error("Selecione o estoque de destino");
+      }
+
+      if (targetEstoqueId === selectedEstoqueId) {
+        return toast.error("O destino precisa ser diferente da origem");
+      }
     }
 
     if (!quantity || parseInt(quantity) <= 0) {
@@ -159,7 +254,7 @@ export function MovementForm({
     setConfirmOpen(true);
   };
 
-  const doSubmit = async () => {
+  const handlePasswordConfirm = () => {
     if (!password) {
       return toast.error("Informe a senha");
     }
@@ -167,7 +262,7 @@ export function MovementForm({
     // 🔥 PRIMEIRO LOGIN
     if (
       password === "123456" &&
-      user?.precisa_trocar_senha
+      (user?.precisa_trocar_senha || user?.precisaTrocarSenha)
     ) {
       setUserId(user.id);
 
@@ -182,20 +277,40 @@ export function MovementForm({
       return;
     }
 
+    setConfirmOpen(false);
+    setReviewOpen(true);
+  };
+
+  const doSubmit = async () => {
     setSubmitting(true);
 
     try {
-      await registerMovement({
-        codigo_barras: barcode,
-        matricula,
-        senha: password,
-        tipo: type,
-        quantidade: parseInt(quantity),
-        observacao: note || undefined,
-      });
+      if (operation === "transferencia") {
+        await transferStock({
+          codigo_barras: barcode,
+          estoque_origem_id: parseInt(selectedEstoqueId),
+          estoque_destino_id: parseInt(targetEstoqueId),
+          matricula,
+          senha: password,
+          quantidade: parseInt(quantity),
+          observacao: note || undefined,
+        });
+      } else {
+        await registerMovement({
+          codigo_barras: barcode,
+          estoque_id: parseInt(selectedEstoqueId),
+          matricula,
+          senha: password,
+          tipo: type,
+          quantidade: parseInt(quantity),
+          observacao: note || undefined,
+        });
+      }
 
       toast.success(
-        type === "entrada"
+        operation === "transferencia"
+          ? "Transferencia registrada"
+          : type === "entrada"
           ? "Entrada registrada"
           : "Retirada registrada"
       );
@@ -204,9 +319,13 @@ export function MovementForm({
       setProduct(null);
       setQuantity("");
       setNote("");
-      setMatricula("");
+      if (!useLoggedUser) {
+        setMatricula("");
+        setUser(null);
+      }
       setPassword("");
       setConfirmOpen(false);
+      setReviewOpen(false);
 
     } catch (e: any) {
       toast.error(
@@ -270,15 +389,67 @@ export function MovementForm({
   };
 
   const accent =
-    type === "entrada"
+    type === "entrada" || operation === "transferencia"
       ? "success"
       : "destructive";
+
+  const selectedEstoque = estoques.find(
+    (estoque) => String(estoque.id) === selectedEstoqueId
+  );
+
+  const targetEstoque = estoques.find(
+    (estoque) => String(estoque.id) === targetEstoqueId
+  );
+
+  const movementLabel =
+    operation === "transferencia"
+      ? "transferencia de estoque"
+      : type === "entrada" ? "entrada de produto" : "retirada de produto";
+
+  const movementVerb =
+    operation === "transferencia"
+      ? "transferir entre estoques"
+      : type === "entrada" ? "adicionar ao" : "retirar do";
+
+  const movementActionLabel =
+    operation === "transferencia"
+      ? "Sim, transferir produto"
+      : type === "entrada" ? "Sim, registrar entrada" : "Sim, registrar retirada";
 
   return (
     <div className="grid lg:grid-cols-3 gap-6">
 
       {/* FORM */}
       <div className="lg:col-span-2 space-y-4 rounded-xl bg-card border p-6 shadow-[var(--shadow-soft)]">
+
+        {type === "saida" && (
+          <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted p-1">
+            <Button
+              type="button"
+              variant={operation === "saida" ? "default" : "ghost"}
+              onClick={() => setOperation("saida")}
+              className={
+                operation === "saida"
+                  ? "bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+                  : ""
+              }
+            >
+              Retirada
+            </Button>
+            <Button
+              type="button"
+              variant={operation === "transferencia" ? "default" : "ghost"}
+              onClick={() => setOperation("transferencia")}
+              className={
+                operation === "transferencia"
+                  ? "bg-success hover:bg-success/90 text-success-foreground"
+                  : ""
+              }
+            >
+              Transferir estoque
+            </Button>
+          </div>
+        )}
 
         <BarcodeInput
           value={barcode}
@@ -287,6 +458,48 @@ export function MovementForm({
         />
 
         <div className="grid sm:grid-cols-2 gap-4">
+          {useStoredStock ? (
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Estoque</Label>
+              <Input value={selectedEstoque?.nome ?? "Selecione um estoque no modo operador"} disabled />
+            </div>
+          ) : (
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Estoque</Label>
+              <Select value={selectedEstoqueId} onValueChange={setSelectedEstoqueId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o estoque" />
+                </SelectTrigger>
+                <SelectContent>
+                  {estoques.map((estoque) => (
+                    <SelectItem key={estoque.id} value={String(estoque.id)}>
+                      {estoque.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {operation === "transferencia" && (
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Estoque destino</Label>
+              <Select value={targetEstoqueId} onValueChange={setTargetEstoqueId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o estoque destino" />
+                </SelectTrigger>
+                <SelectContent>
+                  {estoques
+                    .filter((estoque) => estoque.ativo && String(estoque.id) !== selectedEstoqueId)
+                    .map((estoque) => (
+                      <SelectItem key={estoque.id} value={String(estoque.id)}>
+                        {estoque.nome}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Quantidade</Label>
@@ -302,6 +515,19 @@ export function MovementForm({
             />
           </div>
 
+          {useLoggedUser ? (
+            <div className="space-y-2">
+              <Label>Responsavel</Label>
+              <Input
+                value={
+                  user?.nome
+                    ? `${user.nome} (${matricula})`
+                    : matricula
+                }
+                disabled
+              />
+            </div>
+          ) : (
           <div className="space-y-2">
             <Label>
               Usuário do funcionário
@@ -315,10 +541,11 @@ export function MovementForm({
               placeholder="Ex: 1234"
             />
           </div>
+          )}
 
         </div>
 
-        {type === "entrada" && (
+        {(type === "entrada" || operation === "transferencia") && (
           <div className="space-y-2">
             <Label>
               Observação{" "}
@@ -341,7 +568,7 @@ export function MovementForm({
           onClick={handleConfirmClick}
           disabled={submitting}
           className={`w-full ${
-            type === "entrada"
+            type === "entrada" || operation === "transferencia"
               ? "bg-success hover:bg-success/90"
               : "bg-destructive hover:bg-destructive/90"
           } text-${accent}-foreground`}
@@ -350,7 +577,9 @@ export function MovementForm({
             <Loader2 className="h-4 w-4 animate-spin mr-2" />
           )}
 
-          {type === "entrada"
+          {operation === "transferencia"
+            ? "Confirmar Transferencia"
+            : type === "entrada"
             ? "Confirmar Entrada"
             : "Confirmar Retirada"}
         </Button>
@@ -436,7 +665,7 @@ export function MovementForm({
 
           <div className="space-y-4">
 
-            {type === "entrada" && (
+            {type === "entrada" && !useLoggedUser && (
               <div className="space-y-2">
 
                 <Label>Matrícula</Label>
@@ -510,7 +739,7 @@ export function MovementForm({
             </Button>
 
             <Button
-              onClick={doSubmit}
+              onClick={handlePasswordConfirm}
               disabled={submitting}
               className="gap-2"
             >
@@ -529,6 +758,108 @@ export function MovementForm({
       </Dialog>
 
       {/* 🔥 MODAL TROCAR SENHA */}
+      <AlertDialog
+        open={reviewOpen}
+        onOpenChange={setReviewOpen}
+      >
+        <AlertDialogContent>
+
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle
+                className={`h-5 w-5 ${
+                  type === "entrada" || operation === "transferencia"
+                    ? "text-success"
+                    : "text-destructive"
+                }`}
+              />
+              Confirmar {movementLabel}
+            </AlertDialogTitle>
+
+            <AlertDialogDescription>
+              Voce esta prestes a {movementVerb} estoque a quantidade abaixo.
+              Confira os dados antes de concluir a operacao.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="rounded-lg border bg-muted/40 p-4 text-sm space-y-3">
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-muted-foreground">Operacao</span>
+              <span
+                className={`font-semibold ${
+                  type === "entrada" || operation === "transferencia"
+                    ? "text-success"
+                    : "text-destructive"
+                }`}
+              >
+                {operation === "transferencia"
+                  ? "Transferencia"
+                  : type === "entrada" ? "Entrada" : "Retirada"}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-muted-foreground">Estoque</span>
+              <span className="font-medium text-right">
+                {selectedEstoque?.nome ?? "Estoque selecionado"}
+              </span>
+            </div>
+
+            {operation === "transferencia" && (
+              <div className="flex items-center justify-between gap-4">
+                <span className="text-muted-foreground">Destino</span>
+                <span className="font-medium text-right">
+                  {targetEstoque?.nome ?? "Estoque destino"}
+                </span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-muted-foreground">Produto</span>
+              <span className="font-medium text-right">
+                {product?.name ?? barcode}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-muted-foreground">Quantidade</span>
+              <span className="font-semibold">
+                {quantity}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-muted-foreground">Funcionario</span>
+              <span className="font-medium text-right">
+                {user?.nome ?? matricula}
+              </span>
+            </div>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={submitting}>
+              Revisar dados
+            </AlertDialogCancel>
+
+            <AlertDialogAction
+              onClick={doSubmit}
+              disabled={submitting}
+              className={`gap-2 ${
+                type === "entrada" || operation === "transferencia"
+                  ? "bg-success hover:bg-success/90 text-success-foreground"
+                  : "bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+              }`}
+            >
+              {submitting && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+              {movementActionLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Dialog
         open={showChangePassword}
         onOpenChange={setShowChangePassword}

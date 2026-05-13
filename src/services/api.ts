@@ -8,7 +8,7 @@
  *   { success, message, data, error }
  */
 import type {
-  Product, Movement, SystemUser, Category, AuthUser, UserRole,
+  Product, Movement, SystemUser, Category, AuthUser, UserRole, Estoque, TransferMovement,
 } from "@/types";
 
 const API_URL =
@@ -38,7 +38,6 @@ interface ApiEnvelope<T> {
   data: T;
   error: string | null;
 }
-
 
 async function request<T>(
   path: string,
@@ -73,6 +72,8 @@ async function request<T>(
 
 interface RawProduct {
   id: number;
+  estoque_id?: number | null;
+  estoque_nome?: string | null;
   codigo_barras: string;
   nome: string;
   categoria_id: number | null;
@@ -86,11 +87,14 @@ interface RawProduct {
   atualizado_em?: string;
   sem_estoque?: 0 | 1;
   estoque_baixo?: 0 | 1;
+  movimentacoes_count?: number | string;
 }
 
 function mapProduct(r: RawProduct): Product {
   return {
     id: r.id,
+    estoqueId: r.estoque_id ?? null,
+    estoqueNome: r.estoque_nome ?? null,
     barcode: r.codigo_barras,
     name: r.nome,
     categoryId: r.categoria_id,
@@ -103,12 +107,15 @@ function mapProduct(r: RawProduct): Product {
     favorite: false,
     lowStock: !!r.estoque_baixo,
     noStock: !!r.sem_estoque,
+    movementsCount: Number(r.movimentacoes_count ?? 0),
     createdAt: r.criado_em,
   };
 }
 
 interface RawMovement {
   id: number;
+  estoque_id?: number | null;
+  estoque_nome?: string | null;
   produto_id: number;
   usuario_id: number;
   tipo: "entrada" | "saida";
@@ -121,9 +128,41 @@ interface RawMovement {
   codigo_barras?: string | null;
   criado_em: string;
 }
+
+interface RawTransferMovement {
+  saida_id: number;
+  entrada_id: number;
+  produto_id: number;
+  produto_nome: string;
+  estoque_origem_id: number;
+  estoque_origem_nome: string;
+  estoque_destino_id: number;
+  estoque_destino_nome: string;
+  quantidade: number;
+  usuario_id: number;
+  usuario_nome: string;
+}
+
+function mapTransferMovement(r: RawTransferMovement): TransferMovement {
+  return {
+    saidaId: r.saida_id,
+    entradaId: r.entrada_id,
+    productId: r.produto_id,
+    productName: r.produto_nome,
+    sourceStockId: r.estoque_origem_id,
+    sourceStockName: r.estoque_origem_nome,
+    targetStockId: r.estoque_destino_id,
+    targetStockName: r.estoque_destino_nome,
+    quantity: Number(r.quantidade),
+    userId: r.usuario_id,
+    userName: r.usuario_nome,
+  };
+}
 function mapMovement(r: RawMovement): Movement {
   return {
     id: r.id,
+    estoqueId: r.estoque_id ?? null,
+    estoqueNome: r.estoque_nome ?? null,
     productId: r.produto_id,
     productName: r.produto_nome,
     type: r.tipo,
@@ -146,6 +185,22 @@ function mapUser(r: RawUser): SystemUser {
   return {
     id: r.id, matricula: r.matricula, name: r.nome, email: r.email,
     role: r.tipo, active: !!r.ativo, createdAt: r.criado_em,
+  };
+}
+
+interface RawEstoque {
+  id: number;
+  nome: string;
+  ativo: 0 | 1 | boolean;
+  criado_em: string;
+}
+
+function mapEstoque(r: RawEstoque): Estoque {
+  return {
+    id: r.id,
+    nome: r.nome,
+    ativo: !!r.ativo,
+    criadoEm: r.criado_em,
   };
 }
 
@@ -174,23 +229,96 @@ export async function adminLogin(
 
 /* ----------------- CATEGORIAS ----------------- */
 
+interface RawCategory {
+  id: number;
+  nome: string;
+  produtos_vinculados?: number | string;
+}
+
+function mapCategory(r: RawCategory): Category {
+  return {
+    id: r.id,
+    nome: r.nome,
+    produtosVinculados: Number(r.produtos_vinculados ?? 0),
+  };
+}
+
 export async function getCategories(): Promise<Category[]> {
-  return request<Category[]>("/categorias");
+  const rows = await request<RawCategory[]>("/categorias");
+  return rows.map(mapCategory);
+}
+
+export async function createCategory(payload: { nome: string }): Promise<Category> {
+  const r = await request<RawCategory>("/categorias", {
+    method: "POST",
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+  return mapCategory(r);
+}
+
+export async function updateCategory(
+  id: number,
+  payload: { nome: string }
+): Promise<Category> {
+  const r = await request<RawCategory>(`/categorias/${id}`, {
+    method: "PATCH",
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+  return mapCategory(r);
+}
+
+export async function deleteCategory(id: number): Promise<void> {
+  await request<void>(`/categorias/${id}`, {
+    method: "DELETE",
+    auth: true,
+  });
+}
+
+/* ----------------- ESTOQUES (admin) ----------------- */
+
+export async function getEstoques(): Promise<Estoque[]> {
+  const rows = await request<RawEstoque[]>("/estoques");
+  return rows.map(mapEstoque);
+}
+
+export async function createEstoque(payload: { nome: string; ativo?: boolean }): Promise<Estoque> {
+  const r = await request<RawEstoque>("/estoques", {
+    method: "POST",
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+  return mapEstoque(r);
+}
+
+export async function setEstoqueStatus(id: number, ativo: boolean): Promise<Estoque> {
+  const r = await request<RawEstoque>(`/estoques/${id}/status`, {
+    method: "PATCH",
+    auth: true,
+    body: JSON.stringify({ ativo }),
+  });
+  return mapEstoque(r);
 }
 
 /* ----------------- PRODUTOS ----------------- */
 
-export async function getProducts(): Promise<Product[]> {
-  const rows = await request<RawProduct[]>("/produtos");
+export async function getProducts(estoqueId?: number | string): Promise<Product[]> {
+  const qs = estoqueId ? `?estoque_id=${encodeURIComponent(String(estoqueId))}` : "";
+  const rows = await request<RawProduct[]>(`/produtos${qs}`);
   return rows.map(mapProduct);
 }
 
-export async function getProductByBarcode(barcode: string): Promise<Product | null> {
+export async function getProductByBarcode(
+  barcode: string,
+  estoqueId?: number | string
+): Promise<Product | null> {
   try {
-    const r = await request<RawProduct>(`/produtos/${encodeURIComponent(barcode)}`);
+    const qs = estoqueId ? `?estoque_id=${encodeURIComponent(String(estoqueId))}` : "";
+    const r = await request<RawProduct>(`/produtos/${encodeURIComponent(barcode)}${qs}`);
     return r ? mapProduct(r) : null;
   } catch (e: any) {
-    if (/não encontrado/i.test(e?.message || "")) return null;
+    if (/n[ãa]o encontrado/i.test(e?.message || "")) return null;
     throw e;
   }
 }
@@ -201,6 +329,7 @@ export interface CreateProductPayload {
   categoria_id: number;
   unidade: string;
   preco_venda: number;
+  estoque_id: number;
   estoque_atual: number;
   estoque_minimo: number;
   ativo: boolean;
@@ -214,10 +343,43 @@ export async function createProduct(payload: CreateProductPayload): Promise<Prod
   return mapProduct(r);
 }
 
+export type UpdateProductPayload = Partial<
+  Omit<CreateProductPayload, "estoque_id" | "estoque_atual" | "estoque_minimo">
+>;
+
+export async function updateProduct(
+  id: number,
+  payload: UpdateProductPayload
+): Promise<Product> {
+  const r = await request<RawProduct>(`/produtos/${id}`, {
+    method: "PUT",
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+  return mapProduct(r);
+}
+
+export async function setProductStatus(id: number, ativo: boolean): Promise<Product> {
+  const r = await request<RawProduct>(`/produtos/${id}/status`, {
+    method: "PATCH",
+    auth: true,
+    body: JSON.stringify({ ativo }),
+  });
+  return mapProduct(r);
+}
+
+export async function deleteProduct(id: number): Promise<void> {
+  await request<void>(`/produtos/${id}`, {
+    method: "DELETE",
+    auth: true,
+  });
+}
+
 /* ----------------- MOVIMENTAÇÕES ----------------- */
 
 export async function registerMovement(payload: {
   codigo_barras: string;
+  estoque_id: number;
   matricula: string;
   senha: string;
   tipo: "entrada" | "saida";
@@ -231,6 +393,22 @@ export async function registerMovement(payload: {
   return mapMovement(r);
 }
 
+export async function transferStock(payload: {
+  codigo_barras: string;
+  estoque_origem_id: number;
+  estoque_destino_id: number;
+  matricula: string;
+  senha: string;
+  quantidade: number;
+  observacao?: string;
+}): Promise<TransferMovement> {
+  const r = await request<RawTransferMovement>("/movimentacoes/transferencia", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return mapTransferMovement(r);
+}
+
 export interface MovementFilters {
   data_inicial?: string;
   data_final?: string;
@@ -238,6 +416,7 @@ export interface MovementFilters {
   produto_id?: number;
   codigo_barras?: string;
   usuario_id?: number;
+  estoque_id?: number | string;
 }
 export async function getMovements(filters: MovementFilters = {}): Promise<Movement[]> {
   const qs = new URLSearchParams();
@@ -322,4 +501,3 @@ export async function resetUserPassword(
     }
   );
 }
-

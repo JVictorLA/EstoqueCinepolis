@@ -7,7 +7,7 @@ export const Route = createFileRoute("/admin/entrada")({
   component: () => (
     <>
       <PageHeader title="Entrada de Produtos" subtitle="Adicione quantidade ao estoque de produtos já cadastrados" />
-      <MovementForm type="entrada" requireAuth={false} />
+      <MovementForm type="entrada" requireAuth={false} useLoggedUser />
     </>
   ),
 });

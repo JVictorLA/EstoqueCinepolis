@@ -3,7 +3,7 @@ import {
   Html5Qrcode,
   Html5QrcodeSupportedFormats,
 } from "html5-qrcode";
-import { X, ScanLine, AlertCircle } from "lucide-react";
+import { X, ScanLine, AlertCircle, Flashlight, FlashlightOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface BarcodeScannerProps {
@@ -20,29 +20,74 @@ export function BarcodeScanner({
   onDetected,
 }: BarcodeScannerProps) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const detectedRef = useRef(false);
+  const mountedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [torchAvailable, setTorchAvailable] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
 
   useEffect(() => {
     if (!open) return;
 
+    mountedRef.current = true;
+    detectedRef.current = false;
     setError(null);
     setSuccess(false);
+    setTorchAvailable(false);
+    setTorchOn(false);
+
+    const applyTorch = async (enabled: boolean) => {
+      const scanner = scannerRef.current;
+      if (!scanner) return false;
+
+      try {
+        const capabilities = (scanner as any).getRunningTrackCapabilities?.();
+        if (!capabilities?.torch) return false;
+
+        await (scanner as any).applyVideoConstraints({
+          advanced: [{ torch: enabled }],
+        });
+
+        if (mountedRef.current) {
+          setTorchAvailable(true);
+          setTorchOn(enabled);
+        }
+
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    const stopScanner = async () => {
+      const scanner = scannerRef.current;
+      scannerRef.current = null;
+
+      if (!scanner) return;
+
+      try {
+        await (scanner as any).applyVideoConstraints?.({
+          advanced: [{ torch: false }],
+        });
+      } catch {}
+
+      try {
+        await scanner.stop();
+      } catch {}
+
+      try {
+        await scanner.clear();
+      } catch {}
+    };
 
     const start = async () => {
       try {
-        /**
-         * Força o navegador a pedir permissão da câmera
-         */
-        await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "environment",
-          },
-        });
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setError("Seu navegador nao liberou acesso a camera neste site.");
+          return;
+        }
 
-        /**
-         * Cria o scanner
-         */
         const html5 = new Html5Qrcode(REGION_ID, {
           formatsToSupport: [
             Html5QrcodeSupportedFormats.EAN_13,
@@ -60,23 +105,16 @@ export function BarcodeScanner({
 
         scannerRef.current = html5;
 
-        /**
-         * Busca todas as câmeras disponíveis
-         */
         const cameras = await Html5Qrcode.getCameras();
 
         if (!cameras || cameras.length === 0) {
-          setError("Nenhuma câmera encontrada.");
+          if (mountedRef.current) setError("Nenhuma camera encontrada.");
           return;
         }
 
-        /**
-         * Tenta encontrar a câmera traseira
-         */
         const backCamera =
           cameras.find((camera) => {
             const label = camera.label.toLowerCase();
-
             return (
               label.includes("back") ||
               label.includes("rear") ||
@@ -85,83 +123,71 @@ export function BarcodeScanner({
             );
           }) || cameras[cameras.length - 1];
 
-        /**
-         * Inicia scanner com a câmera traseira
-         */
         await html5.start(
           backCamera.id,
           {
             fps: 10,
             qrbox: (vw, vh) => {
-              const minEdge = Math.min(vw, vh);
-
+              const width = Math.min(Math.floor(vw * 0.86), 420);
+              const height = Math.min(Math.floor(vh * 0.22), 140);
               return {
-                width: Math.floor(minEdge * 0.8),
-                height: Math.floor(minEdge * 0.5),
+                width,
+                height: Math.max(height, 96),
               };
             },
-            aspectRatio: 1.7778,
           },
-          (decodedText) => {
-            setSuccess(true);
+          async (decodedText) => {
+            if (detectedRef.current) return;
+            detectedRef.current = true;
+
+            if (mountedRef.current) setSuccess(true);
 
             try {
               (navigator as any).vibrate?.(120);
             } catch {}
 
-            html5
-              .stop()
-              .then(() => html5.clear())
-              .catch(() => {});
-
-            onDetected(decodedText);
+            await stopScanner();
+            onDetected(decodedText.trim());
 
             setTimeout(() => {
-              onClose();
+              if (mountedRef.current) onClose();
             }, 250);
           },
-          () => {
-            /**
-             * Ignora erros contínuos de leitura
-             */
-          }
+          () => {}
         );
+
+        const capabilities = (html5 as any).getRunningTrackCapabilities?.();
+        if (capabilities?.torch && mountedRef.current) {
+          setTorchAvailable(true);
+          setTimeout(() => {
+            if (mountedRef.current) void applyTorch(true);
+          }, 300);
+        }
       } catch (e: any) {
         console.error(e);
+        if (!mountedRef.current) return;
 
         if (
           e?.message?.includes("Permission") ||
           e?.name === "NotAllowedError"
         ) {
           setError(
-            "Permissão da câmera negada. Autorize o acesso nas configurações do navegador."
+            "Permissao da camera negada. Autorize o acesso nas configuracoes do navegador."
           );
         } else {
           setError(
-            "Não foi possível iniciar a câmera. Verifique as permissões e tente novamente."
+            "Nao foi possivel iniciar a camera. Verifique as permissoes e tente novamente."
           );
         }
       }
     };
 
-    /**
-     * Pequeno delay para garantir que o DOM já foi montado
-     */
     const timeout = setTimeout(start, 100);
 
     return () => {
+      mountedRef.current = false;
       clearTimeout(timeout);
-
-      const scanner = scannerRef.current;
-
-      if (scanner) {
-        scanner
-          .stop()
-          .then(() => scanner.clear())
-          .catch(() => {});
-
-        scannerRef.current = null;
-      }
+      void stopScanner();
     };
   }, [open, onClose, onDetected]);
 
@@ -169,12 +195,11 @@ export function BarcodeScanner({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/95 flex flex-col">
-      {/* Topo */}
       <div className="flex items-center justify-between p-4 text-white">
         <div className="flex items-center gap-2">
           <ScanLine className="h-5 w-5" />
           <span className="font-medium">
-            Escanear código de barras
+            Escanear codigo de barras
           </span>
         </div>
 
@@ -187,50 +212,57 @@ export function BarcodeScanner({
         </button>
       </div>
 
-      {/* Área da câmera */}
-      <div className="flex-1 relative overflow-hidden">
+      <div className="flex-1 overflow-y-auto p-4">
         <div
           id={REGION_ID}
-          className="
-            absolute inset-0
-            [&_video]:!object-cover
-            [&_video]:!w-full
-            [&_video]:!h-full
-          "
+          className="mx-auto w-full max-w-md overflow-hidden rounded-xl bg-black text-white"
         />
 
-        {/* Overlay de mira */}
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div
-            className={`relative w-[80%] max-w-md aspect-[16/10] rounded-2xl border-2 transition-colors ${
-              success ? "border-success" : "border-white/80"
-            }`}
-          >
-            {/* Linha animada */}
-            <div className="absolute inset-x-6 top-1/2 h-0.5 bg-success/80 animate-pulse" />
-
-            {/* Cantos */}
-            <span className="absolute -top-3 -left-3 w-6 h-6 border-t-4 border-l-4 border-primary rounded-tl-xl" />
-            <span className="absolute -top-3 -right-3 w-6 h-6 border-t-4 border-r-4 border-primary rounded-tr-xl" />
-            <span className="absolute -bottom-3 -left-3 w-6 h-6 border-b-4 border-l-4 border-primary rounded-bl-xl" />
-            <span className="absolute -bottom-3 -right-3 w-6 h-6 border-b-4 border-r-4 border-primary rounded-br-xl" />
+        {success && (
+          <div className="mx-auto mt-3 max-w-md rounded-lg bg-success/20 p-3 text-center text-sm text-white">
+            Codigo detectado
           </div>
-        </div>
+        )}
 
-        {/* Erro */}
         {error && (
-          <div className="absolute inset-x-4 top-4 rounded-lg bg-destructive/95 text-destructive-foreground p-3 flex items-start gap-2 text-sm">
+          <div className="mx-auto mt-3 max-w-md rounded-lg bg-destructive/95 text-destructive-foreground p-3 flex items-start gap-2 text-sm">
             <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
             <span>{error}</span>
           </div>
         )}
       </div>
 
-      {/* Rodapé */}
       <div className="p-4 flex flex-col items-center gap-3 text-white">
         <p className="text-sm text-white/70 text-center">
-          Centralize o código de barras dentro da área marcada
+          Aponte a camera para o codigo de barras
         </p>
+
+        {torchAvailable && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={async () => {
+              const scanner = scannerRef.current;
+              if (!scanner) return;
+              try {
+                await (scanner as any).applyVideoConstraints({
+                  advanced: [{ torch: !torchOn }],
+                });
+                setTorchOn((current) => !current);
+              } catch {
+                setTorchAvailable(false);
+              }
+            }}
+            className="w-full max-w-xs gap-2 border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+          >
+            {torchOn ? (
+              <FlashlightOff className="h-4 w-4" />
+            ) : (
+              <Flashlight className="h-4 w-4" />
+            )}
+            {torchOn ? "Desligar lanterna" : "Ligar lanterna"}
+          </Button>
+        )}
 
         <Button
           variant="secondary"

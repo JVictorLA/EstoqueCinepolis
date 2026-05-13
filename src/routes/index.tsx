@@ -235,7 +235,7 @@ function LoginPage() {
                   {/* OPERADOR */}
                   <button
                     onClick={() =>
-                      navigate({ to: "/operador/entrada" })
+                      navigate({ to: "/operador" })
                     }
                     className="group relative text-left rounded-xl border bg-card p-5 hover:border-primary hover:shadow-[var(--shadow-elegant)] transition-all"
                   >

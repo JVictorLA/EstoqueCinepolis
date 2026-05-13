@@ -8,11 +8,30 @@ const movCtrl = require("../controllers/movimentacaoController");
 const estoqueCtrl = require("../controllers/estoqueController");
 const usuarioCtrl = require("../controllers/usuarioController");
 const categoriaCtrl = require("../controllers/categoriaController");
+const estoqueRoutes = require("./estoqueRoutes");
 
 const router = Router();
 
 // Categorias
 router.get("/categorias", asyncHandler(categoriaCtrl.listar));
+router.post(
+  "/categorias",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(categoriaCtrl.criar)
+);
+router.patch(
+  "/categorias/:id",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(categoriaCtrl.atualizar)
+);
+router.delete(
+  "/categorias/:id",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(categoriaCtrl.remover)
+);
 
 // Health
 router.get("/health", (_req, res) =>
@@ -29,6 +48,24 @@ router.post("/login", asyncHandler(authCtrl.login));
 
 // Produtos
 router.get("/produtos", asyncHandler(produtoCtrl.listar));
+router.patch(
+  "/produtos/:id/status",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(produtoCtrl.alterarStatus)
+);
+router.put(
+  "/produtos/:id",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(produtoCtrl.atualizar)
+);
+router.delete(
+  "/produtos/:id",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(produtoCtrl.remover)
+);
 router.get("/produtos/:codigo_barras", asyncHandler(produtoCtrl.buscarPorCodigo));
 router.post(
   "/produtos",
@@ -38,11 +75,13 @@ router.post(
 );
 
 // Movimentações
+router.post("/movimentacoes/transferencia", asyncHandler(movCtrl.transferir));
 router.post("/movimentacoes", asyncHandler(movCtrl.criar));
 router.get("/movimentacoes", asyncHandler(movCtrl.listar));
 
 // Estoque
 router.get("/estoque", asyncHandler(estoqueCtrl.listar));
+router.use("/estoques", estoqueRoutes);
 
 // ================= USUÁRIOS =================
 
@@ -73,8 +112,6 @@ router.put(
 // Alterar senha
 router.put(
   "/usuarios/:id/senha",
-  auth.authMiddleware,
-  auth.adminOnly,
   asyncHandler(usuarioCtrl.alterarSenha)
 );
 
@@ -107,6 +144,5 @@ router.get(
   "/usuarios/matricula/:matricula",
   asyncHandler(usuarioCtrl.buscarPorMatricula)
 ); */
-
 
 module.exports = router;
