@@ -203,15 +203,15 @@ async function listar(filtros = {}) {
     `SELECT
       d.id,
       d.estoque_id,
-      e.nome AS estoque_nome,
+      COALESCE(e.nome, 'Estoque removido') AS estoque_nome,
       d.produto_id,
-      p.nome AS produto_nome,
+      COALESCE(p.nome, CONCAT('Produto #', d.produto_id)) AS produto_nome,
       p.codigo_barras,
       d.usuario_id,
-      u.nome AS usuario_nome,
+      COALESCE(u.nome, 'Usuario removido') AS usuario_nome,
       u.matricula,
       d.motivo_id,
-      m.nome AS motivo_nome,
+      COALESCE(m.nome, 'Motivo removido') AS motivo_nome,
       d.quantidade,
       d.estoque_antes,
       d.estoque_depois,
@@ -219,10 +219,10 @@ async function listar(filtros = {}) {
       d.valor_total,
       d.criado_em
      FROM desperdicios d
-     INNER JOIN estoques e ON e.id = d.estoque_id
-     INNER JOIN produtos p ON p.id = d.produto_id
-     INNER JOIN usuarios u ON u.id = d.usuario_id
-     INNER JOIN motivos_desperdicio m ON m.id = d.motivo_id
+     LEFT JOIN estoques e ON e.id = d.estoque_id
+     LEFT JOIN produtos p ON p.id = d.produto_id
+     LEFT JOIN usuarios u ON u.id = d.usuario_id
+     LEFT JOIN motivos_desperdicio m ON m.id = d.motivo_id
      ${clause}
      ORDER BY d.criado_em DESC
      LIMIT 1000`,
@@ -235,10 +235,10 @@ async function resumo(filtros = {}) {
   const { clause, params } = addFilters(filtros);
   const baseJoin = `
     FROM desperdicios d
-    INNER JOIN produtos p ON p.id = d.produto_id
-    INNER JOIN usuarios u ON u.id = d.usuario_id
-    INNER JOIN motivos_desperdicio m ON m.id = d.motivo_id
-    INNER JOIN estoques e ON e.id = d.estoque_id
+    LEFT JOIN produtos p ON p.id = d.produto_id
+    LEFT JOIN usuarios u ON u.id = d.usuario_id
+    LEFT JOIN motivos_desperdicio m ON m.id = d.motivo_id
+    LEFT JOIN estoques e ON e.id = d.estoque_id
     ${clause}
   `;
 
@@ -258,44 +258,48 @@ async function resumo(filtros = {}) {
           COALESCE(SUM(d.valor_total), 0) AS valor_total
          ${baseJoin}
          GROUP BY DATE(d.criado_em)
-         ORDER BY dia DESC
-         LIMIT 30`,
+         ORDER BY dia ASC`,
         params,
       ),
       pool.query(
-        `SELECT d.produto_id, p.nome AS produto_nome,
+        `SELECT d.produto_id, COALESCE(p.nome, CONCAT('Produto #', d.produto_id)) AS produto_nome,
           COALESCE(SUM(d.quantidade), 0) AS quantidade,
           COALESCE(SUM(d.valor_total), 0) AS valor_total
          ${baseJoin}
-         GROUP BY d.produto_id, p.nome
+         GROUP BY d.produto_id, produto_nome
          ORDER BY valor_total DESC
          LIMIT 20`,
         params,
       ),
       pool.query(
-        `SELECT d.usuario_id, u.nome AS usuario_nome,
+        `SELECT d.usuario_id, COALESCE(u.nome, 'Usuario removido') AS usuario_nome,
           COALESCE(SUM(d.quantidade), 0) AS quantidade,
           COALESCE(SUM(d.valor_total), 0) AS valor_total
          ${baseJoin}
-         GROUP BY d.usuario_id, u.nome
+         GROUP BY d.usuario_id, usuario_nome
          ORDER BY valor_total DESC
          LIMIT 20`,
         params,
       ),
       pool.query(
-        `SELECT d.motivo_id, m.nome AS motivo_nome,
+        `SELECT d.motivo_id, COALESCE(m.nome, 'Motivo removido') AS motivo_nome,
           COUNT(*) AS registros,
           COALESCE(SUM(d.quantidade), 0) AS quantidade,
           COALESCE(SUM(d.valor_total), 0) AS valor_total
          ${baseJoin}
-         GROUP BY d.motivo_id, m.nome
+         GROUP BY d.motivo_id, motivo_nome
          ORDER BY registros DESC, valor_total DESC
          LIMIT 20`,
         params,
       ),
       pool.query(
-        `SELECT d.id, d.criado_em, e.nome AS estoque_nome, p.nome AS produto_nome,
-          u.nome AS usuario_nome, m.nome AS motivo_nome, d.quantidade, d.valor_total
+        `SELECT d.id, d.criado_em,
+          COALESCE(e.nome, 'Estoque removido') AS estoque_nome,
+          COALESCE(p.nome, CONCAT('Produto #', d.produto_id)) AS produto_nome,
+          COALESCE(u.nome, 'Usuario removido') AS usuario_nome,
+          COALESCE(m.nome, 'Motivo removido') AS motivo_nome,
+          d.quantidade,
+          d.valor_total
          ${baseJoin}
          ORDER BY d.valor_total DESC, d.quantidade DESC
          LIMIT 10`,

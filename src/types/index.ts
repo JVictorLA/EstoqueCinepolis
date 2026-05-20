@@ -151,3 +151,82 @@ export interface WasteSummary {
     valor_total: number | string;
   }>;
 }
+
+export type InventoryStatus =
+  | "ok"
+  | "estoque_baixo"
+  | "sem_estoque"
+  | "vencido"
+  | "proximo_vencimento";
+
+export interface InventoryStockLocation {
+  estoqueId: number;
+  estoqueNome: string;
+  stock: number;
+}
+
+export interface InventoryCurrentItem {
+  productId: number;
+  barcode: string;
+  productName: string;
+  categoryId: number | null;
+  categoryName: string | null;
+  requiresExpiration: boolean;
+  expirationDate: string | null;
+  unit: string;
+  price: number;
+  estoqueId: number | null;
+  estoqueNome: string | null;
+  stock: number;
+  minStock: number;
+  active: boolean;
+  status: InventoryStatus;
+  estoques: InventoryStockLocation[];
+}
+
+export type ConferenceStatus = "aberta" | "finalizada";
+export type ConferenceItemStatus = "ok" | "falta" | "sobra";
+
+export interface ConferenceHistory {
+  id: number;
+  estoqueId: number | null;
+  estoqueNome: string | null;
+  userId: number | null;
+  userName: string | null;
+  status: ConferenceStatus;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+  finalizedAt: string | null;
+  itemsCount: number;
+  divergencesCount: number;
+}
+
+export interface ConferenceItem {
+  id: number;
+  conferenceId: number;
+  estoqueId: number;
+  estoqueNome: string | null;
+  productId: number;
+  barcode: string;
+  productName: string;
+  systemQuantity: number;
+  countedQuantity: number;
+  difference: number;
+  status: ConferenceItemStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Conference extends ConferenceHistory {
+  items: ConferenceItem[];
+}
+
+export interface ConferenceProductOption {
+  productId: number;
+  barcode: string;
+  productName: string;
+  estoqueId: number;
+  estoqueNome: string;
+  systemQuantity: number;
+}

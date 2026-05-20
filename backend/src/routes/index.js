@@ -9,6 +9,8 @@ const estoqueCtrl = require("../controllers/estoqueController");
 const usuarioCtrl = require("../controllers/usuarioController");
 const categoriaCtrl = require("../controllers/categoriaController");
 const setupCtrl = require("../controllers/setupController");
+const inventarioCtrl = require("../controllers/inventarioController");
+const conferenciaCtrl = require("../controllers/conferenciaController");
 const estoqueRoutes = require("./estoqueRoutes");
 const desperdicioRoutes = require("./desperdicioRoutes");
 
@@ -74,6 +76,46 @@ router.post("/produtos", auth.authMiddleware, auth.adminOnly, asyncHandler(produ
 router.post("/movimentacoes/transferencia", asyncHandler(movCtrl.transferir));
 router.post("/movimentacoes", asyncHandler(movCtrl.criar));
 router.get("/movimentacoes", asyncHandler(movCtrl.listar));
+
+router.get("/inventario/estoque-atual", asyncHandler(inventarioCtrl.estoqueAtual));
+router.get(
+  "/conferencias/produtos/buscar",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(conferenciaCtrl.buscarProduto),
+);
+router.get("/conferencias", auth.authMiddleware, auth.adminOnly, asyncHandler(conferenciaCtrl.listar));
+router.post("/conferencias", auth.authMiddleware, auth.adminOnly, asyncHandler(conferenciaCtrl.criar));
+router.get(
+  "/conferencias/:id",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(conferenciaCtrl.buscar),
+);
+router.put(
+  "/conferencias/:id",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(conferenciaCtrl.atualizar),
+);
+router.post(
+  "/conferencias/:id/itens",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(conferenciaCtrl.salvarItem),
+);
+router.delete(
+  "/conferencias/:id/itens/:itemId",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(conferenciaCtrl.removerItem),
+);
+router.patch(
+  "/conferencias/:id/finalizar",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(conferenciaCtrl.finalizar),
+);
 
 // Estoque
 router.get("/estoque", asyncHandler(estoqueCtrl.listar));

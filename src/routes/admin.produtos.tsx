@@ -93,6 +93,10 @@ function formatDate(value?: string | null) {
   return `${day}/${month}/${year}`;
 }
 
+function money(value: number) {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 function ExpirationBadges({ product }: { product: Product }) {
   if (!product.requiresExpiration) {
     return null;
@@ -281,7 +285,7 @@ function ProdutosPage() {
         <StatCard label="Sem estoque" value={noStock} icon={XCircle} tone="destructive" />
         <StatCard
           label="Total em estoque"
-          value={`R$ ${total.toFixed(2)}`}
+          value={money(total)}
           icon={DollarSign}
           tone="success"
         />

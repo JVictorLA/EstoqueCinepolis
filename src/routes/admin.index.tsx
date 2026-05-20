@@ -12,6 +12,10 @@ import {
 import { getProducts, getMovements, getEstoques } from "@/services/api";
 import type { Product, Movement, Estoque } from "@/types";
 
+function money(value: number) {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 export const Route = createFileRoute("/admin/")({
   head: () => ({ meta: [{ title: "Dashboard · Cinépolis" }] }),
   component: Dashboard,
@@ -68,7 +72,7 @@ function Dashboard() {
         <StatCard label="Itens em estoque" value={totalUnits} icon={Boxes} tone="success" />
         <StatCard
           label="Valor em estoque"
-          value={`R$ ${total.toFixed(2)}`}
+          value={money(total)}
           icon={DollarSign}
           tone="success"
         />

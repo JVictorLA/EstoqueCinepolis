@@ -19,6 +19,14 @@ import type {
   Waste,
   WasteReason,
   WasteSummary,
+  InventoryCurrentItem,
+  InventoryStatus,
+  Conference,
+  ConferenceHistory,
+  ConferenceItem,
+  ConferenceProductOption,
+  ConferenceStatus,
+  ConferenceItemStatus,
 } from "@/types";
 
 const API_URL = import.meta.env?.VITE_API_URL?.replace(/\/$/, "") || "http://localhost:3333";
@@ -279,6 +287,151 @@ interface RawEstoque {
   criado_em: string;
 }
 
+interface RawInventoryItem {
+  produto_id: number;
+  codigo_barras: string;
+  produto_nome: string;
+  categoria_id: number | null;
+  categoria_nome: string | null;
+  exige_validade?: 0 | 1 | boolean;
+  data_validade?: string | null;
+  unidade: string;
+  preco_venda: string | number;
+  estoque_id: number | null;
+  estoque_nome: string | null;
+  estoque_atual: string | number;
+  estoque_minimo: string | number;
+  ativo: 0 | 1 | boolean;
+  status: InventoryStatus;
+  estoques?: Array<{
+    estoque_id: number;
+    estoque_nome: string;
+    estoque_atual: string | number;
+  }>;
+}
+
+function mapInventoryItem(r: RawInventoryItem): InventoryCurrentItem {
+  return {
+    productId: r.produto_id,
+    barcode: r.codigo_barras,
+    productName: r.produto_nome,
+    categoryId: r.categoria_id,
+    categoryName: r.categoria_nome,
+    requiresExpiration: !!r.exige_validade,
+    expirationDate: r.data_validade ?? null,
+    unit: r.unidade,
+    price: Number(r.preco_venda),
+    estoqueId: r.estoque_id,
+    estoqueNome: r.estoque_nome,
+    stock: Number(r.estoque_atual),
+    minStock: Number(r.estoque_minimo),
+    active: !!r.ativo,
+    status: r.status,
+    estoques: (r.estoques ?? []).map((stock) => ({
+      estoqueId: stock.estoque_id,
+      estoqueNome: stock.estoque_nome,
+      stock: Number(stock.estoque_atual),
+    })),
+  };
+}
+
+interface RawConferenceHistory {
+  id: number;
+  estoque_id: number | null;
+  estoque_nome: string | null;
+  usuario_id: number | null;
+  usuario_nome: string | null;
+  status: ConferenceStatus;
+  observacao: string | null;
+  criado_em: string;
+  atualizado_em: string;
+  finalizado_em: string | null;
+  itens_count?: number | string;
+  divergencias_count?: number | string;
+}
+
+interface RawConferenceItem {
+  id: number;
+  conferencia_id: number;
+  estoque_id: number;
+  estoque_nome: string | null;
+  produto_id: number;
+  codigo_barras: string;
+  produto_nome: string;
+  quantidade_sistema: number | string;
+  quantidade_contada: number | string;
+  diferenca: number | string;
+  status: ConferenceItemStatus;
+  criado_em: string;
+  atualizado_em: string;
+}
+
+interface RawConference extends RawConferenceHistory {
+  itens?: RawConferenceItem[];
+}
+
+interface RawConferenceProductOption {
+  produto_id: number;
+  codigo_barras: string;
+  produto_nome: string;
+  estoque_id: number;
+  estoque_nome: string;
+  quantidade_sistema: number | string;
+}
+
+function mapConferenceHistory(r: RawConferenceHistory): ConferenceHistory {
+  return {
+    id: r.id,
+    estoqueId: r.estoque_id,
+    estoqueNome: r.estoque_nome,
+    userId: r.usuario_id,
+    userName: r.usuario_nome,
+    status: r.status,
+    note: r.observacao,
+    createdAt: r.criado_em,
+    updatedAt: r.atualizado_em,
+    finalizedAt: r.finalizado_em,
+    itemsCount: Number(r.itens_count ?? 0),
+    divergencesCount: Number(r.divergencias_count ?? 0),
+  };
+}
+
+function mapConferenceItem(r: RawConferenceItem): ConferenceItem {
+  return {
+    id: r.id,
+    conferenceId: r.conferencia_id,
+    estoqueId: r.estoque_id,
+    estoqueNome: r.estoque_nome,
+    productId: r.produto_id,
+    barcode: r.codigo_barras,
+    productName: r.produto_nome,
+    systemQuantity: Number(r.quantidade_sistema),
+    countedQuantity: Number(r.quantidade_contada),
+    difference: Number(r.diferenca),
+    status: r.status,
+    createdAt: r.criado_em,
+    updatedAt: r.atualizado_em,
+  };
+}
+
+function mapConference(r: RawConference): Conference {
+  return {
+    ...mapConferenceHistory(r),
+    items: (r.itens ?? []).map(mapConferenceItem),
+  };
+}
+
+function mapConferenceProductOption(r: RawConferenceProductOption): ConferenceProductOption {
+  return {
+    productId: r.produto_id,
+    barcode: r.codigo_barras,
+    productName: r.produto_nome,
+    estoqueId: r.estoque_id,
+    estoqueNome: r.estoque_nome,
+    systemQuantity: Number(r.quantidade_sistema),
+  };
+}
+
 function mapEstoque(r: RawEstoque): Estoque {
   return {
     id: r.id,
@@ -403,6 +556,91 @@ export async function setEstoqueStatus(id: number, ativo: boolean): Promise<Esto
     body: JSON.stringify({ ativo }),
   });
   return mapEstoque(r);
+}
+
+/* ----------------- INVENTARIO E CONFERENCIAS ----------------- */
+
+export async function getInventoryCurrent(
+  estoqueId: number | string = "all",
+): Promise<InventoryCurrentItem[]> {
+  const qs = `?estoque_id=${encodeURIComponent(String(estoqueId))}`;
+  const rows = await request<RawInventoryItem[]>(`/inventario/estoque-atual${qs}`);
+  return rows.map(mapInventoryItem);
+}
+
+export async function getConferences(): Promise<ConferenceHistory[]> {
+  const rows = await request<RawConferenceHistory[]>("/conferencias", { auth: true });
+  return rows.map(mapConferenceHistory);
+}
+
+export async function getConference(id: number): Promise<Conference> {
+  const row = await request<RawConference>(`/conferencias/${id}`, { auth: true });
+  return mapConference(row);
+}
+
+export async function createConference(payload: {
+  estoque_id: number | null;
+  observacao?: string;
+}): Promise<Conference> {
+  const row = await request<RawConference>("/conferencias", {
+    method: "POST",
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+  return mapConference(row);
+}
+
+export async function updateConference(
+  id: number,
+  payload: { estoque_id?: number | null; observacao?: string; usuario_nome?: string },
+): Promise<Conference> {
+  const row = await request<RawConference>(`/conferencias/${id}`, {
+    method: "PUT",
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+  return mapConference(row);
+}
+
+export async function searchConferenceProduct(
+  barcode: string,
+  estoqueId: number | string | null,
+): Promise<ConferenceProductOption[]> {
+  const qs = new URLSearchParams();
+  qs.set("codigo_barras", barcode);
+  qs.set("estoque_id", estoqueId == null ? "all" : String(estoqueId));
+  const rows = await request<RawConferenceProductOption[]>(
+    `/conferencias/produtos/buscar?${qs.toString()}`,
+    { auth: true },
+  );
+  return rows.map(mapConferenceProductOption);
+}
+
+export async function saveConferenceItem(
+  conferenceId: number,
+  payload: { codigo_barras: string; quantidade_contada: number; estoque_id?: number },
+): Promise<Conference> {
+  const row = await request<RawConference>(`/conferencias/${conferenceId}/itens`, {
+    method: "POST",
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+  return mapConference(row);
+}
+
+export async function deleteConferenceItem(conferenceId: number, itemId: number): Promise<void> {
+  await request<void>(`/conferencias/${conferenceId}/itens/${itemId}`, {
+    method: "DELETE",
+    auth: true,
+  });
+}
+
+export async function finalizeConference(id: number): Promise<Conference> {
+  const row = await request<RawConference>(`/conferencias/${id}/finalizar`, {
+    method: "PATCH",
+    auth: true,
+  });
+  return mapConference(row);
 }
 
 /* ----------------- PRODUTOS ----------------- */
