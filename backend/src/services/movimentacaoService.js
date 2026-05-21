@@ -1,4 +1,5 @@
 const { pool } = require("../database/connection");
+const loteService = require("./loteService");
 
 async function atualizarAlertasEstoque(conn, produtoId, estoqueId, estoqueAtual, estoqueMinimo) {
   if (Number(estoqueMinimo) > 0 && estoqueAtual <= Number(estoqueMinimo)) {
@@ -33,97 +34,6 @@ async function atualizarAlertasEstoque(conn, produtoId, estoqueId, estoqueAtual,
   return false;
 }
 
-async function getMotivoProdutoVencido(conn) {
-  const [rows] = await conn.query(
-    "SELECT id, nome FROM motivos_desperdicio WHERE nome = 'Produto vencido' LIMIT 1",
-  );
-
-  if (rows.length) return rows[0];
-
-  const [result] = await conn.query(
-    "INSERT INTO motivos_desperdicio (nome, ativo, criado_em) VALUES ('Produto vencido', 1, NOW())",
-  );
-
-  return { id: result.insertId, nome: "Produto vencido" };
-}
-
-async function registrarDesperdicioPorVencimento(conn, { produtoRow, estoqueId, usuario }) {
-  const estoqueAntes = Number(produtoRow.estoque_atual);
-  const estoqueDepois = 0;
-  const quantidade = estoqueAntes;
-  const valorUnitario = Number(produtoRow.preco_venda || 0);
-  const valorTotal = Number((quantidade * valorUnitario).toFixed(2));
-  const motivo = await getMotivoProdutoVencido(conn);
-
-  await conn.query(
-    "UPDATE estoque_produtos SET estoque_atual = 0 WHERE produto_id = ? AND estoque_id = ?",
-    [produtoRow.id, estoqueId],
-  );
-
-  await conn.query("UPDATE produtos SET atualizado_em = NOW() WHERE id = ?", [produtoRow.id]);
-
-  const [desperdicio] = await conn.query(
-    `INSERT INTO desperdicios
-      (estoque_id, produto_id, usuario_id, motivo_id, quantidade,
-       estoque_antes, estoque_depois, valor_unitario, valor_total, criado_em)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-    [
-      estoqueId,
-      produtoRow.id,
-      usuario.id,
-      motivo.id,
-      quantidade,
-      estoqueAntes,
-      estoqueDepois,
-      valorUnitario,
-      valorTotal,
-    ],
-  );
-
-  await conn.query(
-    `INSERT INTO movimentacoes
-      (estoque_id, produto_id, usuario_id, tipo, quantidade,
-       estoque_antes, estoque_depois,
-       usuario_nome, produto_nome, observacao, criado_em)
-     VALUES (?, ?, ?, 'desperdicio', ?, ?, ?, ?, ?, ?, NOW())`,
-    [
-      estoqueId,
-      produtoRow.id,
-      usuario.id,
-      quantidade,
-      estoqueAntes,
-      estoqueDepois,
-      usuario.nome,
-      produtoRow.nome,
-      "Desperdicio automatico: produto vencido e improprio para consumo",
-    ],
-  );
-
-  await atualizarAlertasEstoque(
-    conn,
-    produtoRow.id,
-    estoqueId,
-    estoqueDepois,
-    produtoRow.estoque_minimo,
-  );
-
-  return {
-    id: desperdicio.insertId,
-    produto_id: produtoRow.id,
-    produto_nome: produtoRow.nome,
-    usuario_id: usuario.id,
-    usuario_nome: usuario.nome,
-    estoque_id: estoqueId,
-    motivo_id: motivo.id,
-    motivo_nome: motivo.nome,
-    quantidade,
-    estoque_antes: estoqueAntes,
-    estoque_depois: estoqueDepois,
-    valor_unitario: valorUnitario,
-    valor_total: valorTotal,
-  };
-}
-
 async function registrarMovimentacao({
   produto,
   estoque_id,
@@ -131,77 +41,82 @@ async function registrarMovimentacao({
   tipo,
   quantidade,
   observacao,
+  lote,
+  data_validade,
+  confirmar_ignorar_fefo,
+  justificativa_fefo,
 }) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
 
-    const [rows] = await conn.query(
-      `SELECT
-        p.id,
-        p.nome,
-        p.preco_venda,
-        ep.estoque_atual,
-        ep.estoque_minimo,
-        ep.data_validade,
-        CASE
-          WHEN COALESCE(c.exige_validade, 0) = 1
-           AND ep.data_validade IS NOT NULL
-           AND ep.data_validade < CURDATE()
-          THEN 1 ELSE 0
-        END AS vencido
-       FROM produtos p
-       LEFT JOIN categorias c ON c.id = p.categoria_id
-       INNER JOIN estoque_produtos ep ON ep.produto_id = p.id
-       WHERE p.id = ? AND ep.estoque_id = ?
-       LIMIT 1
-       FOR UPDATE`,
-      [produto.id, estoque_id],
-    );
-    if (!rows.length) {
-      throw Object.assign(new Error("Produto nao vinculado ao estoque"), {
-        status: 404,
-      });
+    const atual =
+      tipo === "entrada"
+        ? await loteService.ensureStockProduct(conn, produto.id, estoque_id)
+        : await loteService.getStockProduct(conn, produto.id, estoque_id, true);
+
+    if (!atual) {
+      throw Object.assign(new Error("Produto nao vinculado ao estoque"), { status: 404 });
+    }
+    if (!atual.ativo) {
+      throw Object.assign(new Error("Produto inativo"), { status: 400 });
     }
 
-    const atual = rows[0];
-    const estoque_antes = Number(atual.estoque_atual);
+    await loteService.ensureDefaultLotFromCache(conn, atual);
+    const estoque_antes = await loteService.recalcStockProduct(conn, atual.estoque_produto_id);
 
     let estoque_depois;
+    let loteMovimentado;
+    let ignorouFefo = false;
+
     if (tipo === "entrada") {
+      const validade = await loteService.resolveLotValidity(
+        atual.categoria_id,
+        data_validade,
+        conn,
+      );
+      loteMovimentado = await loteService.upsertLot(conn, atual.estoque_produto_id, {
+        lote,
+        data_validade: validade,
+        quantidade,
+        categoria_id: atual.categoria_id,
+      });
       estoque_depois = estoque_antes + quantidade;
     } else if (tipo === "saida") {
-      if (Number(atual.vencido) === 1 && estoque_antes > 0) {
-        const desperdicio = await registrarDesperdicioPorVencimento(conn, {
-          produtoRow: atual,
-          estoqueId: Number(estoque_id),
-          usuario,
-        });
-
-        await conn.commit();
-
-        return {
-          bloqueado_vencido: true,
-          message:
-            "Produto vencido e improprio para consumo. O saldo vencido foi registrado como desperdicio.",
-          desperdicio,
-        };
-      }
-
-      estoque_depois = estoque_antes - quantidade;
-      if (estoque_depois < 0) {
+      loteMovimentado = await loteService.resolveLotForStockProduct(
+        conn,
+        atual,
+        lote,
+        true,
+      );
+      const loteAntes = Number(loteMovimentado.quantidade);
+      if (loteAntes - quantidade < 0) {
         throw Object.assign(new Error("Saldo insuficiente neste estoque."), {
           status: 400,
         });
       }
+
+      const fefo = await loteService.getFefoWarning(conn, atual.estoque_produto_id, loteMovimentado);
+      if (fefo && !confirmar_ignorar_fefo) {
+        throw Object.assign(new Error(fefo.mensagem), { status: 409, fefo });
+      }
+      if (fefo) {
+        if (!String(justificativa_fefo || "").trim()) {
+          throw Object.assign(new Error("Justificativa FEFO obrigatoria"), { status: 400 });
+        }
+        ignorouFefo = true;
+      }
+
+      await conn.query(
+        "UPDATE produto_lotes SET quantidade = ?, atualizado_em = NOW() WHERE id = ?",
+        [loteAntes - quantidade, loteMovimentado.id],
+      );
+      estoque_depois = estoque_antes - quantidade;
     } else {
       throw Object.assign(new Error("Tipo invalido"), { status: 400 });
     }
 
-    await conn.query(
-      "UPDATE estoque_produtos SET estoque_atual = ? WHERE produto_id = ? AND estoque_id = ?",
-      [estoque_depois, produto.id, estoque_id],
-    );
+    estoque_depois = await loteService.recalcStockProduct(conn, atual.estoque_produto_id);
 
     await conn.query("UPDATE produtos SET atualizado_em = NOW() WHERE id = ?", [produto.id]);
 
@@ -220,10 +135,18 @@ async function registrarMovimentacao({
         estoque_antes,
         estoque_depois,
         usuario.nome,
-        atual.nome,
+        atual.produto_nome,
         observacao || null,
       ],
     );
+
+    await loteService.insertMovementLot(conn, {
+      movimentacaoId: insMov.insertId,
+      loteId: loteMovimentado.id,
+      quantidade,
+      ignorouFefo,
+      justificativaFefo: justificativa_fefo,
+    });
 
     const alerta_criado = await atualizarAlertasEstoque(
       conn,
@@ -246,9 +169,12 @@ async function registrarMovimentacao({
       estoque_antes,
       estoque_depois,
       usuario_nome: usuario.nome,
-      produto_nome: atual.nome,
+      produto_nome: atual.produto_nome,
       observacao: observacao || null,
       alerta_criado,
+      lote_id: loteMovimentado.id,
+      lote_codigo: loteService.displayLotCode(loteMovimentado.lote),
+      ignorou_fefo: ignorouFefo,
     };
   } catch (e) {
     await conn.rollback();
@@ -265,6 +191,9 @@ async function transferirEstoque({
   usuario,
   quantidade,
   observacao,
+  lote,
+  confirmar_ignorar_fefo,
+  justificativa_fefo,
 }) {
   if (Number(estoque_origem_id) === Number(estoque_destino_id)) {
     throw Object.assign(new Error("Escolha um estoque de destino diferente da origem"), {
@@ -292,71 +221,66 @@ async function transferirEstoque({
       });
     }
 
-    const [origemRows] = await conn.query(
-      `SELECT
-        p.id,
-        p.nome,
-        ep.estoque_atual,
-        ep.estoque_minimo,
-        e.nome AS estoque_nome
-       FROM produtos p
-       INNER JOIN estoque_produtos ep ON ep.produto_id = p.id
-       INNER JOIN estoques e ON e.id = ep.estoque_id
-       WHERE p.id = ? AND ep.estoque_id = ?
-       LIMIT 1
-       FOR UPDATE`,
-      [produto.id, estoque_origem_id],
-    );
+    const origem = await loteService.getStockProduct(conn, produto.id, estoque_origem_id, true);
 
-    if (!origemRows.length) {
+    if (!origem) {
       throw Object.assign(new Error("Produto nao vinculado ao estoque de origem"), {
         status: 404,
       });
     }
 
-    const origem = origemRows[0];
-    const origemAntes = Number(origem.estoque_atual);
+    await loteService.ensureDefaultLotFromCache(conn, origem);
+    const loteOrigem = await loteService.resolveLotForStockProduct(
+      conn,
+      origem,
+      lote,
+      true,
+    );
+    const origemAntes = await loteService.recalcStockProduct(conn, origem.estoque_produto_id);
     const origemDepois = origemAntes - quantidade;
 
-    if (origemDepois < 0) {
+    if (origemDepois < 0 || Number(loteOrigem.quantidade) - quantidade < 0) {
       throw Object.assign(new Error("Saldo insuficiente neste estoque."), {
         status: 400,
       });
     }
 
-    let [destinoProdutoRows] = await conn.query(
-      `SELECT estoque_atual, estoque_minimo
-       FROM estoque_produtos
-       WHERE produto_id = ? AND estoque_id = ?
-       LIMIT 1
-       FOR UPDATE`,
-      [produto.id, estoque_destino_id],
-    );
-
-    if (!destinoProdutoRows.length) {
-      await conn.query(
-        `INSERT INTO estoque_produtos
-          (estoque_id, produto_id, estoque_atual, estoque_minimo, criado_em)
-         VALUES (?, ?, 0, 0, NOW())`,
-        [estoque_destino_id, produto.id],
-      );
-
-      destinoProdutoRows = [{ estoque_atual: 0, estoque_minimo: 0 }];
+    const fefo = await loteService.getFefoWarning(conn, origem.estoque_produto_id, loteOrigem);
+    let ignorouFefo = false;
+    if (fefo && !confirmar_ignorar_fefo) {
+      throw Object.assign(new Error(fefo.mensagem), { status: 409, fefo });
+    }
+    if (fefo) {
+      if (!String(justificativa_fefo || "").trim()) {
+        throw Object.assign(new Error("Justificativa FEFO obrigatoria"), { status: 400 });
+      }
+      ignorouFefo = true;
     }
 
-    const destinoProduto = destinoProdutoRows[0];
-    const destinoAntes = Number(destinoProduto.estoque_atual);
+    const destinoProduto = await loteService.ensureStockProduct(conn, produto.id, estoque_destino_id);
+    const destinoAntes = await loteService.recalcStockProduct(
+      conn,
+      destinoProduto.estoque_produto_id,
+    );
     const destinoDepois = destinoAntes + quantidade;
     const destinoNome = destinoRows[0].nome;
 
     await conn.query(
-      "UPDATE estoque_produtos SET estoque_atual = ? WHERE produto_id = ? AND estoque_id = ?",
-      [origemDepois, produto.id, estoque_origem_id],
+      "UPDATE produto_lotes SET quantidade = ?, atualizado_em = NOW() WHERE id = ?",
+      [Number(loteOrigem.quantidade) - quantidade, loteOrigem.id],
     );
 
-    await conn.query(
-      "UPDATE estoque_produtos SET estoque_atual = ? WHERE produto_id = ? AND estoque_id = ?",
-      [destinoDepois, produto.id, estoque_destino_id],
+    const loteDestino = await loteService.upsertLot(conn, destinoProduto.estoque_produto_id, {
+      lote: loteOrigem.lote,
+      data_validade: loteOrigem.data_validade,
+      quantidade,
+      categoria_id: destinoProduto.categoria_id,
+    });
+
+    const origemDepoisRecalc = await loteService.recalcStockProduct(conn, origem.estoque_produto_id);
+    const destinoDepoisRecalc = await loteService.recalcStockProduct(
+      conn,
+      destinoProduto.estoque_produto_id,
     );
 
     await conn.query("UPDATE produtos SET atualizado_em = NOW() WHERE id = ?", [produto.id]);
@@ -381,9 +305,9 @@ async function transferirEstoque({
         usuario.id,
         quantidade,
         origemAntes,
-        origemDepois,
+        origemDepoisRecalc,
         usuario.nome,
-        origem.nome,
+        origem.produto_nome,
         notaOrigem,
       ],
     );
@@ -400,18 +324,31 @@ async function transferirEstoque({
         usuario.id,
         quantidade,
         destinoAntes,
-        destinoDepois,
+        destinoDepoisRecalc,
         usuario.nome,
-        origem.nome,
+        origem.produto_nome,
         notaDestino,
       ],
     );
+
+    await loteService.insertMovementLot(conn, {
+      movimentacaoId: saida.insertId,
+      loteId: loteOrigem.id,
+      quantidade,
+      ignorouFefo,
+      justificativaFefo: justificativa_fefo,
+    });
+    await loteService.insertMovementLot(conn, {
+      movimentacaoId: entrada.insertId,
+      loteId: loteDestino.id,
+      quantidade,
+    });
 
     await atualizarAlertasEstoque(
       conn,
       produto.id,
       estoque_origem_id,
-      origemDepois,
+      origemDepoisRecalc,
       origem.estoque_minimo,
     );
 
@@ -419,7 +356,7 @@ async function transferirEstoque({
       conn,
       produto.id,
       estoque_destino_id,
-      destinoDepois,
+      destinoDepoisRecalc,
       destinoProduto.estoque_minimo,
     );
 
@@ -429,7 +366,7 @@ async function transferirEstoque({
       saida_id: saida.insertId,
       entrada_id: entrada.insertId,
       produto_id: produto.id,
-      produto_nome: origem.nome,
+      produto_nome: origem.produto_nome,
       estoque_origem_id,
       estoque_origem_nome: origem.estoque_nome,
       estoque_destino_id,
@@ -437,6 +374,9 @@ async function transferirEstoque({
       quantidade,
       usuario_id: usuario.id,
       usuario_nome: usuario.nome,
+      lote_id: loteOrigem.id,
+      lote_codigo: loteService.displayLotCode(loteOrigem.lote),
+      ignorou_fefo: ignorouFefo,
     };
   } catch (e) {
     await conn.rollback();
@@ -494,10 +434,15 @@ async function listar(filtros = {}) {
       m.observacao,
       m.criado_em,
       p.codigo_barras,
-      e.nome AS estoque_nome
+      e.nome AS estoque_nome,
+      ml.lote_id,
+      pl.lote AS lote_codigo,
+      COALESCE(ml.ignorou_fefo, 0) AS ignorou_fefo
     FROM movimentacoes m
     LEFT JOIN produtos p ON p.id = m.produto_id
     LEFT JOIN estoques e ON e.id = m.estoque_id
+    LEFT JOIN movimentacao_lotes ml ON ml.movimentacao_id = m.id
+    LEFT JOIN produto_lotes pl ON pl.id = ml.lote_id
     ${where.length ? "WHERE " + where.join(" AND ") : ""}
     ORDER BY m.criado_em DESC
     LIMIT 1000

@@ -4,7 +4,19 @@ const movService = require("../services/movimentacaoService");
 const { ok, created, fail } = require("../utils/response");
 
 async function criar(req, res) {
-  const { codigo_barras, matricula, senha, tipo, quantidade, estoque_id, observacao } =
+  const {
+    codigo_barras,
+    matricula,
+    senha,
+    tipo,
+    quantidade,
+    estoque_id,
+    observacao,
+    lote,
+    data_validade,
+    confirmar_ignorar_fefo,
+    justificativa_fefo,
+  } =
     req.body || {};
 
   if (!codigo_barras) return fail(res, 400, "codigo_barras e obrigatorio");
@@ -22,10 +34,16 @@ async function criar(req, res) {
   if (!cred) return fail(res, 401, "Matricula ou senha invalidos");
   if (cred.error === "inactive") return fail(res, 403, "Usuario inativo");
 
-  const produto = await produtoService.findByBarcode(codigo_barras, estoque_id);
+  const produto =
+    tipo === "entrada"
+      ? await produtoService.findByBarcode(codigo_barras, "all")
+      : await produtoService.findByBarcode(codigo_barras, estoque_id);
   if (!produto) return fail(res, 404, "Produto nao encontrado");
   if (!produto.ativo) return fail(res, 400, "Produto inativo");
-  if (!produto.estoque_id) return fail(res, 404, "Produto nao vinculado ao estoque");
+  if (produto.exige_validade && !lote) return fail(res, 400, "lote e obrigatorio");
+  if (tipo === "saida" && !produto.estoque_id) {
+    return fail(res, 404, "Produto nao vinculado ao estoque");
+  }
 
   try {
     const mov = await movService.registrarMovimentacao({
@@ -35,6 +53,10 @@ async function criar(req, res) {
       tipo,
       quantidade: qtd,
       observacao,
+      lote,
+      data_validade,
+      confirmar_ignorar_fefo: !!confirmar_ignorar_fefo,
+      justificativa_fefo,
     });
 
     if (mov.bloqueado_vencido) {
@@ -48,8 +70,26 @@ async function criar(req, res) {
 
     return created(res, mov, "Movimentacao registrada");
   } catch (e) {
+    if (e.fefo) {
+      return res.status(e.status || 409).json({
+        success: false,
+        message: e.message,
+        data: { fefo: e.fefo },
+        error: e.message,
+      });
+    }
     return fail(res, e.status || 500, e.message || "Erro ao registrar movimentacao");
   }
+}
+
+async function criarEntrada(req, res) {
+  req.body = { ...(req.body || {}), tipo: "entrada" };
+  return criar(req, res);
+}
+
+async function criarSaida(req, res) {
+  req.body = { ...(req.body || {}), tipo: "saida" };
+  return criar(req, res);
 }
 
 async function transferir(req, res) {
@@ -61,6 +101,9 @@ async function transferir(req, res) {
     estoque_origem_id,
     estoque_destino_id,
     observacao,
+    lote,
+    confirmar_ignorar_fefo,
+    justificativa_fefo,
   } = req.body || {};
 
   if (!codigo_barras) return fail(res, 400, "codigo_barras e obrigatorio");
@@ -83,6 +126,7 @@ async function transferir(req, res) {
   const produto = await produtoService.findByBarcode(codigo_barras, estoque_origem_id);
   if (!produto) return fail(res, 404, "Produto nao encontrado no estoque de origem");
   if (!produto.ativo) return fail(res, 400, "Produto inativo");
+  if (produto.exige_validade && !lote) return fail(res, 400, "lote e obrigatorio");
   if (!produto.estoque_id) return fail(res, 404, "Produto nao vinculado ao estoque de origem");
 
   try {
@@ -93,9 +137,20 @@ async function transferir(req, res) {
       usuario: { id: cred.id, nome: cred.nome },
       quantidade: qtd,
       observacao,
+      lote,
+      confirmar_ignorar_fefo: !!confirmar_ignorar_fefo,
+      justificativa_fefo,
     });
     return created(res, transferencia, "Transferencia registrada");
   } catch (e) {
+    if (e.fefo) {
+      return res.status(e.status || 409).json({
+        success: false,
+        message: e.message,
+        data: { fefo: e.fefo },
+        error: e.message,
+      });
+    }
     return fail(res, e.status || 500, e.message || "Erro ao transferir produto");
   }
 }
@@ -113,4 +168,4 @@ async function listar(req, res) {
   return ok(res, rows);
 }
 
-module.exports = { criar, transferir, listar };
+module.exports = { criar, criarEntrada, criarSaida, transferir, listar };

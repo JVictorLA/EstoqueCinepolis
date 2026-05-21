@@ -1,5 +1,6 @@
 const { pool } = require("../database/connection");
 const estoqueService = require("./estoqueService");
+const loteService = require("./loteService");
 
 const SELECT_SPECIFIC_STOCK = `
   SELECT
@@ -13,8 +14,8 @@ const SELECT_SPECIFIC_STOCK = `
     p.preco_venda,
     ep.estoque_id,
     e.nome AS estoque_nome,
-    ep.data_validade,
-    COALESCE(ep.estoque_atual, 0) AS estoque_atual,
+    COALESCE(lotes.data_validade, ep.data_validade) AS data_validade,
+    COALESCE(lotes.estoque_atual, ep.estoque_atual, 0) AS estoque_atual,
     COALESCE(ep.estoque_minimo, 0) AS estoque_minimo,
     p.ativo,
     p.criado_em,
@@ -25,17 +26,24 @@ const SELECT_SPECIFIC_STOCK = `
       WHERE m.produto_id = p.id
     ) AS movimentacoes_count,
     CASE
-      WHEN COALESCE(ep.estoque_atual, 0) <= 0 THEN 1 ELSE 0
+      WHEN COALESCE(lotes.estoque_atual, ep.estoque_atual, 0) <= 0 THEN 1 ELSE 0
     END AS sem_estoque,
     CASE
       WHEN COALESCE(ep.estoque_minimo, 0) > 0
-       AND COALESCE(ep.estoque_atual, 0) <= COALESCE(ep.estoque_minimo, 0)
+       AND COALESCE(lotes.estoque_atual, ep.estoque_atual, 0) <= COALESCE(ep.estoque_minimo, 0)
       THEN 1 ELSE 0
     END AS estoque_baixo
   FROM produtos p
   LEFT JOIN categorias c ON c.id = p.categoria_id
   INNER JOIN estoque_produtos ep ON ep.produto_id = p.id AND ep.estoque_id = ?
   INNER JOIN estoques e ON e.id = ep.estoque_id
+  LEFT JOIN (
+    SELECT estoque_produto_id,
+      COALESCE(SUM(quantidade), 0) AS estoque_atual,
+      MIN(CASE WHEN quantidade > 0 THEN data_validade ELSE NULL END) AS data_validade
+    FROM produto_lotes
+    GROUP BY estoque_produto_id
+  ) lotes ON lotes.estoque_produto_id = ep.id
 `;
 
 const SELECT_ALL_STOCKS = `
@@ -50,8 +58,8 @@ const SELECT_ALL_STOCKS = `
     p.preco_venda,
     NULL AS estoque_id,
     'Todos os estoques' AS estoque_nome,
-    MIN(ep.data_validade) AS data_validade,
-    COALESCE(SUM(ep.estoque_atual), 0) AS estoque_atual,
+    MIN(COALESCE(lotes.data_validade, ep.data_validade)) AS data_validade,
+    COALESCE(SUM(COALESCE(lotes.estoque_atual, ep.estoque_atual, 0)), 0) AS estoque_atual,
     COALESCE(SUM(ep.estoque_minimo), 0) AS estoque_minimo,
     p.ativo,
     p.criado_em,
@@ -62,16 +70,23 @@ const SELECT_ALL_STOCKS = `
       WHERE m.produto_id = p.id
     ) AS movimentacoes_count,
     CASE
-      WHEN COALESCE(SUM(ep.estoque_atual), 0) <= 0 THEN 1 ELSE 0
+      WHEN COALESCE(SUM(COALESCE(lotes.estoque_atual, ep.estoque_atual, 0)), 0) <= 0 THEN 1 ELSE 0
     END AS sem_estoque,
     CASE
       WHEN COALESCE(SUM(ep.estoque_minimo), 0) > 0
-       AND COALESCE(SUM(ep.estoque_atual), 0) <= COALESCE(SUM(ep.estoque_minimo), 0)
+       AND COALESCE(SUM(COALESCE(lotes.estoque_atual, ep.estoque_atual, 0)), 0) <= COALESCE(SUM(ep.estoque_minimo), 0)
       THEN 1 ELSE 0
     END AS estoque_baixo
   FROM produtos p
   LEFT JOIN categorias c ON c.id = p.categoria_id
   INNER JOIN estoque_produtos ep ON ep.produto_id = p.id
+  LEFT JOIN (
+    SELECT estoque_produto_id,
+      COALESCE(SUM(quantidade), 0) AS estoque_atual,
+      MIN(CASE WHEN quantidade > 0 THEN data_validade ELSE NULL END) AS data_validade
+    FROM produto_lotes
+    GROUP BY estoque_produto_id
+  ) lotes ON lotes.estoque_produto_id = ep.id
 `;
 
 const GROUP_ALL_STOCKS = `
@@ -231,6 +246,7 @@ async function create(data) {
     estoque_atual,
     estoque_minimo,
     data_validade,
+    lote,
     ativo,
   } = data;
 
@@ -273,12 +289,22 @@ async function create(data) {
       });
     }
 
-    await conn.query(
+    const [linkResult] = await conn.query(
       `INSERT INTO estoque_produtos
         (estoque_id, produto_id, estoque_atual, estoque_minimo, data_validade, criado_em)
-       VALUES (?, ?, ?, ?, ?, NOW())`,
-      [estoque_id, produtoId, estoque_atual, estoque_minimo, validade],
+       VALUES (?, ?, 0, ?, NULL, NOW())`,
+      [estoque_id, produtoId, estoque_minimo],
     );
+
+    if (Number(estoque_atual) > 0 || lote) {
+      const loteCriado = await loteService.upsertLot(conn, linkResult.insertId, {
+        lote,
+        data_validade: validade,
+        quantidade: Number(estoque_atual) || 0,
+        categoria_id: produtoCategoriaId,
+      });
+      await loteService.recalcStockProduct(conn, loteCriado.estoque_produto_id);
+    }
 
     await conn.commit();
 
@@ -369,8 +395,8 @@ async function update(id, data) {
 
   if (shouldUpdateValidity) {
     const [result] = await pool.query(
-      "UPDATE estoque_produtos SET data_validade = ? WHERE produto_id = ? AND estoque_id = ?",
-      [validade, id, Number(estoque_id)],
+      "UPDATE estoque_produtos SET data_validade = NULL WHERE produto_id = ? AND estoque_id = ?",
+      [id, Number(estoque_id)],
     );
 
     if (!result.affectedRows) {
@@ -381,6 +407,93 @@ async function update(id, data) {
   }
 
   return findById(id, estoque_id || "all");
+}
+
+async function listLotes(id, estoque_id) {
+  return loteService.listByProductStock(Number(id), estoque_id);
+}
+
+async function updateLote(produtoId, loteId, data) {
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query(
+      `SELECT
+         pl.id,
+         pl.estoque_produto_id,
+         pl.lote,
+         pl.data_validade,
+         pl.quantidade,
+         ep.produto_id,
+         p.categoria_id,
+         COALESCE(c.exige_validade, 0) AS exige_validade
+       FROM produto_lotes pl
+       INNER JOIN estoque_produtos ep ON ep.id = pl.estoque_produto_id
+       INNER JOIN produtos p ON p.id = ep.produto_id
+       LEFT JOIN categorias c ON c.id = p.categoria_id
+       WHERE pl.id = ? AND ep.produto_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [loteId, produtoId],
+    );
+
+    if (!rows.length) {
+      throw Object.assign(new Error("Lote nao encontrado para este produto"), { status: 404 });
+    }
+
+    const current = rows[0];
+    const lote =
+      data.lote !== undefined
+        ? await loteService.normalizeLotForCategory(current.categoria_id, data.lote, conn)
+        : current.lote;
+    const dataValidade =
+      data.data_validade !== undefined
+        ? await loteService.resolveLotValidity(current.categoria_id, data.data_validade, conn)
+        : current.data_validade;
+    const quantidade =
+      data.quantidade !== undefined ? Number(data.quantidade) : Number(current.quantidade || 0);
+
+    if (current.exige_validade && !dataValidade) {
+      throw Object.assign(new Error("Data de validade obrigatoria para esta categoria"), {
+        status: 400,
+      });
+    }
+    if (!Number.isFinite(quantidade) || quantidade < 0) {
+      throw Object.assign(new Error("quantidade invalida"), { status: 400 });
+    }
+
+    const [duplicated] = await conn.query(
+      `SELECT id
+       FROM produto_lotes
+       WHERE estoque_produto_id = ? AND lote = ? AND id <> ?
+       LIMIT 1`,
+      [current.estoque_produto_id, lote, loteId],
+    );
+
+    if (duplicated.length) {
+      throw Object.assign(new Error("Ja existe este lote neste estoque"), { status: 409 });
+    }
+
+    await conn.query(
+      `UPDATE produto_lotes
+       SET lote = ?, data_validade = ?, quantidade = ?, atualizado_em = NOW()
+       WHERE id = ?`,
+      [lote, dataValidade || null, quantidade, loteId],
+    );
+
+    await loteService.recalcStockProduct(conn, current.estoque_produto_id);
+    await conn.commit();
+
+    const lotes = await listLotes(produtoId, "all");
+    return lotes.find((item) => Number(item.id) === Number(loteId));
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
 }
 
 async function setStatus(id, ativo) {
@@ -443,6 +556,8 @@ module.exports = {
   update,
   setStatus,
   remove,
+  listLotes,
+  updateLote,
   resolveEstoqueId,
   isAllStocks,
 };

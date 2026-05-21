@@ -21,11 +21,12 @@ import { BarcodeInput } from "@/components/scanner/BarcodeInput";
 import {
   changeUserPassword,
   getProductByBarcode,
+  getProductLots,
   getUserByMatricula,
   getWasteReasons,
   registerWaste,
 } from "@/services/api";
-import type { Estoque, Product, WasteReason } from "@/types";
+import type { Estoque, Product, ProductLot, WasteReason } from "@/types";
 import { toast } from "sonner";
 
 interface EmployeeLookup {
@@ -59,6 +60,8 @@ export function WasteDialog({
   const [barcode, setBarcode] = useState(initialBarcode);
   const [product, setProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState("");
+  const [lot, setLot] = useState("");
+  const [lots, setLots] = useState<ProductLot[]>([]);
   const [reasonId, setReasonId] = useState("");
   const [matricula, setMatricula] = useState("");
   const [password, setPassword] = useState("");
@@ -112,6 +115,16 @@ export function WasteDialog({
   }, [barcode, selectedEstoqueId]);
 
   useEffect(() => {
+    if (!product || !selectedEstoqueId) {
+      setLots([]);
+      return;
+    }
+    getProductLots(product.id, selectedEstoqueId)
+      .then((items) => setLots(items.filter((item) => item.quantity > 0)))
+      .catch(() => setLots([]));
+  }, [product, selectedEstoqueId]);
+
+  useEffect(() => {
     if (!matricula) {
       setUser(null);
       return;
@@ -130,6 +143,8 @@ export function WasteDialog({
     setBarcode("");
     setProduct(null);
     setQuantity("");
+    setLot("");
+    setLots([]);
     setMatricula("");
     setPassword("");
     setUser(null);
@@ -142,6 +157,7 @@ export function WasteDialog({
     if (!barcode.trim()) return toast.error("Informe o codigo de barras");
     if (!Number(reasonId)) return toast.error("Selecione o motivo");
     if (!matricula.trim() || !password) return toast.error("Informe matricula e senha");
+    if (product?.requiresExpiration && !lot.trim()) return toast.error("Informe o lote");
 
     const qtd = Number(quantity);
     if (!Number.isFinite(qtd) || qtd <= 0) return toast.error("Informe uma quantidade valida");
@@ -162,6 +178,7 @@ export function WasteDialog({
         motivo_id: Number(reasonId),
         matricula: matricula.trim(),
         senha: password,
+        lote: lot.trim(),
       });
       toast.success("Desperdicio registrado");
       reset();
@@ -249,6 +266,43 @@ export function WasteDialog({
                   onChange={(e) => setQuantity(e.target.value)}
                 />
               </div>
+
+              <div className="space-y-2">
+                <Label>Lote</Label>
+                <Input
+                  value={lot}
+                  onChange={(e) => setLot(e.target.value)}
+                  placeholder="Digite o lote ou final"
+                />
+              </div>
+
+              {product && lots.length > 0 && (
+                <div className="space-y-2 sm:col-span-2">
+                  <Label>Lotes disponiveis</Label>
+                  <div className="grid gap-2">
+                    {lots
+                      .filter((item) =>
+                        lot.trim()
+                          ? item.lot.toLowerCase().endsWith(lot.trim().toLowerCase())
+                          : true,
+                      )
+                      .slice(0, 5)
+                      .map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm hover:bg-muted"
+                          onClick={() => setLot(item.lot)}
+                        >
+                          <span className="font-medium">{item.lot}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {item.expirationDate ?? "Sem validade"} · {item.quantity}
+                          </span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label>Motivo</Label>

@@ -8,7 +8,8 @@ async function listarMotivos(_req, res) {
 }
 
 async function criar(req, res) {
-  const { estoque_id, codigo_barras, quantidade, motivo_id, matricula, senha } = req.body || {};
+  const { estoque_id, codigo_barras, quantidade, motivo_id, matricula, senha, lote } =
+    req.body || {};
 
   if (!Number(estoque_id)) return fail(res, 400, "estoque_id e obrigatorio");
   if (!codigo_barras) return fail(res, 400, "codigo_barras e obrigatorio");
@@ -31,6 +32,7 @@ async function criar(req, res) {
       quantidade: qtd,
       motivo_id: Number(motivo_id),
       usuario: { id: cred.id, nome: cred.nome },
+      lote,
     });
     return created(res, desperdicio, "Desperdicio registrado");
   } catch (e) {

@@ -22,6 +22,16 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { toast } from "sonner";
 import { PageHeader, EmptyState, StatCard } from "@/components/layout/PageHeader";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,6 +65,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { BarcodeInput } from "@/components/scanner/BarcodeInput";
 import {
   createConference,
+  deleteConference,
   deleteConferenceItem,
   finalizeConference,
   getConference,
@@ -350,6 +361,7 @@ function InventarioPage() {
   const [productPreview, setProductPreview] = useState<ConferenceProductOption | null>(null);
   const [stockOptions, setStockOptions] = useState<ConferenceProductOption[]>([]);
   const [pendingBarcode, setPendingBarcode] = useState("");
+  const [conferenceToDelete, setConferenceToDelete] = useState<ConferenceHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -396,6 +408,62 @@ function InventarioPage() {
       .then(setInventoryItems)
       .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Erro ao filtrar estoque"));
   }, [inventoryStock]);
+
+  useEffect(() => {
+    const code = barcode.trim();
+
+    if (!code) {
+      setProductPreview(null);
+      setPendingBarcode("");
+      setStockOptions([]);
+      return;
+    }
+
+    if (
+      !activeConference ||
+      activeConference.status === "finalizada" ||
+      productPreview?.barcode === code
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    const timeout = window.setTimeout(async () => {
+      try {
+        const options = await searchConferenceProduct(
+          code,
+          activeConference.estoqueId ?? "all",
+        );
+
+        if (cancelled) return;
+
+        if (options.length > 1) {
+          setPendingBarcode(code);
+          setStockOptions(options);
+          setProductPreview(null);
+          return;
+        }
+
+        const [option] = options;
+        setPendingBarcode("");
+        setStockOptions([]);
+        setProductPreview(option ?? null);
+      } catch {
+        if (!cancelled) setProductPreview(null);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+    };
+  }, [
+    barcode,
+    activeConference?.id,
+    activeConference?.estoqueId,
+    activeConference?.status,
+    productPreview?.barcode,
+  ]);
 
   const refreshHistory = async () => {
     const rows = await getConferences();
@@ -513,11 +581,11 @@ function InventarioPage() {
   const previewConferenceProduct = async (rawCode?: string) => {
     if (!activeConference) {
       setNewConferenceOpen(true);
-      toast.error("Crie uma conferÃªncia antes de bipar produtos");
+      toast.error("Crie uma conferência antes de bipar produtos");
       return;
     }
     if (activeConference.status === "finalizada") {
-      toast.error("ConferÃªncia finalizada nÃ£o pode ser editada");
+      toast.error("Conferência finalizada não pode ser editada");
       return;
     }
 
@@ -536,7 +604,7 @@ function InventarioPage() {
       const [option] = options;
       if (!option) {
         setProductPreview(null);
-        toast.error("Produto nÃ£o encontrado");
+        toast.error("Produto não encontrado");
         return;
       }
 
@@ -562,6 +630,31 @@ function InventarioPage() {
       toast.success("Item removido");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro ao remover item");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeConference = async (conference: ConferenceHistory) => {
+    if (conference.status === "finalizada") {
+      toast.error("Conferência finalizada não pode ser excluída");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await deleteConference(conference.id);
+      setConferenceToDelete(null);
+      setHistory((rows) => rows.filter((row) => row.id !== conference.id));
+      if (activeConference?.id === conference.id) {
+        setActiveConference(null);
+        setBarcode("");
+        setProductPreview(null);
+        setStockOptions([]);
+      }
+      toast.success("Conferência excluída");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao excluir conferência");
     } finally {
       setSaving(false);
     }
@@ -807,7 +900,7 @@ function InventarioPage() {
                               <div className="text-base font-bold">{Number(countedQuantity) || 0}</div>
                             </div>
                             <div className="rounded-md border bg-background px-3 py-2">
-                              <div className="text-[11px] text-muted-foreground">DiferenÃ§a</div>
+                              <div className="text-[11px] text-muted-foreground">Diferença</div>
                               <div
                                 className={`text-base font-bold ${
                                   (Number(countedQuantity) || 0) - productPreview.systemQuantity === 0
@@ -989,6 +1082,17 @@ function InventarioPage() {
                               >
                                 <ClipboardCheck className="h-4 w-4" />
                               </Button>
+                              {row.status === "aberta" && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive hover:text-destructive"
+                                  disabled={saving}
+                                  onClick={() => setConferenceToDelete(row)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -1063,6 +1167,36 @@ function InventarioPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={!!conferenceToDelete}
+        onOpenChange={(open) => {
+          if (!open) setConferenceToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir conferência?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A conferência #{conferenceToDelete?.id} ainda está aberta. Ao excluir, os itens
+              conferidos nela também serão removidos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={saving}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => {
+                event.preventDefault();
+                if (conferenceToDelete) removeConference(conferenceToDelete);
+              }}
+            >
+              Excluir conferência
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

@@ -61,8 +61,10 @@ import {
   deleteCategory,
   getCategories,
   getEstoques,
+  getProductLots,
+  updateProductLot,
 } from "@/services/api";
-import type { Product, Category, Estoque } from "@/types";
+import type { Product, Category, Estoque, ProductLot } from "@/types";
 
 type ProductFilters = {
   categoryId: string;
@@ -136,6 +138,7 @@ function ProdutosPage() {
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [wasteProduct, setWasteProduct] = useState<Product | null>(null);
+  const [lotProduct, setLotProduct] = useState<Product | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<number | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [draftFilters, setDraftFilters] = useState<ProductFilters>(emptyFilters);
@@ -371,6 +374,8 @@ function ProdutosPage() {
               <EditProductDialog
                 product={editingProduct}
                 categories={categories}
+                estoqueId={selectedEstoqueId}
+                onProductsChanged={loadProducts}
                 onUpdated={() => {
                   setEditingProduct(null);
                   loadProducts();
@@ -550,7 +555,11 @@ function ProdutosPage() {
               </TableHeader>
               <TableBody>
                 {filtered.map((p) => (
-                  <TableRow key={p.id}>
+                  <TableRow
+                    key={p.id}
+                    className="cursor-pointer"
+                    onClick={() => setLotProduct(p)}
+                  >
                     <TableCell>
                       <Star
                         className={`h-4 w-4 ${p.favorite ? "fill-warning text-warning" : "text-muted-foreground"}`}
@@ -603,7 +612,7 @@ function ProdutosPage() {
                     </TableCell>
                     <TableCell className="text-sm">R$ {p.price.toFixed(2)}</TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
                         <Switch
                           checked={
                             p.active && !(p.requiresExpiration && isExpired(p.expirationDate))
@@ -626,7 +635,10 @@ function ProdutosPage() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-destructive hover:text-destructive"
-                          onClick={() => setWasteProduct(p)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setWasteProduct(p);
+                          }}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -634,7 +646,10 @@ function ProdutosPage() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8"
-                          onClick={() => setEditingProduct(p)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setEditingProduct(p);
+                          }}
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -644,7 +659,10 @@ function ProdutosPage() {
                             size="icon"
                             className="h-8 w-8 text-destructive hover:text-destructive"
                             disabled={deletingProductId === p.id}
-                            onClick={() => removeProduct(p)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              removeProduct(p);
+                            }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -658,6 +676,13 @@ function ProdutosPage() {
           </div>
         )}
       </div>
+      <ProductLotsDialog
+        product={lotProduct}
+        estoqueId={selectedEstoqueId}
+        onOpenChange={(open) => {
+          if (!open) setLotProduct(null);
+        }}
+      />
       <WasteDialog
         open={!!wasteProduct}
         onOpenChange={(isOpen) => {
@@ -668,6 +693,82 @@ function ProdutosPage() {
         onSaved={loadProducts}
       />
     </>
+  );
+}
+
+function ProductLotsDialog({
+  product,
+  estoqueId,
+  onOpenChange,
+}: {
+  product: Product | null;
+  estoqueId: string;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [lots, setLots] = useState<ProductLot[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!product) return;
+    setLoading(true);
+    getProductLots(product.id, estoqueId)
+      .then(setLots)
+      .catch(() => toast.error("Erro ao carregar lotes"))
+      .finally(() => setLoading(false));
+  }, [product, estoqueId]);
+
+  const statusBadge = (lot: ProductLot) => {
+    if (lot.status === "vencido") return <Badge variant="destructive">Vencido</Badge>;
+    if (lot.status === "proximo_vencimento") {
+      return (
+        <Badge variant="secondary" className="bg-warning/15 text-warning border-warning/30">
+          Proximo do vencimento
+        </Badge>
+      );
+    }
+    if (lot.status === "sem_validade") return <Badge variant="outline">Sem validade</Badge>;
+    return <Badge variant="secondary">OK</Badge>;
+  };
+
+  return (
+    <Dialog open={!!product} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Lotes de {product?.name}</DialogTitle>
+        </DialogHeader>
+
+        {loading ? (
+          <div className="py-8 text-sm text-muted-foreground">Carregando lotes...</div>
+        ) : lots.length === 0 ? (
+          <div className="py-8 text-sm text-muted-foreground">Nenhum lote cadastrado.</div>
+        ) : (
+          <div className="overflow-x-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Estoque</TableHead>
+                  <TableHead>Lote</TableHead>
+                  <TableHead>Quantidade</TableHead>
+                  <TableHead>Validade</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lots.map((lot) => (
+                  <TableRow key={lot.id}>
+                    <TableCell>{lot.estoqueNome}</TableCell>
+                    <TableCell className="font-mono text-xs">{lot.lot}</TableCell>
+                    <TableCell>{lot.quantity}</TableCell>
+                    <TableCell>{lot.expirationDate ? formatDate(lot.expirationDate) : "—"}</TableCell>
+                    <TableCell>{statusBadge(lot)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -895,12 +996,22 @@ function NewCategoryDialog({ onCreated }: { onCreated: () => void }) {
 function EditProductDialog({
   product,
   categories,
+  estoqueId,
+  onProductsChanged,
   onUpdated,
 }: {
   product: Product;
   categories: Category[];
+  estoqueId: string;
+  onProductsChanged: () => void;
   onUpdated: () => void;
 }) {
+  type EditableLot = ProductLot & {
+    lotValue: string;
+    expirationValue: string;
+    quantityValue: string;
+  };
+
   const [barcode, setBarcode] = useState(product.barcode);
   const [name, setName] = useState(product.name);
   const [categoryId, setCategoryId] = useState(
@@ -908,10 +1019,19 @@ function EditProductDialog({
   );
   const [unit, setUnit] = useState(product.unit);
   const [price, setPrice] = useState(String(product.price));
-  const [expirationDate, setExpirationDate] = useState(product.expirationDate ?? "");
   const [loading, setLoading] = useState(false);
+  const [lots, setLots] = useState<EditableLot[]>([]);
+  const [loadingLots, setLoadingLots] = useState(false);
+  const [savingLotId, setSavingLotId] = useState<number | null>(null);
   const selectedCategory = categories.find((category) => String(category.id) === categoryId);
   const requiresExpiration = !!selectedCategory?.exigeValidade;
+
+  const toEditableLot = (lot: ProductLot): EditableLot => ({
+    ...lot,
+    lotValue: lot.lot === "Sem lote" ? "" : lot.lot,
+    expirationValue: lot.expirationDate ?? "",
+    quantityValue: String(lot.quantity),
+  });
 
   useEffect(() => {
     setBarcode(product.barcode);
@@ -919,22 +1039,27 @@ function EditProductDialog({
     setCategoryId(product.categoryId ? String(product.categoryId) : "");
     setUnit(product.unit);
     setPrice(String(product.price));
-    setExpirationDate(product.expirationDate ?? "");
   }, [product]);
+
+  useEffect(() => {
+    if (!requiresExpiration) {
+      setLots([]);
+      return;
+    }
+
+    setLoadingLots(true);
+    getProductLots(product.id, estoqueId)
+      .then((items) => setLots(items.map(toEditableLot)))
+      .catch(() => toast.error("Erro ao carregar lotes do produto"))
+      .finally(() => setLoadingLots(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product.id, estoqueId, requiresExpiration]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!barcode.trim() || !name.trim() || !categoryId || !price) {
       toast.error("Preencha codigo, nome, categoria e preco");
-      return;
-    }
-    if (requiresExpiration && !expirationDate) {
-      toast.error("Informe a data de validade");
-      return;
-    }
-    if (requiresExpiration && !product.estoqueId) {
-      toast.error("Selecione um estoque especifico para editar a validade");
       return;
     }
 
@@ -946,8 +1071,6 @@ function EditProductDialog({
         categoria_id: parseInt(categoryId),
         unidade: unit.trim() || "un",
         preco_venda: parseFloat(price) || 0,
-        estoque_id: product.estoqueId ?? undefined,
-        data_validade: requiresExpiration ? expirationDate : null,
         ativo: product.active,
       });
       toast.success("Produto atualizado");
@@ -959,8 +1082,49 @@ function EditProductDialog({
     }
   };
 
+  const updateLotDraft = (
+    lotId: number,
+    field: "lotValue" | "expirationValue" | "quantityValue",
+    value: string,
+  ) => {
+    setLots((items) => items.map((item) => (item.id === lotId ? { ...item, [field]: value } : item)));
+  };
+
+  const saveLot = async (lot: EditableLot) => {
+    const quantity = Number(lot.quantityValue);
+
+    if (!lot.lotValue.trim()) {
+      toast.error("Informe o lote");
+      return;
+    }
+    if (!lot.expirationValue) {
+      toast.error("Informe a validade do lote");
+      return;
+    }
+    if (!Number.isFinite(quantity) || quantity < 0) {
+      toast.error("Quantidade do lote invalida");
+      return;
+    }
+
+    setSavingLotId(lot.id);
+    try {
+      const updated = await updateProductLot(product.id, lot.id, {
+        lote: lot.lotValue.trim(),
+        data_validade: lot.expirationValue,
+        quantidade: quantity,
+      });
+      setLots((items) => items.map((item) => (item.id === lot.id ? toEditableLot(updated) : item)));
+      toast.success("Lote atualizado");
+      onProductsChanged();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar lote");
+    } finally {
+      setSavingLotId(null);
+    }
+  };
+
   return (
-    <DialogContent className="max-w-lg">
+    <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
       <DialogHeader>
         <DialogTitle>Editar produto</DialogTitle>
       </DialogHeader>
@@ -999,17 +1163,6 @@ function EditProductDialog({
             <Input value={unit} onChange={(e) => setUnit(e.target.value)} />
           </div>
 
-          {requiresExpiration && (
-            <div className="space-y-2 col-span-2">
-              <Label>Data de validade</Label>
-              <Input
-                type="date"
-                value={expirationDate}
-                onChange={(e) => setExpirationDate(e.target.value)}
-              />
-            </div>
-          )}
-
           <div className="space-y-2 col-span-2">
             <Label>Preco (R$)</Label>
             <Input
@@ -1021,6 +1174,83 @@ function EditProductDialog({
             />
           </div>
         </div>
+
+        {requiresExpiration && (
+          <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+            <div>
+              <h3 className="text-sm font-semibold">Lotes e validades</h3>
+              <p className="text-xs text-muted-foreground">
+                Para produtos com validade, edite a validade e a quantidade no lote correto.
+              </p>
+            </div>
+
+            {loadingLots ? (
+              <div className="rounded-md border bg-background p-4 text-sm text-muted-foreground">
+                Carregando lotes...
+              </div>
+            ) : lots.length === 0 ? (
+              <div className="rounded-md border bg-background p-4 text-sm text-muted-foreground">
+                Nenhum lote cadastrado para este produto.
+              </div>
+            ) : (
+              <ScrollArea className="max-h-72 pr-3">
+                <div className="space-y-3">
+                  {lots.map((lot) => (
+                    <div key={lot.id} className="rounded-md border bg-background p-3">
+                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium">{lot.estoqueNome}</p>
+                          <p className="text-xs text-muted-foreground">Lote #{lot.id}</p>
+                        </div>
+                        <Badge variant="outline">{lot.status === "vencido" ? "Vencido" : "Lote"}</Badge>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-[minmax(0,1.4fr)_150px_120px_auto] md:items-end">
+                        <div className="space-y-2">
+                          <Label>Lote</Label>
+                          <Input
+                            value={lot.lotValue}
+                            onChange={(e) => updateLotDraft(lot.id, "lotValue", e.target.value)}
+                            placeholder="Código do lote"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Validade</Label>
+                          <Input
+                            type="date"
+                            value={lot.expirationValue}
+                            onChange={(e) =>
+                              updateLotDraft(lot.id, "expirationValue", e.target.value)
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Quantidade</Label>
+                          <Input
+                            type="number"
+                            min={0}
+                            value={lot.quantityValue}
+                            onChange={(e) =>
+                              updateLotDraft(lot.id, "quantityValue", e.target.value)
+                            }
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={savingLotId === lot.id}
+                          onClick={() => saveLot(lot)}
+                        >
+                          Salvar lote
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            )}
+          </div>
+        )}
 
         <DialogFooter>
           <Button type="submit" disabled={loading} className="w-full sm:w-auto">
@@ -1048,6 +1278,7 @@ function NewProductDialog({
   const [unit, setUnit] = useState("un");
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("");
+  const [lot, setLot] = useState("");
   const [minStock, setMinStock] = useState("");
   const [estoqueId, setEstoqueId] = useState("");
   const [expirationDate, setExpirationDate] = useState("");
@@ -1081,6 +1312,10 @@ function NewProductDialog({
       toast.error("Preencha código, nome, categoria, preço e estoque");
       return;
     }
+    if (requiresExpiration && !lot.trim()) {
+      toast.error("Informe o lote");
+      return;
+    }
     if (requiresExpiration && !expirationDate) {
       toast.error("Informe a data de validade");
       return;
@@ -1097,6 +1332,7 @@ function NewProductDialog({
         estoque_atual: parseInt(stock) || 0,
         estoque_minimo: parseInt(minStock) || 0,
         data_validade: requiresExpiration ? expirationDate : null,
+        lote: lot.trim(),
         ativo: true,
       });
       toast.success("Produto cadastrado");
@@ -1180,6 +1416,10 @@ function NewProductDialog({
           <div className="space-y-2">
             <Label>Estoque inicial</Label>
             <Input type="number" value={stock} onChange={(e) => setStock(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>{requiresExpiration ? "Lote inicial" : "Lote inicial (opcional)"}</Label>
+            <Input value={lot} onChange={(e) => setLot(e.target.value)} />
           </div>
           <div className="space-y-2 col-span-2">
             <Label>Estoque mínimo</Label>

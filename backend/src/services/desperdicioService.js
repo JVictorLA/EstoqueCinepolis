@@ -1,5 +1,6 @@
 const { pool } = require("../database/connection");
 const { atualizarAlertasEstoque } = require("./movimentacaoService");
+const loteService = require("./loteService");
 
 async function listarMotivosAtivos() {
   const [rows] = await pool.query(
@@ -48,9 +49,9 @@ function addFilters(filtros = {}) {
 
 async function criarRegistroDesperdicio(
   conn,
-  { estoqueId, produtoRow, usuario, motivo, quantidade },
+  { estoqueId, produtoRow, usuario, motivo, quantidade, loteRow },
 ) {
-  const estoqueAntes = Number(produtoRow.estoque_atual);
+  const estoqueAntes = await loteService.recalcStockProduct(conn, produtoRow.estoque_produto_id);
   const estoqueDepois = estoqueAntes - quantidade;
 
   if (estoqueDepois < 0) {
@@ -62,9 +63,18 @@ async function criarRegistroDesperdicio(
   const valorUnitario = Number(produtoRow.preco_venda || 0);
   const valorTotal = Number((quantidade * valorUnitario).toFixed(2));
 
-  await conn.query(
-    "UPDATE estoque_produtos SET estoque_atual = ? WHERE produto_id = ? AND estoque_id = ?",
-    [estoqueDepois, produtoRow.id, estoqueId],
+  const loteAntes = Number(loteRow.quantidade);
+  if (loteAntes - quantidade < 0) {
+    throw Object.assign(new Error("Saldo insuficiente neste lote."), { status: 400 });
+  }
+
+  await conn.query("UPDATE produto_lotes SET quantidade = ?, atualizado_em = NOW() WHERE id = ?", [
+    loteAntes - quantidade,
+    loteRow.id,
+  ]);
+  const estoqueDepoisRecalc = await loteService.recalcStockProduct(
+    conn,
+    produtoRow.estoque_produto_id,
   );
 
   await conn.query("UPDATE produtos SET atualizado_em = NOW() WHERE id = ?", [produtoRow.id]);
@@ -72,8 +82,8 @@ async function criarRegistroDesperdicio(
   const [desperdicio] = await conn.query(
     `INSERT INTO desperdicios
       (estoque_id, produto_id, usuario_id, motivo_id, quantidade,
-       estoque_antes, estoque_depois, valor_unitario, valor_total, criado_em)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+       estoque_antes, estoque_depois, valor_unitario, valor_total, lote_id, lote_codigo, criado_em)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
     [
       estoqueId,
       produtoRow.id,
@@ -81,13 +91,15 @@ async function criarRegistroDesperdicio(
       motivo.id,
       quantidade,
       estoqueAntes,
-      estoqueDepois,
+      estoqueDepoisRecalc,
       valorUnitario,
       valorTotal,
+      loteRow.id,
+      loteRow.lote,
     ],
   );
 
-  await conn.query(
+  const [movimentacao] = await conn.query(
     `INSERT INTO movimentacoes
       (estoque_id, produto_id, usuario_id, tipo, quantidade,
        estoque_antes, estoque_depois,
@@ -99,18 +111,24 @@ async function criarRegistroDesperdicio(
       usuario.id,
       quantidade,
       estoqueAntes,
-      estoqueDepois,
+      estoqueDepoisRecalc,
       usuario.nome,
       produtoRow.nome,
       `Desperdicio: ${motivo.nome}`,
     ],
   );
 
+  await loteService.insertMovementLot(conn, {
+    movimentacaoId: movimentacao.insertId,
+    loteId: loteRow.id,
+    quantidade,
+  });
+
   await atualizarAlertasEstoque(
     conn,
     produtoRow.id,
     estoqueId,
-    estoqueDepois,
+    estoqueDepoisRecalc,
     produtoRow.estoque_minimo,
   );
 
@@ -122,16 +140,18 @@ async function criarRegistroDesperdicio(
     motivo_id: motivo.id,
     quantidade,
     estoque_antes: estoqueAntes,
-    estoque_depois: estoqueDepois,
+    estoque_depois: estoqueDepoisRecalc,
     valor_unitario: valorUnitario,
     valor_total: valorTotal,
     usuario_nome: usuario.nome,
     produto_nome: produtoRow.nome,
     motivo_nome: motivo.nome,
+    lote_id: loteRow.id,
+    lote_codigo: loteService.displayLotCode(loteRow.lote),
   };
 }
 
-async function registrarManual({ estoque_id, codigo_barras, quantidade, motivo_id, usuario }) {
+async function registrarManual({ estoque_id, codigo_barras, quantidade, motivo_id, usuario, lote }) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -160,6 +180,8 @@ async function registrarManual({ estoque_id, codigo_barras, quantidade, motivo_i
         p.nome,
         p.ativo,
         p.preco_venda,
+        ep.id AS estoque_produto_id,
+        p.categoria_id,
         ep.estoque_atual,
         ep.estoque_minimo
        FROM produtos p
@@ -179,12 +201,21 @@ async function registrarManual({ estoque_id, codigo_barras, quantidade, motivo_i
       throw Object.assign(new Error("Produto inativo"), { status: 400 });
     }
 
+    await loteService.ensureDefaultLotFromCache(conn, produtos[0]);
+    const loteRow = await loteService.resolveLotForStockProduct(
+      conn,
+      produtos[0],
+      lote,
+      true,
+    );
+
     const result = await criarRegistroDesperdicio(conn, {
       estoqueId: Number(estoque_id),
       produtoRow: produtos[0],
       usuario,
       motivo: motivos[0],
       quantidade,
+      loteRow,
     });
 
     await conn.commit();
@@ -217,6 +248,8 @@ async function listar(filtros = {}) {
       d.estoque_depois,
       d.valor_unitario,
       d.valor_total,
+      d.lote_id,
+      d.lote_codigo,
       d.criado_em
      FROM desperdicios d
      LEFT JOIN estoques e ON e.id = d.estoque_id
@@ -340,14 +373,20 @@ async function processarVencidos(usuario) {
         p.id,
         p.nome,
         p.preco_venda,
+        ep.id AS estoque_produto_id,
         ep.estoque_id,
         ep.estoque_atual,
-        ep.estoque_minimo
-       FROM estoque_produtos ep
+        ep.estoque_minimo,
+        pl.id AS lote_id,
+        pl.lote,
+        pl.data_validade,
+        pl.quantidade AS lote_quantidade
+       FROM produto_lotes pl
+       INNER JOIN estoque_produtos ep ON ep.id = pl.estoque_produto_id
        INNER JOIN produtos p ON p.id = ep.produto_id
        INNER JOIN categorias c ON c.id = p.categoria_id
-       WHERE ep.data_validade < CURDATE()
-         AND ep.estoque_atual > 0
+       WHERE pl.data_validade < CURDATE()
+         AND pl.quantidade > 0
          AND COALESCE(c.exige_validade, 0) = 1
        FOR UPDATE`,
     );
@@ -360,7 +399,12 @@ async function processarVencidos(usuario) {
           produtoRow: produto,
           usuario,
           motivo: motivos[0],
-          quantidade: Number(produto.estoque_atual),
+          quantidade: Number(produto.lote_quantidade),
+          loteRow: {
+            id: produto.lote_id,
+            lote: produto.lote,
+            quantidade: produto.lote_quantidade,
+          },
         }),
       );
     }

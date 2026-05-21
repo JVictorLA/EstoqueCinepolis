@@ -51,6 +51,14 @@ router.post("/setup/master", asyncHandler(setupCtrl.criarMaster));
 
 // Produtos
 router.get("/produtos", asyncHandler(produtoCtrl.listar));
+router.get("/produtos/codigo/:codigo_barras", asyncHandler(produtoCtrl.buscarPorCodigo));
+router.get("/produtos/:id/lotes", asyncHandler(produtoCtrl.listarLotes));
+router.put(
+  "/produtos/:id/lotes/:loteId",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(produtoCtrl.atualizarLote),
+);
 router.patch(
   "/produtos/:id/status",
   auth.authMiddleware,
@@ -74,6 +82,8 @@ router.post("/produtos", auth.authMiddleware, auth.adminOnly, asyncHandler(produ
 
 // Movimentações
 router.post("/movimentacoes/transferencia", asyncHandler(movCtrl.transferir));
+router.post("/movimentacoes/entrada", asyncHandler(movCtrl.criarEntrada));
+router.post("/movimentacoes/saida", asyncHandler(movCtrl.criarSaida));
 router.post("/movimentacoes", asyncHandler(movCtrl.criar));
 router.get("/movimentacoes", asyncHandler(movCtrl.listar));
 
@@ -109,6 +119,12 @@ router.delete(
   auth.authMiddleware,
   auth.adminOnly,
   asyncHandler(conferenciaCtrl.removerItem),
+);
+router.delete(
+  "/conferencias/:id",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(conferenciaCtrl.remover),
 );
 router.patch(
   "/conferencias/:id/finalizar",

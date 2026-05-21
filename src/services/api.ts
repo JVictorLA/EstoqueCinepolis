@@ -27,6 +27,8 @@ import type {
   ConferenceProductOption,
   ConferenceStatus,
   ConferenceItemStatus,
+  ProductLot,
+  LotStatus,
 } from "@/types";
 
 const API_URL = import.meta.env?.VITE_API_URL?.replace(/\/$/, "") || "http://localhost:3333";
@@ -56,6 +58,18 @@ interface ApiEnvelope<T> {
   error: string | null;
 }
 
+export class ApiError<T = unknown> extends Error {
+  status: number;
+  data: T | null;
+
+  constructor(message: string, status: number, data: T | null = null) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
+  }
+}
+
 async function request<T>(path: string, init: RequestInit & { auth?: boolean } = {}): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -83,7 +97,7 @@ async function request<T>(path: string, init: RequestInit & { auth?: boolean } =
   }
 
   if (!res.ok || (body && body.success === false)) {
-    throw new Error(body?.message || `Erro ${res.status}`);
+    throw new ApiError(body?.message || `Erro ${res.status}`, res.status, body?.data ?? null);
   }
   return (body?.data as T) ?? (null as T);
 }
@@ -110,6 +124,43 @@ interface RawProduct {
   sem_estoque?: 0 | 1;
   estoque_baixo?: 0 | 1;
   movimentacoes_count?: number | string;
+}
+
+interface RawProductLot {
+  id: number;
+  estoque_produto_id: number;
+  produto_id: number;
+  estoque_id: number;
+  estoque_nome: string;
+  lote: string;
+  data_validade: string | null;
+  quantidade: string | number;
+}
+
+function lotStatus(expirationDate?: string | null): LotStatus {
+  if (!expirationDate) return "sem_validade";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expiration = new Date(`${String(expirationDate).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(expiration.getTime())) return "sem_validade";
+  if (expiration < today) return "vencido";
+  const days = Math.ceil((expiration.getTime() - today.getTime()) / 86400000);
+  return days <= 7 ? "proximo_vencimento" : "ok";
+}
+
+function mapProductLot(r: RawProductLot): ProductLot {
+  const expirationDate = r.data_validade ? String(r.data_validade).slice(0, 10) : null;
+  return {
+    id: r.id,
+    estoqueProdutoId: r.estoque_produto_id,
+    productId: r.produto_id,
+    estoqueId: r.estoque_id,
+    estoqueNome: r.estoque_nome,
+    lot: r.lote,
+    expirationDate,
+    quantity: Number(r.quantidade),
+    status: lotStatus(expirationDate),
+  };
 }
 
 function mapProduct(r: RawProduct): Product {
@@ -150,6 +201,9 @@ interface RawMovement {
   produto_nome: string;
   observacao: string | null;
   codigo_barras?: string | null;
+  lote_id?: number | null;
+  lote_codigo?: string | null;
+  ignorou_fefo?: 0 | 1 | boolean;
   criado_em: string;
 }
 
@@ -165,6 +219,9 @@ interface RawTransferMovement {
   quantidade: number;
   usuario_id: number;
   usuario_nome: string;
+  lote_id?: number | null;
+  lote_codigo?: string | null;
+  ignorou_fefo?: 0 | 1 | boolean;
 }
 
 function mapTransferMovement(r: RawTransferMovement): TransferMovement {
@@ -180,6 +237,9 @@ function mapTransferMovement(r: RawTransferMovement): TransferMovement {
     quantity: Number(r.quantidade),
     userId: r.usuario_id,
     userName: r.usuario_nome,
+    lotId: r.lote_id ?? null,
+    lotCode: r.lote_codigo ?? null,
+    ignoredFefo: !!r.ignorou_fefo,
   };
 }
 function mapMovement(r: RawMovement): Movement {
@@ -197,6 +257,9 @@ function mapMovement(r: RawMovement): Movement {
     userId: r.usuario_id,
     note: r.observacao,
     barcode: r.codigo_barras,
+    lotId: r.lote_id ?? null,
+    lotCode: r.lote_codigo ?? null,
+    ignoredFefo: !!r.ignorou_fefo,
     createdAt: r.criado_em,
   };
 }
@@ -234,6 +297,8 @@ interface RawWaste {
   estoque_depois: number | string;
   valor_unitario: number | string;
   valor_total: number | string;
+  lote_id?: number | null;
+  lote_codigo?: string | null;
   criado_em: string;
 }
 
@@ -255,6 +320,8 @@ function mapWaste(r: RawWaste): Waste {
     stockAfter: Number(r.estoque_depois),
     unitValue: Number(r.valor_unitario),
     totalValue: Number(r.valor_total),
+    lotId: r.lote_id ?? null,
+    lotCode: r.lote_codigo ?? null,
     createdAt: r.criado_em,
   };
 }
@@ -635,6 +702,13 @@ export async function deleteConferenceItem(conferenceId: number, itemId: number)
   });
 }
 
+export async function deleteConference(id: number): Promise<void> {
+  await request<void>(`/conferencias/${id}`, {
+    method: "DELETE",
+    auth: true,
+  });
+}
+
 export async function finalizeConference(id: number): Promise<Conference> {
   const row = await request<RawConference>(`/conferencias/${id}/finalizar`, {
     method: "PATCH",
@@ -657,7 +731,7 @@ export async function getProductByBarcode(
 ): Promise<Product | null> {
   try {
     const qs = estoqueId ? `?estoque_id=${encodeURIComponent(String(estoqueId))}` : "";
-    const r = await request<RawProduct>(`/produtos/${encodeURIComponent(barcode)}${qs}`);
+    const r = await request<RawProduct>(`/produtos/codigo/${encodeURIComponent(barcode)}${qs}`);
     return r ? mapProduct(r) : null;
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : "";
@@ -676,6 +750,7 @@ export interface CreateProductPayload {
   estoque_atual: number;
   estoque_minimo: number;
   data_validade?: string | null;
+  lote?: string;
   ativo: boolean;
 }
 export async function createProduct(payload: CreateProductPayload): Promise<Product> {
@@ -716,6 +791,32 @@ export async function deleteProduct(id: number): Promise<void> {
   });
 }
 
+export async function getProductLots(
+  productId: number,
+  estoqueId?: number | string,
+): Promise<ProductLot[]> {
+  const qs = estoqueId ? `?estoque_id=${encodeURIComponent(String(estoqueId))}` : "";
+  const rows = await request<RawProductLot[]>(`/produtos/${productId}/lotes${qs}`);
+  return rows.map(mapProductLot);
+}
+
+export async function updateProductLot(
+  productId: number,
+  lotId: number,
+  payload: {
+    lote: string;
+    data_validade?: string | null;
+    quantidade: number;
+  },
+): Promise<ProductLot> {
+  const row = await request<RawProductLot>(`/produtos/${productId}/lotes/${lotId}`, {
+    method: "PUT",
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+  return mapProductLot(row);
+}
+
 /* ----------------- MOVIMENTAÇÕES ----------------- */
 
 export async function registerMovement(payload: {
@@ -726,8 +827,13 @@ export async function registerMovement(payload: {
   tipo: "entrada" | "saida";
   quantidade: number;
   observacao?: string;
+  lote: string;
+  data_validade?: string | null;
+  confirmar_ignorar_fefo?: boolean;
+  justificativa_fefo?: string;
 }): Promise<Movement> {
-  const r = await request<RawMovement>("/movimentacoes", {
+  const endpoint = payload.tipo === "entrada" ? "/movimentacoes/entrada" : "/movimentacoes/saida";
+  const r = await request<RawMovement>(endpoint, {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -742,6 +848,9 @@ export async function transferStock(payload: {
   senha: string;
   quantidade: number;
   observacao?: string;
+  lote: string;
+  confirmar_ignorar_fefo?: boolean;
+  justificativa_fefo?: string;
 }): Promise<TransferMovement> {
   const r = await request<RawTransferMovement>("/movimentacoes/transferencia", {
     method: "POST",
@@ -792,6 +901,7 @@ export async function registerWaste(payload: {
   motivo_id: number;
   matricula: string;
   senha: string;
+  lote: string;
 }): Promise<Waste> {
   const r = await request<RawWaste>("/desperdicios", {
     method: "POST",

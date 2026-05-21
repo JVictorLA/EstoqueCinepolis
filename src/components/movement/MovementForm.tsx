@@ -51,9 +51,11 @@ import {
   changeUserPassword,
   getEstoques,
   getStoredUser,
+  getProductLots,
+  ApiError,
 } from "@/services/api";
 
-import type { Estoque, Product } from "@/types";
+import type { Estoque, Product, ProductLot, FefoWarning } from "@/types";
 import { isExpired, isNearExpiration } from "@/lib/expiration";
 
 interface MovementFormProps {
@@ -90,6 +92,11 @@ export function MovementForm({
 
   const [quantity, setQuantity] =
     useState("");
+  const [lot, setLot] = useState("");
+  const [expirationDate, setExpirationDate] = useState("");
+  const [lots, setLots] = useState<ProductLot[]>([]);
+  const [fefoWarning, setFefoWarning] = useState<FefoWarning | null>(null);
+  const [fefoJustification, setFefoJustification] = useState("");
 
   const [note, setNote] =
     useState("");
@@ -211,9 +218,11 @@ export function MovementForm({
         const p = await getProductByBarcode(barcode, selectedEstoqueId);
 
         setProduct(p);
+        setLots([]);
 
       } catch {
         setProduct(null);
+        setLots([]);
 
       } finally {
         setSearching(false);
@@ -223,6 +232,17 @@ export function MovementForm({
     return () => clearTimeout(t);
 
   }, [barcode, selectedEstoqueId]);
+
+  useEffect(() => {
+    if (!product || !selectedEstoqueId || type !== "saida") {
+      setLots([]);
+      return;
+    }
+
+    getProductLots(product.id, selectedEstoqueId)
+      .then((items) => setLots(items.filter((item) => item.quantity > 0)))
+      .catch(() => setLots([]));
+  }, [product, selectedEstoqueId, type]);
 
   const handleConfirmClick = () => {
     if (!barcode) {
@@ -251,6 +271,14 @@ export function MovementForm({
       return toast.error(
         "Informe a quantidade"
       );
+    }
+
+    if (product?.requiresExpiration && !lot.trim()) {
+      return toast.error("Informe o lote");
+    }
+
+    if (type === "entrada" && product?.requiresExpiration && !expirationDate) {
+      return toast.error("Informe a validade do lote");
     }
 
     if (!matricula) {
@@ -293,6 +321,7 @@ export function MovementForm({
     setSubmitting(true);
 
     try {
+      const ignoreFefo = !!fefoWarning;
       if (operation === "transferencia") {
         await transferStock({
           codigo_barras: barcode,
@@ -302,6 +331,9 @@ export function MovementForm({
           senha: password,
           quantidade: parseInt(quantity),
           observacao: note || undefined,
+          lote: lot.trim(),
+          confirmar_ignorar_fefo: ignoreFefo,
+          justificativa_fefo: ignoreFefo ? fefoJustification.trim() : undefined,
         });
       } else {
         await registerMovement({
@@ -312,6 +344,10 @@ export function MovementForm({
           tipo: type,
           quantidade: parseInt(quantity),
           observacao: note || undefined,
+          lote: lot.trim(),
+          data_validade: type === "entrada" ? expirationDate || null : undefined,
+          confirmar_ignorar_fefo: ignoreFefo,
+          justificativa_fefo: ignoreFefo ? fefoJustification.trim() : undefined,
         });
       }
 
@@ -326,6 +362,11 @@ export function MovementForm({
       setBarcode("");
       setProduct(null);
       setQuantity("");
+      setLot("");
+      setExpirationDate("");
+      setLots([]);
+      setFefoWarning(null);
+      setFefoJustification("");
       setNote("");
       if (!useLoggedUser) {
         setMatricula("");
@@ -336,6 +377,12 @@ export function MovementForm({
       setReviewOpen(false);
 
     } catch (e: any) {
+      if (e instanceof ApiError && e.status === 409 && (e.data as any)?.fefo) {
+        setFefoWarning((e.data as { fefo: FefoWarning }).fefo);
+        setReviewOpen(true);
+        toast.warning("Ha um alerta FEFO para este lote");
+        return;
+      }
       toast.error(
         e?.message ||
           "Falha ao registrar movimentação"
@@ -423,6 +470,10 @@ export function MovementForm({
     operation === "transferencia"
       ? "Sim, transferir produto"
       : type === "entrada" ? "Sim, registrar entrada" : "Sim, registrar retirada";
+
+  const matchingLots = lot.trim()
+    ? lots.filter((item) => item.lot.toLowerCase().endsWith(lot.trim().toLowerCase()))
+    : lots;
 
   return (
     <div className="grid lg:grid-cols-3 gap-6">
@@ -522,6 +573,53 @@ export function MovementForm({
               placeholder="0"
             />
           </div>
+
+          <div className="space-y-2">
+            <Label>Lote</Label>
+            <Input
+              value={lot}
+              onChange={(e) => {
+                setLot(e.target.value);
+                setFefoWarning(null);
+              }}
+              placeholder={type === "entrada" ? "Ex: WAFFLE-2026-000123" : "Digite o lote ou final"}
+            />
+          </div>
+
+          {type === "entrada" && product?.requiresExpiration && (
+            <div className="space-y-2">
+              <Label>Validade do lote</Label>
+              <Input
+                type="date"
+                value={expirationDate}
+                onChange={(e) => setExpirationDate(e.target.value)}
+              />
+            </div>
+          )}
+
+          {type === "saida" && product && matchingLots.length > 0 && (
+            <div className="space-y-2 sm:col-span-2">
+              <Label>Lotes disponiveis</Label>
+              <div className="grid gap-2">
+                {matchingLots.slice(0, 6).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="flex items-center justify-between rounded-md border px-3 py-2 text-left text-sm hover:bg-muted"
+                    onClick={() => {
+                      setLot(item.lot);
+                      setFefoWarning(null);
+                    }}
+                  >
+                    <span className="font-medium">{item.lot}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {item.expirationDate ? formatDate(item.expirationDate) : "Sem validade"} · {item.quantity}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {useLoggedUser ? (
             <div className="space-y-2">
@@ -854,6 +952,26 @@ export function MovementForm({
             </div>
 
             <div className="flex items-center justify-between gap-4">
+              <span className="text-muted-foreground">Lote</span>
+              <span className="font-medium text-right">{lot}</span>
+            </div>
+
+            {fefoWarning && (
+              <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
+                <div className="font-medium text-warning">Alerta FEFO</div>
+                <div className="mt-1 text-muted-foreground">{fefoWarning.mensagem}</div>
+                <div className="mt-3 space-y-2">
+                  <Label>Justificativa obrigatoria</Label>
+                  <Textarea
+                    value={fefoJustification}
+                    onChange={(e) => setFefoJustification(e.target.value)}
+                    rows={2}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-4">
               <span className="text-muted-foreground">Funcionario</span>
               <span className="font-medium text-right">
                 {user?.nome ?? matricula}
@@ -867,7 +985,14 @@ export function MovementForm({
             </AlertDialogCancel>
 
             <AlertDialogAction
-              onClick={doSubmit}
+              onClick={(event) => {
+                if (fefoWarning && !fefoJustification.trim()) {
+                  event.preventDefault();
+                  toast.error("Informe a justificativa FEFO");
+                  return;
+                }
+                doSubmit();
+              }}
               disabled={submitting}
               className={`gap-2 ${
                 type === "entrada" || operation === "transferencia"

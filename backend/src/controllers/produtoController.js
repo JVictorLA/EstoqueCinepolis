@@ -12,6 +12,7 @@ async function buscarPorCodigo(req, res) {
   if (!codigo_barras) return fail(res, 400, "Codigo de barras obrigatorio");
   const p = await produtoService.findByBarcode(codigo_barras, req.query.estoque_id);
   if (!p) return fail(res, 404, "Produto nao encontrado");
+  p.lotes = await produtoService.listLotes(p.id, req.query.estoque_id);
   return ok(res, p);
 }
 
@@ -26,6 +27,7 @@ async function criar(req, res) {
     estoque_atual,
     estoque_minimo,
     data_validade,
+    lote,
     ativo,
   } = req.body || {};
 
@@ -56,12 +58,48 @@ async function criar(req, res) {
       estoque_atual: estoque_atual != null ? Number(estoque_atual) : 0,
       estoque_minimo: estoque_minimo != null ? Number(estoque_minimo) : 0,
       data_validade,
+      lote,
       ativo: ativo === undefined ? true : !!ativo,
     });
 
     return created(res, novo, "Produto cadastrado");
   } catch (e) {
     return fail(res, e.status || 500, e.message || "Erro ao cadastrar produto");
+  }
+}
+
+async function listarLotes(req, res) {
+  const id = Number(req.params.id);
+  if (!id) return fail(res, 400, "Produto invalido");
+
+  try {
+    const lotes = await produtoService.listLotes(id, req.query.estoque_id);
+    return ok(res, lotes);
+  } catch (e) {
+    return fail(res, e.status || 500, e.message || "Erro ao buscar lotes");
+  }
+}
+
+async function atualizarLote(req, res) {
+  const id = Number(req.params.id);
+  const loteId = Number(req.params.loteId);
+  const { lote, data_validade, quantidade } = req.body || {};
+
+  if (!id) return fail(res, 400, "Produto invalido");
+  if (!loteId) return fail(res, 400, "Lote invalido");
+  if (quantidade !== undefined && (isNaN(Number(quantidade)) || Number(quantidade) < 0)) {
+    return fail(res, 400, "quantidade invalida");
+  }
+
+  try {
+    const atualizado = await produtoService.updateLote(id, loteId, {
+      lote,
+      data_validade,
+      quantidade,
+    });
+    return ok(res, atualizado, "Lote atualizado");
+  } catch (e) {
+    return fail(res, e.status || 500, e.message || "Erro ao atualizar lote");
   }
 }
 
@@ -142,4 +180,13 @@ async function remover(req, res) {
   }
 }
 
-module.exports = { listar, buscarPorCodigo, criar, atualizar, alterarStatus, remover };
+module.exports = {
+  listar,
+  buscarPorCodigo,
+  criar,
+  atualizar,
+  atualizarLote,
+  alterarStatus,
+  remover,
+  listarLotes,
+};

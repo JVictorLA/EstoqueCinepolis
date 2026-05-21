@@ -35,6 +35,28 @@ export interface Product {
   createdAt: string;
 }
 
+export type LotStatus = "vencido" | "proximo_vencimento" | "ok" | "sem_validade";
+
+export interface ProductLot {
+  id: number;
+  estoqueProdutoId: number;
+  productId: number;
+  estoqueId: number;
+  estoqueNome: string;
+  lot: string;
+  expirationDate: string | null;
+  quantity: number;
+  status: LotStatus;
+}
+
+export interface FefoWarning {
+  lote_id: number;
+  lote: string;
+  data_validade: string | null;
+  quantidade: number;
+  mensagem: string;
+}
+
 export type MovementType = "entrada" | "saida" | "desperdicio";
 
 export interface Movement {
@@ -51,6 +73,9 @@ export interface Movement {
   userId: number;
   note?: string | null;
   barcode?: string | null;
+  lotId?: number | null;
+  lotCode?: string | null;
+  ignoredFefo?: boolean;
   createdAt: string;
 }
 
@@ -66,6 +91,9 @@ export interface TransferMovement {
   quantity: number;
   userId: number;
   userName: string;
+  lotId?: number | null;
+  lotCode?: string | null;
+  ignoredFefo?: boolean;
 }
 
 export type UserRole = "master" | "admin" | "operador";
@@ -114,6 +142,8 @@ export interface Waste {
   stockAfter: number;
   unitValue: number;
   totalValue: number;
+  lotId?: number | null;
+  lotCode?: string | null;
   createdAt: string;
 }
 

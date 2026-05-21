@@ -181,10 +181,15 @@ async function findStockProductByBarcode(codigoBarras, estoqueId) {
        p.nome AS produto_nome,
        ep.estoque_id,
        e.nome AS estoque_nome,
-       COALESCE(ep.estoque_atual, 0) AS quantidade_sistema
+       COALESCE(lotes.quantidade_sistema, ep.estoque_atual, 0) AS quantidade_sistema
      FROM produtos p
      INNER JOIN estoque_produtos ep ON ep.produto_id = p.id
      INNER JOIN estoques e ON e.id = ep.estoque_id
+     LEFT JOIN (
+       SELECT estoque_produto_id, COALESCE(SUM(quantidade), 0) AS quantidade_sistema
+       FROM produto_lotes
+       GROUP BY estoque_produto_id
+     ) lotes ON lotes.estoque_produto_id = ep.id
      WHERE p.codigo_barras = ? AND p.ativo = 1 ${estoqueFilter}
      ORDER BY e.nome ASC`,
     params,
@@ -301,6 +306,37 @@ async function removerItem(conferenciaId, itemId) {
   ]);
 }
 
+async function remover(id) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query(
+      "SELECT id, status FROM conferencias_estoque WHERE id = ? LIMIT 1 FOR UPDATE",
+      [id],
+    );
+    const conference = rows[0];
+    if (!conference) {
+      throw Object.assign(new Error("Conferencia nao encontrada"), { status: 404 });
+    }
+    if (conference.status === "finalizada") {
+      throw Object.assign(new Error("Conferencia finalizada nao pode ser excluida"), {
+        status: 409,
+      });
+    }
+
+    await conn.query("DELETE FROM conferencia_estoque_itens WHERE conferencia_id = ?", [id]);
+    await conn.query("DELETE FROM conferencias_estoque WHERE id = ?", [id]);
+
+    await conn.commit();
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
 async function finalizar(id) {
   await assertEditable(id);
   await pool.query(
@@ -334,6 +370,7 @@ module.exports = {
   atualizar,
   salvarItem,
   removerItem,
+  remover,
   finalizar,
   buscarProdutoPorCodigo,
 };

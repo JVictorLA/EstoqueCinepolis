@@ -77,6 +77,18 @@ async function removerItem(req, res) {
   }
 }
 
+async function remover(req, res) {
+  const id = Number(req.params.id);
+  if (!id) return fail(res, 400, "Conferencia invalida");
+
+  try {
+    await conferenciaService.remover(id);
+    return ok(res, null, "Conferencia excluida");
+  } catch (e) {
+    return fail(res, e.status || 500, e.message || "Erro ao excluir conferencia");
+  }
+}
+
 async function finalizar(req, res) {
   const id = Number(req.params.id);
   if (!id) return fail(res, 400, "Conferencia invalida");
@@ -109,6 +121,7 @@ module.exports = {
   atualizar,
   salvarItem,
   removerItem,
+  remover,
   finalizar,
   buscarProduto,
 };

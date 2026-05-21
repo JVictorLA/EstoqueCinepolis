@@ -13,21 +13,28 @@ const BASE_INVENTORY_SELECT = `
     p.preco_venda,
     ep.estoque_id,
     e.nome AS estoque_nome,
-    ep.data_validade,
-    COALESCE(ep.estoque_atual, 0) AS estoque_atual,
+    COALESCE(lotes.data_validade, ep.data_validade) AS data_validade,
+    COALESCE(lotes.estoque_atual, ep.estoque_atual, 0) AS estoque_atual,
     COALESCE(ep.estoque_minimo, 0) AS estoque_minimo,
     p.ativo
   FROM produtos p
   LEFT JOIN categorias c ON c.id = p.categoria_id
   INNER JOIN estoque_produtos ep ON ep.produto_id = p.id
   INNER JOIN estoques e ON e.id = ep.estoque_id
+  LEFT JOIN (
+    SELECT estoque_produto_id,
+      COALESCE(SUM(quantidade), 0) AS estoque_atual,
+      MIN(CASE WHEN quantidade > 0 THEN data_validade ELSE NULL END) AS data_validade
+    FROM produto_lotes
+    GROUP BY estoque_produto_id
+  ) lotes ON lotes.estoque_produto_id = ep.id
 `;
 
 const HIDE_EXPIRED_EMPTY_ITEMS = `
   AND NOT (
-    COALESCE(ep.estoque_atual, 0) <= 0
-    AND ep.data_validade IS NOT NULL
-    AND ep.data_validade < CURDATE()
+    COALESCE(lotes.estoque_atual, ep.estoque_atual, 0) <= 0
+    AND COALESCE(lotes.data_validade, ep.data_validade) IS NOT NULL
+    AND COALESCE(lotes.data_validade, ep.data_validade) < CURDATE()
   )
 `;
 
