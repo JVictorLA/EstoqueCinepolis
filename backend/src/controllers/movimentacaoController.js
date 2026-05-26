@@ -160,6 +160,7 @@ async function listar(req, res) {
     data_inicial: req.query.data_inicial,
     data_final: req.query.data_final,
     tipo: req.query.tipo,
+    categoria_id: req.query.categoria_id,
     produto_id: req.query.produto_id,
     codigo_barras: req.query.codigo_barras,
     usuario_id: req.query.usuario_id,

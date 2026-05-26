@@ -7,7 +7,7 @@ import { getMovements } from "@/services/api";
 import type { Movement } from "@/types";
 
 export const Route = createFileRoute("/operador/historico")({
-  head: () => ({ meta: [{ title: "Histórico · Operador Cinépolis" }] }),
+  head: () => ({ meta: [{ title: "Histórico · Zytrex Inventory" }] }),
   component: HistoricoPage,
 });
 

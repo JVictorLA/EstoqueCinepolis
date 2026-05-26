@@ -204,6 +204,7 @@ interface RawMovement {
   lote_id?: number | null;
   lote_codigo?: string | null;
   ignorou_fefo?: 0 | 1 | boolean;
+  justificativa_fefo?: string | null;
   criado_em: string;
 }
 
@@ -260,6 +261,7 @@ function mapMovement(r: RawMovement): Movement {
     lotId: r.lote_id ?? null,
     lotCode: r.lote_codigo ?? null,
     ignoredFefo: !!r.ignorou_fefo,
+    fefoJustification: r.justificativa_fefo ?? null,
     createdAt: r.criado_em,
   };
 }
@@ -529,8 +531,49 @@ export async function adminLogin(matricula: string, senha: string): Promise<Auth
 
 /* ----------------- SETUP ----------------- */
 
-export async function getSetupStatus(): Promise<{ precisaSetup: boolean }> {
-  return request<{ precisaSetup: boolean }>("/setup/status");
+export interface InitialSetupPayload {
+  empresa: {
+    nome_empresa: string;
+    unidade_empresa?: string;
+    cnpj_empresa?: string;
+    cidade_empresa?: string;
+    uf_empresa?: string;
+    endereco_empresa?: string;
+    telefone_empresa?: string;
+    email_empresa?: string;
+    logo_url?: string;
+  };
+  sistema: {
+    nome_sistema: string;
+    tema_padrao: "light" | "dark";
+    dias_alerta_validade: number;
+    permitir_estoque_negativo: boolean;
+    bloquear_saida_produto_vencido: boolean;
+    registrar_vencido_ao_tentar_retirar?: boolean;
+    permitir_ignorar_fefo: boolean;
+    exigir_justificativa_fefo: boolean;
+  };
+  estoques: string[];
+  master: {
+    nome: string;
+    matricula: string;
+    email?: string;
+    senha: string;
+  };
+}
+
+export async function getSetupStatus(): Promise<{
+  precisaSetup: boolean;
+  setupConcluido: boolean;
+}> {
+  return request<{ precisaSetup: boolean; setupConcluido: boolean }>("/setup/status");
+}
+
+export async function createInitialSetup(payload: InitialSetupPayload): Promise<void> {
+  await request<void>("/setup/inicial", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function createMasterUser(payload: {
@@ -623,6 +666,52 @@ export async function setEstoqueStatus(id: number, ativo: boolean): Promise<Esto
     body: JSON.stringify({ ativo }),
   });
   return mapEstoque(r);
+}
+
+/* ----------------- CONFIGURACOES ----------------- */
+
+export interface SystemConfig {
+  chave: string;
+  valor: string;
+  categoria?: string | null;
+  nivelAcesso?: string | null;
+}
+
+type RawSystemConfig = Record<string, unknown>;
+
+function mapSystemConfig(row: RawSystemConfig): SystemConfig {
+  return {
+    chave: String(row.chave ?? row.key ?? row.nome ?? row.config_key ?? ""),
+    valor: String(row.valor ?? row.value ?? row.config_value ?? ""),
+    categoria:
+      row.categoria !== undefined || row.grupo !== undefined || row.category !== undefined
+        ? String(row.categoria ?? row.grupo ?? row.category ?? "")
+        : null,
+    nivelAcesso:
+      row.nivel_acesso !== undefined || row.access_level !== undefined
+        ? String(row.nivel_acesso ?? row.access_level ?? "")
+        : null,
+  };
+}
+
+export async function getSystemConfigs(): Promise<SystemConfig[]> {
+  const rows = await request<RawSystemConfig[]>("/configuracoes", { auth: true });
+  return rows.map(mapSystemConfig).filter((item) => item.chave);
+}
+
+export async function updateSystemConfigs(
+  configs: Array<{
+    chave: string;
+    valor: string | number | boolean;
+    categoria?: string;
+    nivelAcesso?: "admin" | "master";
+  }>,
+): Promise<void> {
+  await request<void>("/configuracoes", {
+    method: "PUT",
+    auth: true,
+    body: JSON.stringify({ configs }),
+  });
 }
 
 /* ----------------- INVENTARIO E CONFERENCIAS ----------------- */
@@ -863,6 +952,7 @@ export interface MovementFilters {
   data_inicial?: string;
   data_final?: string;
   tipo?: "entrada" | "saida" | "desperdicio";
+  categoria_id?: number | string;
   produto_id?: number;
   codigo_barras?: string;
   usuario_id?: number;

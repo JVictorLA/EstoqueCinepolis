@@ -69,7 +69,7 @@ import type {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/desperdicios")({
-  head: () => ({ meta: [{ title: "Desperdicios · Cinepolis" }] }),
+  head: () => ({ meta: [{ title: "Desperdícios · Zytrex Inventory" }] }),
   component: DesperdiciosPage,
 });
 

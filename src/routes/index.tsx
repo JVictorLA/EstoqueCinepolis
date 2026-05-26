@@ -1,29 +1,476 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-
-import { Film, Shield, UserCog, ArrowLeft, Loader2 } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronRight,
+  Check,
+  Loader2,
+  Lock,
+  LockKeyhole,
+  Moon,
+  Shield,
+  Sun,
+  UserCog,
+  type LucideIcon,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
+import { useTheme } from "@/components/theme/ThemeProvider";
 import { toast } from "sonner";
+import {
+  adminLogin,
+  changeUserPassword,
+  createInitialSetup,
+  getSetupStatus,
+  type InitialSetupPayload,
+} from "@/services/api";
 
-import { adminLogin, changeUserPassword, createMasterUser, getSetupStatus } from "@/services/api";
+import zyntraIcon from "@/icones/android-chrome-512x512.png";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Entrar · Cinépolis Estoque" },
+      { title: "Entrar · Zytrex Inventory" },
       {
         name: "description",
-        content: "Acesse o sistema de controle de estoque Cinépolis.",
+        content: "Acesse o Zytrex Inventory para controlar estoque, lotes e movimentações.",
       },
     ],
   }),
 
   component: LoginPage,
 });
+
+function BrandLogo({ size = "sm" }: { size?: "sm" | "lg" }) {
+  const large = size === "lg";
+
+  return (
+    <div className="flex items-center gap-3">
+      <img
+        src={zyntraIcon}
+        alt=""
+        className={large ? "h-20 w-20 object-contain sm:h-24 sm:w-24" : "h-9 w-9 object-contain"}
+      />
+      <div className="leading-none">
+        <div
+          className={
+            large
+              ? "text-4xl font-bold tracking-normal text-foreground sm:text-5xl"
+              : "text-xl font-bold tracking-normal text-foreground"
+          }
+        >
+          Zytrex
+        </div>
+        <div
+          className={
+            large
+              ? "mt-2 text-sm font-semibold uppercase tracking-[0.32em] text-primary"
+              : "mt-1 text-[10px] font-semibold uppercase tracking-[0.28em] text-primary"
+          }
+        >
+          Inventory
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ThemeSegmentedControl() {
+  const { theme, setTheme } = useTheme();
+  const options = [
+    { value: "light" as const, label: "Claro", icon: Sun },
+    { value: "dark" as const, label: "Escuro", icon: Moon },
+  ];
+
+  return (
+    <div className="inline-flex rounded-full border border-border bg-card p-1 shadow-[var(--shadow-soft)]">
+      {options.map((option) => {
+        const Icon = option.icon;
+        const active = theme === option.value;
+
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => setTheme(option.value)}
+            className={`inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-medium transition ${
+              active
+                ? "bg-background text-primary shadow-sm"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            }`}
+            aria-pressed={active}
+          >
+            <Icon className="h-4 w-4" />
+            {option.label}
+            {active && <span className="h-2 w-2 rounded-full bg-primary" />}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function AccessCard({
+  icon: Icon,
+  title,
+  description,
+  action,
+  tone,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  action: () => void;
+  tone: "blue" | "purple";
+}) {
+  const toneClass =
+    tone === "blue"
+      ? "bg-primary/10 text-primary ring-primary/15"
+      : "bg-violet-500/10 text-violet-500 ring-violet-500/15";
+
+  return (
+    <button
+      type="button"
+      onClick={action}
+      className="group flex w-full items-center gap-4 rounded-2xl border border-border bg-card p-4 text-left shadow-[var(--shadow-soft)] transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[var(--shadow-card)]"
+    >
+      <span
+        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1 ${toneClass}`}
+      >
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block font-semibold text-foreground">{title}</span>
+        <span className="mt-1 block text-sm leading-6 text-muted-foreground">{description}</span>
+      </span>
+      <ChevronRight className="h-5 w-5 shrink-0 text-primary transition group-hover:translate-x-0.5" />
+    </button>
+  );
+}
+
+const defaultSetupPayload: InitialSetupPayload & { master: InitialSetupPayload["master"] & { confirmarSenha: string } } = {
+  empresa: {
+    nome_empresa: "",
+    unidade_empresa: "",
+    cnpj_empresa: "",
+    cidade_empresa: "",
+    uf_empresa: "",
+    endereco_empresa: "",
+    telefone_empresa: "",
+    email_empresa: "",
+    logo_url: "",
+  },
+  sistema: {
+    nome_sistema: "Zytrex Inventory",
+    tema_padrao: "light",
+    dias_alerta_validade: 7,
+    permitir_estoque_negativo: false,
+    bloquear_saida_produto_vencido: true,
+    registrar_vencido_ao_tentar_retirar: true,
+    permitir_ignorar_fefo: true,
+    exigir_justificativa_fefo: true,
+  },
+  estoques: ["Estoque Principal", "Estoque VIP", "Estoque Limpeza"],
+  master: {
+    nome: "",
+    matricula: "",
+    email: "",
+    senha: "",
+    confirmarSenha: "",
+  },
+};
+
+function SetupWizard({ onDone }: { onDone: () => void }) {
+  const [step, setStep] = useState(0);
+  const [payload, setPayload] = useState(defaultSetupPayload);
+  const [saving, setSaving] = useState(false);
+  const steps = ["Boas-vindas", "Empresa", "Estoques", "Master", "Revisao"];
+
+  const updateEmpresa = (key: keyof InitialSetupPayload["empresa"], value: string) =>
+    setPayload((current) => ({ ...current, empresa: { ...current.empresa, [key]: value } }));
+
+
+  const updateMaster = (key: keyof typeof payload.master, value: string) =>
+    setPayload((current) => ({ ...current, master: { ...current.master, [key]: value } }));
+
+  const validateStep = (target = step) => {
+    if (target === 1 && !payload.empresa.nome_empresa.trim()) {
+      toast.error("Informe o nome da empresa");
+      return false;
+    }
+    if (target === 2) {
+      const names = payload.estoques.map((item) => item.trim()).filter(Boolean);
+      const unique = new Set(names.map((item) => item.toLowerCase()));
+      if (!names.length) {
+        toast.error("Informe pelo menos um estoque");
+        return false;
+      }
+      if (names.length !== payload.estoques.length) {
+        toast.error("Os nomes dos estoques não podem ficar vazios");
+        return false;
+      }
+      if (unique.size !== names.length) {
+        toast.error("Remova nomes de estoque duplicados");
+        return false;
+      }
+    }
+    if (target === 3) {
+      if (!payload.master.nome.trim()) return toast.error("Informe o nome do master"), false;
+      if (!payload.master.matricula.trim()) return toast.error("Informe a matrícula do master"), false;
+      if (!payload.master.senha) return toast.error("Informe a senha do master"), false;
+      if (!payload.master.confirmarSenha) return toast.error("Confirme a senha do master"), false;
+      if (payload.master.senha.length < 6) {
+        toast.error("A senha deve ter pelo menos 6 caracteres");
+        return false;
+      }
+      if (payload.master.senha !== payload.master.confirmarSenha) {
+        toast.error("As senhas não coincidem");
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const next = () => {
+    if (!validateStep()) return;
+    setStep((current) => Math.min(current + 1, steps.length - 1));
+  };
+
+  const finish = async () => {
+    for (const index of [1, 2, 3]) {
+      if (!validateStep(index)) {
+        setStep(index);
+        return;
+      }
+    }
+
+    setSaving(true);
+    try {
+      const { confirmarSenha: _confirmarSenha, ...master } = payload.master;
+      await createInitialSetup({
+        empresa: payload.empresa,
+        sistema: {
+          ...payload.sistema,
+          dias_alerta_validade: Number(payload.sistema.dias_alerta_validade),
+        },
+        estoques: payload.estoques.map((item) => item.trim()),
+        master,
+      });
+      toast.success("Configuração inicial concluída. Faça login com o usuário master.");
+      onDone();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao finalizar configuração inicial");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <main className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+        <header className="flex items-center justify-between gap-4">
+          <BrandLogo />
+          <ThemeSegmentedControl />
+        </header>
+
+        <section className="rounded-3xl border bg-card p-5 shadow-[var(--shadow-card)] sm:p-7">
+          <div className="mb-6 grid gap-2 sm:grid-cols-5">
+            {steps.map((label, index) => (
+              <div
+                key={label}
+                className={`rounded-xl border px-3 py-2 text-xs font-medium ${
+                  index === step
+                    ? "border-primary bg-primary/10 text-primary"
+                    : index < step
+                      ? "border-primary/25 bg-primary/5 text-foreground"
+                      : "bg-background text-muted-foreground"
+                }`}
+              >
+                <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[10px]">
+                  {index < step ? <Check className="h-3 w-3" /> : index + 1}
+                </span>
+                {label}
+              </div>
+            ))}
+          </div>
+
+          {step === 0 && (
+            <div className="grid gap-8 py-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
+              <BrandLogo size="lg" />
+              <div className="space-y-4">
+                <h1 className="text-3xl font-bold">Vamos configurar o Zytrex Inventory para sua empresa.</h1>
+                <p className="text-muted-foreground">
+                  Este assistente cria os dados iniciais, estoques e o
+                  usuario master para o primeiro acesso.
+                </p>
+                <Button className="zyntra-gradient border-0" onClick={next}>
+                  Começar configuração
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {step === 1 && (
+            <SetupGrid>
+              <SetupField label="Nome da empresa" required>
+                <Input value={payload.empresa.nome_empresa} onChange={(e) => updateEmpresa("nome_empresa", e.target.value)} />
+              </SetupField>
+              <SetupField label="Unidade">
+                <Input value={payload.empresa.unidade_empresa} onChange={(e) => updateEmpresa("unidade_empresa", e.target.value)} />
+              </SetupField>
+              <SetupField label="CNPJ">
+                <Input value={payload.empresa.cnpj_empresa} onChange={(e) => updateEmpresa("cnpj_empresa", e.target.value)} />
+              </SetupField>
+              <SetupField label="Cidade">
+                <Input value={payload.empresa.cidade_empresa} onChange={(e) => updateEmpresa("cidade_empresa", e.target.value)} />
+              </SetupField>
+              <SetupField label="UF">
+                <Input maxLength={2} value={payload.empresa.uf_empresa} onChange={(e) => updateEmpresa("uf_empresa", e.target.value.toUpperCase())} />
+              </SetupField>
+              <SetupField label="Endereço">
+                <Input value={payload.empresa.endereco_empresa} onChange={(e) => updateEmpresa("endereco_empresa", e.target.value)} />
+              </SetupField>
+              <SetupField label="Telefone">
+                <Input value={payload.empresa.telefone_empresa} onChange={(e) => updateEmpresa("telefone_empresa", e.target.value)} />
+              </SetupField>
+              <SetupField label="Email">
+                <Input type="email" value={payload.empresa.email_empresa} onChange={(e) => updateEmpresa("email_empresa", e.target.value)} />
+              </SetupField>
+              <SetupField label="Logo URL">
+                <Input value={payload.empresa.logo_url} onChange={(e) => updateEmpresa("logo_url", e.target.value)} />
+              </SetupField>
+            </SetupGrid>
+          )}
+
+          {step === 2 && (
+            <div className="space-y-3">
+              {payload.estoques.map((nome, index) => (
+                <div key={index} className="flex gap-2">
+                  <Input
+                    value={nome}
+                    onChange={(e) =>
+                      setPayload((current) => ({
+                        ...current,
+                        estoques: current.estoques.map((item, itemIndex) =>
+                          itemIndex === index ? e.target.value : item,
+                        ),
+                      }))
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() =>
+                      setPayload((current) => ({
+                        ...current,
+                        estoques: current.estoques.filter((_, itemIndex) => itemIndex !== index),
+                      }))
+                    }
+                    disabled={payload.estoques.length === 1}
+                  >
+                    Remover
+                  </Button>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() =>
+                  setPayload((current) => ({ ...current, estoques: [...current.estoques, ""] }))
+                }
+              >
+                Adicionar estoque
+              </Button>
+            </div>
+          )}
+
+          {step === 3 && (
+            <SetupGrid>
+              <SetupField label="Nome" required>
+                <Input value={payload.master.nome} onChange={(e) => updateMaster("nome", e.target.value)} />
+              </SetupField>
+              <SetupField label="Matrícula" required>
+                <Input value={payload.master.matricula} onChange={(e) => updateMaster("matricula", e.target.value)} />
+              </SetupField>
+              <SetupField label="Email">
+                <Input type="email" value={payload.master.email} onChange={(e) => updateMaster("email", e.target.value)} />
+              </SetupField>
+              <SetupField label="Senha" required>
+                <Input type="password" value={payload.master.senha} onChange={(e) => updateMaster("senha", e.target.value)} />
+              </SetupField>
+              <SetupField label="Confirmar senha" required>
+                <Input type="password" value={payload.master.confirmarSenha} onChange={(e) => updateMaster("confirmarSenha", e.target.value)} />
+              </SetupField>
+            </SetupGrid>
+          )}
+
+          {step === 4 && (
+            <div className="grid gap-4 md:grid-cols-2">
+              <ReviewBlock title="Empresa" items={[payload.empresa.nome_empresa, payload.empresa.unidade_empresa, [payload.empresa.cidade_empresa, payload.empresa.uf_empresa].filter(Boolean).join(" - ")]} />
+              <ReviewBlock title="Estoques" items={payload.estoques} />
+              <ReviewBlock title="Usuário master" items={[payload.master.nome, payload.master.matricula, payload.master.email || "Email não informado"]} />
+            </div>
+          )}
+
+          {step > 0 && (
+            <div className="mt-8 flex justify-between gap-3 border-t pt-5">
+              <Button variant="outline" onClick={() => setStep((current) => Math.max(0, current - 1))}>
+                Voltar
+              </Button>
+              {step < steps.length - 1 ? (
+                <Button onClick={next}>Próximo</Button>
+              ) : (
+                <Button className="zyntra-gradient border-0" onClick={finish} disabled={saving}>
+                  {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Finalizar configuração
+                </Button>
+              )}
+            </div>
+          )}
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function SetupGrid({ children }: { children: React.ReactNode }) {
+  return <div className="grid gap-5 md:grid-cols-2">{children}</div>;
+}
+
+function SetupField({
+  label,
+  required,
+  children,
+}: {
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>
+        {label}
+        {required && <span className="text-destructive"> *</span>}
+      </Label>
+      {children}
+    </div>
+  );
+}
+
+function ReviewBlock({ title, items }: { title: string; items: Array<string | undefined> }) {
+  return (
+    <div className="rounded-xl border bg-background p-4">
+      <h3 className="font-semibold">{title}</h3>
+      <div className="mt-3 space-y-1 text-sm text-muted-foreground">
+        {items.filter(Boolean).map((item) => (
+          <div key={item}>{item}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function LoginPage() {
   const navigate = useNavigate();
@@ -36,15 +483,8 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [setupLoading, setSetupLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
-  const [setupName, setSetupName] = useState("");
-  const [setupMatricula, setSetupMatricula] = useState("");
-  const [setupEmail, setSetupEmail] = useState("");
-  const [setupPassword, setSetupPassword] = useState("");
-  const [setupConfirmPassword, setSetupConfirmPassword] = useState("");
 
-  // 🔥 PRIMEIRO LOGIN
   const [showChangePassword, setShowChangePassword] = useState(false);
-
   const [userId, setUserId] = useState<number | null>(null);
 
   const [newPassword, setNewPassword] = useState("");
@@ -59,37 +499,6 @@ function LoginPage() {
       .finally(() => setSetupLoading(false));
   }, []);
 
-  const submitSetup = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!setupName.trim()) return toast.error("Informe o nome completo");
-    if (!setupMatricula.trim()) return toast.error("Informe a matricula");
-    if (!setupPassword) return toast.error("Informe a senha");
-    if (setupPassword.length < 6) return toast.error("A senha deve ter pelo menos 6 caracteres");
-    if (setupPassword !== setupConfirmPassword) {
-      return toast.error("As senhas nao coincidem");
-    }
-
-    setLoading(true);
-    try {
-      await createMasterUser({
-        nome: setupName.trim(),
-        matricula: setupMatricula.trim(),
-        email: setupEmail.trim() || undefined,
-        senha: setupPassword,
-      });
-      toast.success("Usuario master criado com sucesso");
-      setNeedsSetup(false);
-      setMode("admin");
-      setMatricula(setupMatricula.trim());
-      setPass("");
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro ao criar usuario master");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -103,28 +512,22 @@ function LoginPage() {
     try {
       const response = await adminLogin(matricula, pass);
 
-      // 🔥 VERIFICA SE PRECISA TROCAR SENHA
       if (response.precisaTrocarSenha) {
         setUserId(response.id);
-
         setShowChangePassword(true);
-
         toast.warning("Primeiro acesso detectado. Crie uma nova senha.");
-
         return;
       }
 
       toast.success(`Bem-vindo, ${response.nome}!`);
-
       navigate({ to: "/admin" });
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro na operacao");
+      toast.error(err instanceof Error ? err.message : "Erro na operação");
     } finally {
       setLoading(false);
     }
   };
 
-  // 🔥 ALTERAR SENHA PADRÃO
   const changeFirstPassword = async () => {
     if (!userId) {
       toast.error("Usuário inválido");
@@ -145,269 +548,166 @@ function LoginPage() {
       await changeUserPassword(userId, "123456", newPassword);
 
       toast.success("Senha alterada com sucesso");
-
       toast.info("Faça login novamente");
 
       setShowChangePassword(false);
-
       setPass("");
       setMatricula("");
-
       setNewPassword("");
       setConfirmPassword("");
-
       setUserId(null);
-
       setMode("admin");
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro na operacao");
+      toast.error(err instanceof Error ? err.message : "Erro na operação");
     }
   };
 
   if (setupLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
       </div>
     );
   }
 
   if (needsSetup) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background via-muted/40 to-accent/40">
-        <div className="w-full max-w-md rounded-2xl bg-card border p-8 shadow-[var(--shadow-card)]">
-          <div className="mb-6 text-center">
-            <div className="mx-auto mb-4 h-12 w-12 rounded-xl bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center">
-              <Shield className="h-6 w-6 text-primary-foreground" />
-            </div>
-            <h1 className="text-2xl font-bold">Criar usuario master</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Configure o primeiro acesso administrativo do sistema.
-            </p>
-          </div>
-
-          <form onSubmit={submitSetup} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Nome completo</Label>
-              <Input value={setupName} onChange={(e) => setSetupName(e.target.value)} autoFocus />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Matricula</Label>
-              <Input value={setupMatricula} onChange={(e) => setSetupMatricula(e.target.value)} />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Email opcional</Label>
-              <Input
-                type="email"
-                value={setupEmail}
-                onChange={(e) => setSetupEmail(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Senha</Label>
-              <Input
-                type="password"
-                value={setupPassword}
-                onChange={(e) => setSetupPassword(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Confirmar senha</Label>
-              <Input
-                type="password"
-                value={setupConfirmPassword}
-                onChange={(e) => setSetupConfirmPassword(e.target.value)}
-              />
-            </div>
-
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              Criar usuario master
-            </Button>
-          </form>
-        </div>
-      </div>
-    );
+    return <SetupWizard onDone={() => { setNeedsSetup(false); setMode("admin"); }} />;
   }
 
   return (
     <>
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background via-muted/40 to-accent/40">
-        <div className="w-full max-w-5xl grid lg:grid-cols-2 rounded-2xl overflow-hidden shadow-[var(--shadow-card)] bg-card border">
-          {/* LADO ESQUERDO */}
-          <div className="hidden lg:flex flex-col justify-between p-10 bg-sidebar text-white relative overflow-hidden">
-            <div className="absolute -top-20 -right-20 h-64 w-64 rounded-full bg-primary/30 blur-3xl" />
+      <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_0%,rgba(34,211,238,0.11),transparent_28rem),radial-gradient(circle_at_88%_12%,rgba(139,92,246,0.1),transparent_28rem)] dark:bg-[radial-gradient(circle_at_10%_0%,rgba(34,211,238,0.08),transparent_28rem),radial-gradient(circle_at_88%_12%,rgba(139,92,246,0.08),transparent_28rem)]" />
 
-            <div className="absolute -bottom-24 -left-10 h-72 w-72 rounded-full bg-primary-glow/20 blur-3xl" />
+        <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-5 py-7 sm:px-8">
+          <BrandLogo />
+          <ThemeSegmentedControl />
+        </header>
 
-            <div className="relative">
-              <div className="flex items-center gap-3">
-                <div className="h-11 w-11 rounded-xl bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center shadow-[var(--shadow-elegant)]">
-                  <Film className="h-6 w-6" />
-                </div>
+        <div className="relative z-10 mx-auto grid min-h-[calc(100vh-6.5rem)] w-full max-w-6xl items-center gap-10 px-5 pb-10 sm:px-8 lg:grid-cols-[0.95fr_1.05fr]">
+          <section className="mx-auto w-full max-w-lg space-y-8 lg:mx-0">
+            <BrandLogo size="lg" />
+            <p className="max-w-md text-base leading-7 text-muted-foreground">
+              Plataforma inteligente para controle de estoque, lotes, validade e movimentações.
+            </p>
+            <div className="h-0.5 w-16 rounded-full bg-[linear-gradient(135deg,#22D3EE_0%,#4F7CFF_45%,#8B5CF6_100%)]" />
+          </section>
 
-                <div>
-                  <div className="font-semibold text-lg">Cinépolis</div>
-
-                  <div className="text-xs text-white/60">Controle de Estoque</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="relative space-y-3">
-              <h2 className="text-3xl font-bold leading-tight">
-                Gestão completa do seu estoque, em um só lugar.
-              </h2>
-
-              <p className="text-white/70 text-sm leading-relaxed">
-                Movimente produtos com leitura de código de barras, controle estoque mínimo e
-                acompanhe cada entrada e saída em tempo real.
-              </p>
-            </div>
-
-            <div className="relative text-xs text-white/50">
-              © {new Date().getFullYear()} Cinépolis · Todos os direitos reservados
-            </div>
-          </div>
-
-          {/* LADO DIREITO */}
-          <div className="p-8 sm:p-10 flex flex-col justify-center">
-            {mode === "choose" ? (
-              <div className="space-y-6">
-                <div className="text-center">
-                  <div className="lg:hidden flex items-center justify-center gap-2 mb-4">
-                    <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center">
-                      <Film className="h-5 w-5 text-primary-foreground" />
+          <section className="border-border/80 lg:border-l lg:pl-12">
+            <div className="rounded-3xl border bg-card/95 p-5 shadow-[var(--shadow-card)] backdrop-blur sm:p-7">
+              {mode === "choose" ? (
+                <div className="space-y-6">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/15">
+                      <Shield className="h-5 w-5" />
                     </div>
-
-                    <span className="font-semibold">Cinépolis</span>
+                    <div>
+                      <h1 className="text-xl font-bold text-foreground">Escolha o acesso</h1>
+                      <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+                        Entre no painel administrativo ou acesse o modo operacional para registros
+                        rápidos.
+                      </p>
+                    </div>
                   </div>
 
-                  <h1 className="text-2xl font-bold">Bem-vindo</h1>
+                  <div className="grid gap-3">
+                    <AccessCard
+                      icon={Shield}
+                      title="Acesso Administrativo"
+                      description="Gerencie produtos, estoques, usuários, relatórios e inventários."
+                      action={() => setMode("admin")}
+                      tone="blue"
+                    />
+                    <AccessCard
+                      icon={UserCog}
+                      title="Modo Operacional"
+                      description="Registre entradas, saídas, desperdícios e conferências com agilidade."
+                      action={() => navigate({ to: "/operador" })}
+                      tone="purple"
+                    />
+                  </div>
 
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Selecione como deseja acessar o sistema
+                  <p className="flex items-center justify-center gap-2 pt-2 text-center text-xs text-muted-foreground">
+                    <Lock className="h-3.5 w-3.5" />
+                    Sessão segura e trilha de movimentações.
                   </p>
                 </div>
-
-                <div className="grid gap-3">
-                  {/* ADMIN */}
+              ) : (
+                <form onSubmit={submit} className="space-y-5">
                   <button
-                    onClick={() => setMode("admin")}
-                    className="group relative text-left rounded-xl border bg-card p-5 hover:border-primary hover:shadow-[var(--shadow-elegant)] transition-all"
+                    type="button"
+                    onClick={() => setMode("choose")}
+                    className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
                   >
-                    <div className="flex items-start gap-4">
-                      <div className="h-11 w-11 rounded-lg bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition">
-                        <Shield className="h-5 w-5" />
-                      </div>
-
-                      <div className="flex-1">
-                        <div className="font-semibold">Login Admin</div>
-
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Acesso total ao sistema. Requer usuário e senha.
-                        </p>
-                      </div>
-                    </div>
+                    <ArrowLeft className="h-4 w-4" />
+                    Voltar
                   </button>
 
-                  {/* OPERADOR */}
-                  <button
-                    onClick={() => navigate({ to: "/operador" })}
-                    className="group relative text-left rounded-xl border bg-card p-5 hover:border-primary hover:shadow-[var(--shadow-elegant)] transition-all"
-                  >
-                    <div className="flex items-start gap-4">
-                      <div className="h-11 w-11 rounded-lg bg-accent text-accent-foreground flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition">
-                        <UserCog className="h-5 w-5" />
-                      </div>
-
-                      <div className="flex-1">
-                        <div className="font-semibold">Modo Operador</div>
-
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Entrada e retirada de produtos.
-                        </p>
-                      </div>
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/15">
+                      <LockKeyhole className="h-5 w-5" />
                     </div>
-                  </button>
-                </div>
+                    <div>
+                      <h1 className="text-2xl font-bold text-foreground">Acesso Administrativo</h1>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Use suas credenciais para entrar no painel Zytrex Inventory.
+                      </p>
+                    </div>
+                  </div>
 
-                <p className="text-[11px] text-center text-muted-foreground">
-                  Ao entrar você concorda com as políticas internas de uso do sistema.
+                  <div className="space-y-2">
+                    <Label htmlFor="user">Matrícula</Label>
+                    <Input
+                      id="user"
+                      value={matricula}
+                      onChange={(e) => setMatricula(e.target.value)}
+                      placeholder="Sua matrícula"
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="pass">Senha</Label>
+                    <Input
+                      id="pass"
+                      type="password"
+                      value={pass}
+                      onChange={(e) => setPass(e.target.value)}
+                      placeholder="••••••••"
+                    />
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="zyntra-gradient w-full border-0"
+                    disabled={loading}
+                  >
+                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Entrar
+                  </Button>
+                </form>
+              )}
+            </div>
+          </section>
+        </div>
+      </main>
+
+      {showChangePassword && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md space-y-4 rounded-3xl border bg-card p-6 text-card-foreground shadow-[var(--shadow-card)]">
+            <div className="flex items-start gap-4">
+              <BrandLogo />
+              <div>
+                <h2 className="text-xl font-bold text-foreground">Primeiro acesso</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Você está utilizando a senha padrão do sistema. Crie uma nova senha para
+                  continuar.
                 </p>
               </div>
-            ) : (
-              <form onSubmit={submit} className="space-y-5">
-                <button
-                  type="button"
-                  onClick={() => setMode("choose")}
-                  className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  Voltar
-                </button>
-
-                <div>
-                  <h1 className="text-2xl font-bold">Acesso administrativo</h1>
-
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Use suas credenciais de administrador.
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="user">Matrícula</Label>
-
-                  <Input
-                    id="user"
-                    value={matricula}
-                    onChange={(e) => setMatricula(e.target.value)}
-                    placeholder="Sua matrícula"
-                    autoFocus
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="pass">Senha</Label>
-
-                  <Input
-                    id="pass"
-                    type="password"
-                    value={pass}
-                    onChange={(e) => setPass(e.target.value)}
-                    placeholder="••••••••"
-                  />
-                </div>
-
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                  Entrar
-                </Button>
-              </form>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* 🔥 MODAL TROCAR SENHA */}
-      {showChangePassword && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-card border rounded-2xl p-6 w-full max-w-md space-y-4 shadow-xl">
-            <div>
-              <h2 className="text-xl font-bold">Primeiro acesso</h2>
-
-              <p className="text-sm text-muted-foreground mt-1">
-                Você está utilizando a senha padrão do sistema. Crie uma nova senha para continuar.
-              </p>
             </div>
 
             <div className="space-y-2">
               <Label>Nova senha</Label>
-
               <Input
                 type="password"
                 value={newPassword}
@@ -417,7 +717,6 @@ function LoginPage() {
 
             <div className="space-y-2">
               <Label>Confirmar senha</Label>
-
               <Input
                 type="password"
                 value={confirmPassword}
@@ -425,7 +724,7 @@ function LoginPage() {
               />
             </div>
 
-            <Button className="w-full" onClick={changeFirstPassword}>
+            <Button className="zyntra-gradient w-full border-0" onClick={changeFirstPassword}>
               Salvar nova senha
             </Button>
           </div>

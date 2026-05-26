@@ -87,7 +87,7 @@ import type {
 } from "@/types";
 
 export const Route = createFileRoute("/admin/inventario")({
-  head: () => ({ meta: [{ title: "Inventário · Cinépolis" }] }),
+  head: () => ({ meta: [{ title: "Inventário · Zytrex Inventory" }] }),
   component: InventarioPage,
 });
 

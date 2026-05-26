@@ -3,7 +3,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { MovementForm } from "@/components/movement/MovementForm";
 
 export const Route = createFileRoute("/operador/retirada")({
-  head: () => ({ meta: [{ title: "Retirada · Operador Cinépolis" }] }),
+  head: () => ({ meta: [{ title: "Retirada · Zytrex Inventory" }] }),
   component: () => (
     <>
       <PageHeader title="Retirada de Produtos" subtitle="Registre saídas (matrícula e senha obrigatórias)" />

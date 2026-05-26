@@ -1,5 +1,203 @@
 const { pool } = require("../database/connection");
 const loteService = require("./loteService");
+const configuracaoService = require("./configuracaoService");
+
+function parseBooleanConfig(value, fallback) {
+  if (value === null || value === undefined || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (["true", "1", "sim", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "nao", "não", "no", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
+async function getMovementRules(conn) {
+  const bloquearSaidaProdutoVencido = await configuracaoService.getConfig(
+    "bloquear_saida_produto_vencido",
+    conn,
+  );
+  const registrarVencidoAoTentarRetirar = await configuracaoService.getConfig(
+    "registrar_vencido_ao_tentar_retirar",
+    conn,
+  );
+  const permitirIgnorarFefo = await configuracaoService.getConfig("permitir_ignorar_fefo", conn);
+  const exigirJustificativaFefo = await configuracaoService.getConfig(
+    "exigir_justificativa_fefo",
+    conn,
+  );
+
+  return {
+    bloquearSaidaProdutoVencido: parseBooleanConfig(bloquearSaidaProdutoVencido, true),
+    registrarVencidoAoTentarRetirar: parseBooleanConfig(registrarVencidoAoTentarRetirar, true),
+    permitirIgnorarFefo: parseBooleanConfig(permitirIgnorarFefo, true),
+    exigirJustificativaFefo: parseBooleanConfig(exigirJustificativaFefo, true),
+  };
+}
+
+function isExpiredLot(lot) {
+  if (!lot?.data_validade) return false;
+  const expiration = new Date(`${String(lot.data_validade).slice(0, 10)}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return !Number.isNaN(expiration.getTime()) && expiration < today;
+}
+
+function assertLotCanLeave(lot, rules) {
+  if (rules.bloquearSaidaProdutoVencido && isExpiredLot(lot)) {
+    throw Object.assign(
+      new Error(
+        `Saida bloqueada: o lote ${loteService.displayLotCode(lot.lote)} esta vencido desde ${String(lot.data_validade).slice(0, 10)}.`,
+      ),
+      { status: 400 },
+    );
+  }
+}
+
+async function getExpiredWasteReason(conn) {
+  const [motivos] = await conn.query(
+    "SELECT id, nome FROM motivos_desperdicio WHERE nome = 'Produto vencido' AND ativo = 1 LIMIT 1",
+  );
+  if (!motivos.length) {
+    throw Object.assign(new Error("Motivo 'Produto vencido' nao encontrado"), {
+      status: 400,
+    });
+  }
+  return motivos[0];
+}
+
+async function registrarLoteVencidoComoDesperdicio({
+  conn,
+  produto,
+  atual,
+  estoqueId,
+  usuario,
+  loteRow,
+}) {
+  const quantidade = Number(loteRow.quantidade || 0);
+  if (!Number.isFinite(quantidade) || quantidade <= 0) {
+    throw Object.assign(new Error("Saldo insuficiente neste lote."), { status: 400 });
+  }
+
+  const motivo = await getExpiredWasteReason(conn);
+  const estoqueAntes = await loteService.recalcStockProduct(conn, atual.estoque_produto_id);
+  const valorUnitario = Number(atual.preco_venda || produto.preco_venda || 0);
+  const valorTotal = Number((quantidade * valorUnitario).toFixed(2));
+
+  await conn.query("UPDATE produto_lotes SET quantidade = 0, atualizado_em = NOW() WHERE id = ?", [
+    loteRow.id,
+  ]);
+
+  const estoqueDepois = await loteService.recalcStockProduct(conn, atual.estoque_produto_id);
+  await conn.query("UPDATE produtos SET atualizado_em = NOW() WHERE id = ?", [produto.id]);
+
+  const [desperdicio] = await conn.query(
+    `INSERT INTO desperdicios
+      (estoque_id, produto_id, usuario_id, motivo_id, quantidade,
+       estoque_antes, estoque_depois, valor_unitario, valor_total, lote_id, lote_codigo, criado_em)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+    [
+      estoqueId,
+      produto.id,
+      usuario.id,
+      motivo.id,
+      quantidade,
+      estoqueAntes,
+      estoqueDepois,
+      valorUnitario,
+      valorTotal,
+      loteRow.id,
+      loteRow.lote,
+    ],
+  );
+
+  const [movimentacao] = await conn.query(
+    `INSERT INTO movimentacoes
+      (estoque_id, produto_id, usuario_id, tipo, quantidade,
+       estoque_antes, estoque_depois,
+       usuario_nome, produto_nome, observacao, criado_em)
+     VALUES (?, ?, ?, 'desperdicio', ?, ?, ?, ?, ?, ?, NOW())`,
+    [
+      estoqueId,
+      produto.id,
+      usuario.id,
+      quantidade,
+      estoqueAntes,
+      estoqueDepois,
+      usuario.nome,
+      atual.produto_nome,
+      `Desperdicio: ${motivo.nome}`,
+    ],
+  );
+
+  await loteService.insertMovementLot(conn, {
+    movimentacaoId: movimentacao.insertId,
+    loteId: loteRow.id,
+    quantidade,
+  });
+
+  const alerta_criado = await atualizarAlertasEstoque(
+    conn,
+    produto.id,
+    estoqueId,
+    estoqueDepois,
+    atual.estoque_minimo,
+  );
+
+  return {
+    bloqueado_vencido: true,
+    desperdicio_automatico: true,
+    message:
+      "Este lote está vencido. A saída foi bloqueada e o lote foi registrado automaticamente como desperdício.",
+    desperdicio_id: desperdicio.insertId,
+    movimentacao_id: movimentacao.insertId,
+    produto_id: produto.id,
+    usuario_id: usuario.id,
+    estoque_id: estoqueId,
+    tipo: "desperdicio",
+    motivo: motivo.nome,
+    quantidade,
+    estoque_antes: estoqueAntes,
+    estoque_depois: estoqueDepois,
+    valor_unitario: valorUnitario,
+    valor_total: valorTotal,
+    usuario_nome: usuario.nome,
+    produto_nome: atual.produto_nome,
+    lote_id: loteRow.id,
+    lote_codigo: loteService.displayLotCode(loteRow.lote),
+    alerta_criado,
+  };
+}
+
+function assertFefoAllowed(fefo, rules, confirmarIgnorarFefo, justificativaFefo) {
+  if (!fefo) return false;
+  const fefoPayload = {
+    ...fefo,
+    permitir_ignorar_fefo: rules.permitirIgnorarFefo,
+    exigir_justificativa_fefo: rules.exigirJustificativaFefo,
+    permitirIgnorarFefo: rules.permitirIgnorarFefo,
+    exigirJustificativaFefo: rules.exigirJustificativaFefo,
+  };
+
+  if (!rules.permitirIgnorarFefo) {
+    throw Object.assign(new Error("Nao e permitido ignorar a ordem FEFO"), {
+      status: 409,
+      fefo: fefoPayload,
+    });
+  }
+
+  if (!confirmarIgnorarFefo) {
+    throw Object.assign(new Error(fefo.mensagem), { status: 409, fefo: fefoPayload });
+  }
+
+  if (rules.exigirJustificativaFefo && !String(justificativaFefo || "").trim()) {
+    throw Object.assign(new Error("Justificativa FEFO obrigatoria"), {
+      status: 400,
+      fefo: fefoPayload,
+    });
+  }
+
+  return true;
+}
 
 async function atualizarAlertasEstoque(conn, produtoId, estoqueId, estoqueAtual, estoqueMinimo) {
   if (Number(estoqueMinimo) > 0 && estoqueAtual <= Number(estoqueMinimo)) {
@@ -49,6 +247,7 @@ async function registrarMovimentacao({
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    const rules = await getMovementRules(conn);
 
     const atual =
       tipo === "entrada"
@@ -89,6 +288,24 @@ async function registrarMovimentacao({
         lote,
         true,
       );
+      if (
+        rules.bloquearSaidaProdutoVencido &&
+        rules.registrarVencidoAoTentarRetirar &&
+        isExpiredLot(loteMovimentado)
+      ) {
+        const result = await registrarLoteVencidoComoDesperdicio({
+          conn,
+          produto,
+          atual,
+          estoqueId: estoque_id,
+          usuario,
+          loteRow: loteMovimentado,
+        });
+        await conn.commit();
+        return result;
+      }
+      assertLotCanLeave(loteMovimentado, rules);
+
       const loteAntes = Number(loteMovimentado.quantidade);
       if (loteAntes - quantidade < 0) {
         throw Object.assign(new Error("Saldo insuficiente neste estoque."), {
@@ -97,15 +314,7 @@ async function registrarMovimentacao({
       }
 
       const fefo = await loteService.getFefoWarning(conn, atual.estoque_produto_id, loteMovimentado);
-      if (fefo && !confirmar_ignorar_fefo) {
-        throw Object.assign(new Error(fefo.mensagem), { status: 409, fefo });
-      }
-      if (fefo) {
-        if (!String(justificativa_fefo || "").trim()) {
-          throw Object.assign(new Error("Justificativa FEFO obrigatoria"), { status: 400 });
-        }
-        ignorouFefo = true;
-      }
+      ignorouFefo = assertFefoAllowed(fefo, rules, confirmar_ignorar_fefo, justificativa_fefo);
 
       await conn.query(
         "UPDATE produto_lotes SET quantidade = ?, atualizado_em = NOW() WHERE id = ?",
@@ -204,6 +413,7 @@ async function transferirEstoque({
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    const rules = await getMovementRules(conn);
 
     const [destinoRows] = await conn.query(
       "SELECT id, nome, ativo FROM estoques WHERE id = ? LIMIT 1",
@@ -236,6 +446,8 @@ async function transferirEstoque({
       lote,
       true,
     );
+    assertLotCanLeave(loteOrigem, rules);
+
     const origemAntes = await loteService.recalcStockProduct(conn, origem.estoque_produto_id);
     const origemDepois = origemAntes - quantidade;
 
@@ -246,16 +458,12 @@ async function transferirEstoque({
     }
 
     const fefo = await loteService.getFefoWarning(conn, origem.estoque_produto_id, loteOrigem);
-    let ignorouFefo = false;
-    if (fefo && !confirmar_ignorar_fefo) {
-      throw Object.assign(new Error(fefo.mensagem), { status: 409, fefo });
-    }
-    if (fefo) {
-      if (!String(justificativa_fefo || "").trim()) {
-        throw Object.assign(new Error("Justificativa FEFO obrigatoria"), { status: 400 });
-      }
-      ignorouFefo = true;
-    }
+    const ignorouFefo = assertFefoAllowed(
+      fefo,
+      rules,
+      confirmar_ignorar_fefo,
+      justificativa_fefo,
+    );
 
     const destinoProduto = await loteService.ensureStockProduct(conn, produto.id, estoque_destino_id);
     const destinoAntes = await loteService.recalcStockProduct(
@@ -402,6 +610,10 @@ async function listar(filtros = {}) {
     where.push("m.tipo = ?");
     params.push(filtros.tipo);
   }
+  if (filtros.categoria_id && filtros.categoria_id !== "all") {
+    where.push("p.categoria_id = ?");
+    params.push(filtros.categoria_id);
+  }
   if (filtros.produto_id) {
     where.push("m.produto_id = ?");
     params.push(filtros.produto_id);
@@ -437,7 +649,8 @@ async function listar(filtros = {}) {
       e.nome AS estoque_nome,
       ml.lote_id,
       pl.lote AS lote_codigo,
-      COALESCE(ml.ignorou_fefo, 0) AS ignorou_fefo
+      COALESCE(ml.ignorou_fefo, 0) AS ignorou_fefo,
+      ml.justificativa_fefo
     FROM movimentacoes m
     LEFT JOIN produtos p ON p.id = m.produto_id
     LEFT JOIN estoques e ON e.id = m.estoque_id

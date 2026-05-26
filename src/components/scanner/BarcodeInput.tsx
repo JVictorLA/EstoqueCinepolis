@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { ScanLine } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ interface BarcodeInputProps {
   placeholder?: string;
   autoFocus?: boolean;
   onSubmit?: (v: string) => void;
+  action?: ReactNode;
 }
 
 export function BarcodeInput({
@@ -22,6 +23,7 @@ export function BarcodeInput({
   placeholder = "Digite ou escaneie o código",
   autoFocus,
   onSubmit,
+  action,
 }: BarcodeInputProps) {
   const isMobile = useIsMobileOrTablet();
   const [open, setOpen] = useState(false);
@@ -38,7 +40,7 @@ export function BarcodeInput({
   return (
     <div className="space-y-2">
       {label && <Label>{label}</Label>}
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2 sm:flex-nowrap">
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -51,7 +53,7 @@ export function BarcodeInput({
           placeholder={placeholder}
           autoFocus={autoFocus}
           inputMode="numeric"
-          className="font-mono"
+          className="min-w-0 flex-1 font-mono"
         />
         {isMobile && (
           <Button
@@ -63,6 +65,7 @@ export function BarcodeInput({
             Escanear
           </Button>
         )}
+        {action}
       </div>
       <BarcodeScanner
         open={open}

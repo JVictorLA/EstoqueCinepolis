@@ -17,7 +17,7 @@ function money(value: number) {
 }
 
 export const Route = createFileRoute("/admin/")({
-  head: () => ({ meta: [{ title: "Dashboard · Cinépolis" }] }),
+  head: () => ({ meta: [{ title: "Dashboard · Zytrex Inventory" }] }),
   component: Dashboard,
 });
 

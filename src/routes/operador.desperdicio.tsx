@@ -7,7 +7,7 @@ import { WasteDialog } from "@/components/waste/WasteDialog";
 import type { Estoque } from "@/types";
 
 export const Route = createFileRoute("/operador/desperdicio")({
-  head: () => ({ meta: [{ title: "Registrar desperdicio · Operador Cinepolis" }] }),
+  head: () => ({ meta: [{ title: "Registrar desperdício · Zytrex Inventory" }] }),
   component: OperadorDesperdicioPage,
 });
 

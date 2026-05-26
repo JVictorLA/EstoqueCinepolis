@@ -12,6 +12,7 @@ import {
   Plus,
   Star,
   Pencil,
+  RefreshCw,
   Trash2,
   Check,
   X,
@@ -99,6 +100,20 @@ function money(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function ean13CheckDigit(base: string) {
+  const sum = base
+    .split("")
+    .reduce((total, digit, index) => total + Number(digit) * (index % 2 === 0 ? 1 : 3), 0);
+  return String((10 - (sum % 10)) % 10);
+}
+
+function generateInternalBarcode() {
+  const timestampPart = Date.now().toString().slice(-8);
+  const randomPart = Math.floor(Math.random() * 100).toString().padStart(2, "0");
+  const base = `29${timestampPart}${randomPart}`;
+  return `${base}${ean13CheckDigit(base)}`;
+}
+
 function ExpirationBadges({ product }: { product: Product }) {
   if (!product.requiresExpiration) {
     return null;
@@ -124,7 +139,7 @@ function ExpirationBadges({ product }: { product: Product }) {
 }
 
 export const Route = createFileRoute("/admin/produtos")({
-  head: () => ({ meta: [{ title: "Produtos · Cinépolis Estoque" }] }),
+  head: () => ({ meta: [{ title: "Produtos · Zytrex Inventory" }] }),
   component: ProdutosPage,
 });
 
@@ -1306,6 +1321,12 @@ function NewProductDialog({
     if (firstActive) setEstoqueId(String(firstActive.id));
   }, [estoques, selectedEstoqueId]);
 
+  const generateBarcode = () => {
+    const code = generateInternalBarcode();
+    setBarcode(code);
+    toast.success("Codigo de barras gerado");
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!barcode || !name || !price || !categoryId || !estoqueId) {
@@ -1350,7 +1371,22 @@ function NewProductDialog({
         <DialogTitle>Cadastrar novo produto</DialogTitle>
       </DialogHeader>
       <form onSubmit={submit} className="space-y-4">
-        <BarcodeInput value={barcode} onChange={setBarcode} />
+        <BarcodeInput
+          value={barcode}
+          onChange={setBarcode}
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              className="shrink-0 gap-2"
+              onClick={generateBarcode}
+              title="Gerar codigo de barras interno"
+            >
+              <RefreshCw className="h-4 w-4" />
+              Gerar
+            </Button>
+          }
+        />
         <div className="space-y-2">
           <Label>Nome do produto</Label>
           <Input

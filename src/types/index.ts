@@ -55,6 +55,10 @@ export interface FefoWarning {
   data_validade: string | null;
   quantidade: number;
   mensagem: string;
+  permitir_ignorar_fefo?: boolean | number | string;
+  exigir_justificativa_fefo?: boolean | number | string;
+  permitirIgnorarFefo?: boolean | number | string;
+  exigirJustificativaFefo?: boolean | number | string;
 }
 
 export type MovementType = "entrada" | "saida" | "desperdicio";
@@ -76,6 +80,7 @@ export interface Movement {
   lotId?: number | null;
   lotCode?: string | null;
   ignoredFefo?: boolean;
+  fefoJustification?: string | null;
   createdAt: string;
 }
 

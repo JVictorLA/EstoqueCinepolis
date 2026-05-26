@@ -71,6 +71,16 @@ function formatDate(value?: string | null) {
   return year && month && day ? `${day}/${month}/${year}` : value;
 }
 
+function configFlag(value: unknown, fallback: boolean) {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  const normalized = String(value).trim().toLowerCase();
+  if (["true", "1", "sim", "yes", "on"].includes(normalized)) return true;
+  if (["false", "0", "nao", "não", "no", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
 export function MovementForm({
   type,
   useStoredStock = false,
@@ -97,6 +107,7 @@ export function MovementForm({
   const [lots, setLots] = useState<ProductLot[]>([]);
   const [fefoWarning, setFefoWarning] = useState<FefoWarning | null>(null);
   const [fefoJustification, setFefoJustification] = useState("");
+  const [expiredBlockMessage, setExpiredBlockMessage] = useState("");
 
   const [note, setNote] =
     useState("");
@@ -377,12 +388,28 @@ export function MovementForm({
       setReviewOpen(false);
 
     } catch (e: any) {
-      if (e instanceof ApiError && e.status === 409 && (e.data as any)?.fefo) {
+      if (e instanceof ApiError && (e.data as any)?.fefo) {
         setFefoWarning((e.data as { fefo: FefoWarning }).fefo);
+        setFefoJustification("");
         setReviewOpen(true);
         toast.warning("Ha um alerta FEFO para este lote");
         return;
       }
+      if (
+        e instanceof ApiError &&
+        e.status === 400 &&
+        /vencid|produto vencido|lote .*venc/i.test(e.message)
+      ) {
+        setReviewOpen(false);
+        setExpiredBlockMessage(e.message);
+        if (/registrado automaticamente como desperd/i.test(e.message) && product && selectedEstoqueId) {
+          getProductLots(product.id, selectedEstoqueId)
+            .then((items) => setLots(items.filter((item) => item.quantity > 0)))
+            .catch(() => setLots([]));
+        }
+        return;
+      }
+
       toast.error(
         e?.message ||
           "Falha ao registrar movimentação"
@@ -474,6 +501,21 @@ export function MovementForm({
   const matchingLots = lot.trim()
     ? lots.filter((item) => item.lot.toLowerCase().endsWith(lot.trim().toLowerCase()))
     : lots;
+
+  const expiredWasAutoWaste = /registrado automaticamente como desperd/i.test(
+    expiredBlockMessage,
+  );
+  const canIgnoreFefo = configFlag(
+    fefoWarning?.permitir_ignorar_fefo ?? fefoWarning?.permitirIgnorarFefo,
+    true,
+  );
+  const requiresFefoJustification =
+    !!fefoWarning &&
+    canIgnoreFefo &&
+    configFlag(
+      fefoWarning.exigir_justificativa_fefo ?? fefoWarning.exigirJustificativaFefo,
+      true,
+    );
 
   return (
     <div className="grid lg:grid-cols-3 gap-6">
@@ -960,14 +1002,27 @@ export function MovementForm({
               <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
                 <div className="font-medium text-warning">Alerta FEFO</div>
                 <div className="mt-1 text-muted-foreground">{fefoWarning.mensagem}</div>
-                <div className="mt-3 space-y-2">
-                  <Label>Justificativa obrigatoria</Label>
-                  <Textarea
-                    value={fefoJustification}
-                    onChange={(e) => setFefoJustification(e.target.value)}
-                    rows={2}
-                  />
-                </div>
+                {!canIgnoreFefo && (
+                  <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-destructive">
+                    Este produto nao pode ser retirado porque existe outro lote que vence
+                    primeiro. Retire primeiro o lote com vencimento mais proximo.
+                  </div>
+                )}
+                {canIgnoreFefo && requiresFefoJustification && (
+                  <div className="mt-3 space-y-2">
+                    <Label>Justificativa obrigatoria</Label>
+                    <Textarea
+                      value={fefoJustification}
+                      onChange={(e) => setFefoJustification(e.target.value)}
+                      rows={2}
+                    />
+                  </div>
+                )}
+                {canIgnoreFefo && !requiresFefoJustification && (
+                  <div className="mt-3 rounded-md border border-warning/30 bg-background/70 p-3 text-muted-foreground">
+                    Voce esta retirando um produto que vence depois de outro lote disponivel.
+                  </div>
+                )}
               </div>
             )}
 
@@ -986,7 +1041,12 @@ export function MovementForm({
 
             <AlertDialogAction
               onClick={(event) => {
-                if (fefoWarning && !fefoJustification.trim()) {
+                if (fefoWarning && !canIgnoreFefo) {
+                  event.preventDefault();
+                  toast.error("Nao e permitido ignorar a ordem FEFO");
+                  return;
+                }
+                if (requiresFefoJustification && !fefoJustification.trim()) {
                   event.preventDefault();
                   toast.error("Informe a justificativa FEFO");
                   return;
@@ -1003,7 +1063,7 @@ export function MovementForm({
               {submitting && (
                 <Loader2 className="h-4 w-4 animate-spin" />
               )}
-              {movementActionLabel}
+              {fefoWarning && canIgnoreFefo ? "Ignorar FEFO e continuar" : movementActionLabel}
             </AlertDialogAction>
           </AlertDialogFooter>
 
@@ -1074,6 +1134,41 @@ export function MovementForm({
 
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={!!expiredBlockMessage}
+        onOpenChange={(open) => {
+          if (!open) setExpiredBlockMessage("");
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Retirada bloqueada
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {expiredBlockMessage ||
+                "A retirada foi bloqueada porque o lote selecionado esta vencido."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-foreground">
+            {expiredWasAutoWaste
+              ? "A baixa de saida nao foi registrada. O lote vencido foi removido do estoque como desperdicio automaticamente. Deixe o produto na area de produtos improprios para consumo."
+              : "Nenhuma baixa foi registrada no estoque. Este produto deve ser registrado como desperdicio. Deixe-o na area de produtos improprios para consumo."}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => setExpiredBlockMessage("")}
+            >
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
     </div>
   );

@@ -15,16 +15,18 @@ import {
   Menu,
   X,
   History,
-  Film,
   Warehouse,
   Trash2,
+  type LucideIcon,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { clearSession, getStoredUser } from "@/services/api";
 
-type NavItem = { to: string; label: string; icon: any };
+import zyntraIcon from "@/icones/android-chrome-512x512.png";
+
+type NavItem = { to: string; label: string; icon: LucideIcon };
 
 const adminNav: NavItem[] = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -32,7 +34,7 @@ const adminNav: NavItem[] = [
   { to: "/admin/produtos", label: "Produtos", icon: Package },
   { to: "/admin/entrada", label: "Entrada de Produtos", icon: ArrowDownToLine },
   { to: "/admin/retirada", label: "Retirada de Produtos", icon: ArrowUpFromLine },
-  { to: "/admin/desperdicios", label: "Desperdicios", icon: Trash2 },
+  { to: "/admin/desperdicios", label: "Desperdícios", icon: Trash2 },
   { to: "/admin/movimentacoes", label: "Movimentações", icon: ListOrdered },
   { to: "/admin/inventario", label: "Inventário", icon: ClipboardList },
   { to: "/admin/usuarios", label: "Usuários", icon: Users },
@@ -42,13 +44,29 @@ const adminNav: NavItem[] = [
 const operadorNav: NavItem[] = [
   { to: "/operador/entrada", label: "Entrada de Produtos", icon: ArrowDownToLine },
   { to: "/operador/retirada", label: "Retirada de Produtos", icon: ArrowUpFromLine },
-  { to: "/operador/desperdicio", label: "Registrar desperdicio", icon: Trash2 },
+  { to: "/operador/desperdicio", label: "Registrar desperdício", icon: Trash2 },
   { to: "/operador/historico", label: "Histórico", icon: History },
 ];
 
 interface AppShellProps {
   variant: "admin" | "operador";
   children: ReactNode;
+}
+
+function Brand() {
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-primary/15 bg-background p-1 shadow-[var(--shadow-elegant)]">
+        <img src={zyntraIcon} alt="" className="h-full w-full object-contain" />
+      </div>
+      <div className="min-w-0 leading-tight">
+        <div className="truncate text-sm font-semibold text-sidebar-accent-foreground">Zytrex</div>
+        <div className="truncate text-[10px] font-medium uppercase tracking-[0.22em] text-primary">
+          Inventory
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function AppShell({ variant, children }: AppShellProps) {
@@ -59,7 +77,7 @@ export function AppShell({ variant, children }: AppShellProps) {
   const [operatorStockName, setOperatorStockName] = useState<string | null>(null);
   const [adminName, setAdminName] = useState("Administrador");
 
-  const userLabel = variant === "admin" ? adminName : "Modo Operador";
+  const userLabel = variant === "admin" ? adminName : "Modo Operacional";
   const initials =
     variant === "admin"
       ? adminName
@@ -99,43 +117,37 @@ export function AppShell({ variant, children }: AppShellProps) {
     navigate({ to: "/" });
   };
 
+  const navLinkClass = (active: boolean) =>
+    `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all ${
+      active
+        ? "zyntra-gradient text-white shadow-[var(--shadow-elegant)]"
+        : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+    }`;
+
   return (
-    <div className="min-h-screen flex w-full bg-background">
-      {/* Sidebar desktop */}
-      <aside className="hidden lg:flex fixed top-0 left-0 h-screen w-64 flex-col bg-sidebar text-sidebar-foreground shadow-lg">
-        <div className="h-16 flex items-center gap-2 px-5 border-b border-sidebar-border">
-          <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center shadow-[var(--shadow-elegant)]">
-            <Film className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <div className="leading-tight">
-            <div className="font-semibold text-white">Cinépolis</div>
-            <div className="text-[11px] text-sidebar-foreground/60">Controle de Estoque</div>
-          </div>
+    <div className="min-h-screen w-full bg-background text-foreground">
+      <aside className="fixed left-0 top-0 hidden h-screen w-64 flex-col border-r border-sidebar-border bg-sidebar/95 text-sidebar-foreground shadow-2xl backdrop-blur-xl lg:flex">
+        <div className="flex h-20 items-center px-5">
+          <Brand />
         </div>
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
           {nav.map((item) => {
             const Icon = item.icon;
             const active = isActive(item.to);
             return (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
-                  active
-                    ? "bg-sidebar-primary text-sidebar-primary-foreground shadow-[var(--shadow-elegant)]"
-                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                }`}
-              >
+              <Link key={item.to} to={item.to} className={navLinkClass(active)}>
                 <Icon className="h-4 w-4 shrink-0" />
                 <span className="truncate">{item.label}</span>
               </Link>
             );
           })}
         </nav>
-        <div className="p-3 border-t border-sidebar-border">
+
+        <div className="border-t border-sidebar-border p-3">
           <button
             onClick={signOut}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition"
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-sidebar-foreground/80 transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
           >
             <LogOut className="h-4 w-4" />
             Sair
@@ -143,23 +155,23 @@ export function AppShell({ variant, children }: AppShellProps) {
         </div>
       </aside>
 
-      {/* Mobile drawer */}
       {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-40 flex">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileOpen(false)} />
-          <aside className="relative w-72 bg-sidebar text-sidebar-foreground flex flex-col">
-            <div className="h-16 flex items-center justify-between px-5 border-b border-sidebar-border">
-              <div className="flex items-center gap-2">
-                <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-primary to-primary-glow flex items-center justify-center">
-                  <Film className="h-5 w-5 text-primary-foreground" />
-                </div>
-                <div className="font-semibold text-white">Cinépolis</div>
-              </div>
-              <button onClick={() => setMobileOpen(false)} className="text-white/80">
+        <div className="fixed inset-0 z-40 flex lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setMobileOpen(false)}
+          />
+          <aside className="relative flex w-72 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+            <div className="flex h-20 items-center justify-between px-5">
+              <Brand />
+              <button
+                onClick={() => setMobileOpen(false)}
+                className="rounded-lg p-2 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <nav className="flex-1 p-3 space-y-1">
+            <nav className="flex-1 space-y-1 px-3">
               {nav.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(item.to);
@@ -168,20 +180,17 @@ export function AppShell({ variant, children }: AppShellProps) {
                     key={item.to}
                     to={item.to}
                     onClick={() => setMobileOpen(false)}
-                    className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm ${
-                      active
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground/80 hover:bg-sidebar-accent"
-                    }`}
+                    className={navLinkClass(active)}
                   >
-                    <Icon className="h-4 w-4" /> {item.label}
+                    <Icon className="h-4 w-4" />
+                    <span>{item.label}</span>
                   </Link>
                 );
               })}
             </nav>
             <button
               onClick={signOut}
-              className="m-3 flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent"
+              className="m-3 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
             >
               <LogOut className="h-4 w-4" /> Sair
             </button>
@@ -189,31 +198,37 @@ export function AppShell({ variant, children }: AppShellProps) {
         </div>
       )}
 
-      {/* Main */}
-      <div className="flex-1 flex flex-col min-w-0 lg:ml-64">
-        <header className="h-16 border-b bg-card flex items-center gap-3 px-4 sm:px-6 sticky top-0 z-30">
+      <div className="flex min-h-screen min-w-0 flex-col lg:ml-64">
+        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-background/85 px-4 backdrop-blur-xl sm:px-6">
           <button
-            className="lg:hidden p-2 -ml-2 rounded-md hover:bg-muted"
+            className="-ml-2 rounded-xl p-2 transition hover:bg-muted lg:hidden"
             onClick={() => setMobileOpen(true)}
           >
             <Menu className="h-5 w-5" />
           </button>
-          <div className="relative flex-1 max-w-md">
-            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Buscar produtos, códigos…" className="pl-9 bg-muted/50 border-0" />
+
+          <div className="relative max-w-md flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Buscar produtos, códigos..."
+              className="bg-card pl-9 text-sm shadow-none"
+            />
           </div>
+
           <div className="flex-1" />
+
           <Button
             variant="ghost"
             size="sm"
-            className="hidden sm:inline-flex gap-2 text-muted-foreground"
+            className="hidden gap-2 text-muted-foreground sm:inline-flex"
           >
             <HelpCircle className="h-4 w-4" /> Ajuda
           </Button>
+
           {variant === "operador" && operatorStockName && (
-            <div className="hidden md:flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-xs">
+            <div className="hidden items-center gap-2 rounded-xl border bg-card px-3 py-2 text-xs md:flex">
               <span className="text-muted-foreground">Estoque atual:</span>
-              <span className="font-medium">{operatorStockName}</span>
+              <span className="font-medium text-foreground">{operatorStockName}</span>
               <Button
                 type="button"
                 variant="ghost"
@@ -221,26 +236,27 @@ export function AppShell({ variant, children }: AppShellProps) {
                 className="h-6 px-2 text-xs"
                 onClick={changeOperatorStock}
               >
-                Trocar estoque
+                Trocar
               </Button>
             </div>
           )}
+
           <div className="flex items-center gap-3">
-            <div className="text-right hidden sm:block leading-tight">
-              <div className="text-sm font-medium">{userLabel}</div>
+            <div className="hidden text-right leading-tight sm:block">
+              <div className="text-sm font-medium text-foreground">{userLabel}</div>
               <div className="text-[11px] text-muted-foreground">
-                {variant === "admin" ? "Acesso total" : "Acesso limitado"}
+                {variant === "admin" ? "Acesso total" : "Acesso operacional"}
               </div>
             </div>
-            <Avatar className="h-9 w-9">
-              <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
+            <Avatar className="h-10 w-10 border border-primary/15 bg-card">
+              <AvatarFallback className="zyntra-gradient text-xs font-semibold text-white">
                 {initials}
               </AvatarFallback>
             </Avatar>
           </div>
         </header>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-x-hidden">{children}</main>
+        <main className="flex-1 overflow-x-hidden p-4 sm:p-6 lg:p-8">{children}</main>
       </div>
     </div>
   );

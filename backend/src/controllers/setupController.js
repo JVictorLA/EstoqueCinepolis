@@ -1,9 +1,25 @@
 const usuarioService = require("../services/usuarioService");
+const setupService = require("../services/setupService");
+const configuracaoService = require("../services/configuracaoService");
 const { ok, created, fail } = require("../utils/response");
 
 async function status(_req, res) {
-  const hasAdminOrMaster = await usuarioService.existsAdminOrMaster();
-  return ok(res, { precisaSetup: !hasAdminOrMaster });
+  const setupStatus = await setupService.getStatus();
+  return ok(res, setupStatus);
+}
+
+async function setupInicial(req, res) {
+  const setupStatus = await setupService.getStatus();
+  if (!setupStatus.precisaSetup) {
+    return fail(res, 409, "Setup inicial ja foi concluido");
+  }
+
+  try {
+    const result = await setupService.executarSetupInicial(req.body || {});
+    return created(res, result, "Configuracao inicial concluida");
+  } catch (error) {
+    return fail(res, error.status || 500, error.message || "Erro ao concluir setup inicial");
+  }
 }
 
 async function criarMaster(req, res) {
@@ -28,7 +44,28 @@ async function criarMaster(req, res) {
     senha,
   });
 
+  await configuracaoService.setManyConfigs(
+    [
+      { chave: "setup_concluido", valor: true, categoria: "setup", nivelAcesso: "master" },
+      {
+        chave: "setup_data_conclusao",
+        valor: new Date().toISOString(),
+        categoria: "setup",
+        nivelAcesso: "master",
+      },
+      { chave: "nome_sistema", valor: "Zytrex Inventory", categoria: "sistema", nivelAcesso: "admin" },
+      { chave: "tema_padrao", valor: "light", categoria: "sistema", nivelAcesso: "admin" },
+      {
+        chave: "registrar_vencido_ao_tentar_retirar",
+        valor: true,
+        categoria: "desperdicio",
+        nivelAcesso: "master",
+      },
+    ],
+    master.id,
+  );
+
   return created(res, master, "Usuario master criado");
 }
 
-module.exports = { status, criarMaster };
+module.exports = { status, setupInicial, criarMaster };

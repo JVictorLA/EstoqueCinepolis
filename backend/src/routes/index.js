@@ -9,6 +9,7 @@ const estoqueCtrl = require("../controllers/estoqueController");
 const usuarioCtrl = require("../controllers/usuarioController");
 const categoriaCtrl = require("../controllers/categoriaController");
 const setupCtrl = require("../controllers/setupController");
+const configuracaoCtrl = require("../controllers/configuracaoController");
 const inventarioCtrl = require("../controllers/inventarioController");
 const conferenciaCtrl = require("../controllers/conferenciaController");
 const estoqueRoutes = require("./estoqueRoutes");
@@ -47,7 +48,22 @@ router.post("/login", asyncHandler(authCtrl.login));
 
 // Setup inicial
 router.get("/setup/status", asyncHandler(setupCtrl.status));
+router.post("/setup/inicial", asyncHandler(setupCtrl.setupInicial));
 router.post("/setup/master", asyncHandler(setupCtrl.criarMaster));
+
+// Configuracoes
+router.get(
+  "/configuracoes",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(configuracaoCtrl.listar),
+);
+router.put(
+  "/configuracoes",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(configuracaoCtrl.atualizar),
+);
 
 // Produtos
 router.get("/produtos", asyncHandler(produtoCtrl.listar));

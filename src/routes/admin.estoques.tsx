@@ -28,7 +28,7 @@ import type { Estoque } from "@/types";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/estoques")({
-  head: () => ({ meta: [{ title: "Estoques · Cinepolis Estoque" }] }),
+  head: () => ({ meta: [{ title: "Estoques · Zytrex Inventory" }] }),
   component: EstoquesPage,
 });
 
