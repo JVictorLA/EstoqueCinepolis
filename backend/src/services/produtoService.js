@@ -235,7 +235,7 @@ async function resolveValidity(categoria_id, data_validade, conn = pool) {
   return exigeValidade ? normalizedDate : null;
 }
 
-async function create(data) {
+async function createWithConnection(conn, data) {
   const {
     codigo_barras,
     nome,
@@ -250,65 +250,104 @@ async function create(data) {
     ativo,
   } = data;
 
+  const [existingProducts] = await conn.query(
+    "SELECT id, categoria_id FROM produtos WHERE codigo_barras = ? LIMIT 1",
+    [codigo_barras],
+  );
+
+  let produtoId;
+  let produtoCategoriaId = categoria_id;
+
+  if (existingProducts.length) {
+    produtoId = existingProducts[0].id;
+    produtoCategoriaId = existingProducts[0].categoria_id;
+  } else {
+    const [produtoResult] = await conn.query(
+      `INSERT INTO produtos
+          (codigo_barras, nome, categoria_id, unidade, preco_venda, ativo, criado_em, atualizado_em)
+         VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [codigo_barras, nome, categoria_id, unidade, preco_venda, ativo ? 1 : 0],
+    );
+    produtoId = produtoResult.insertId;
+  }
+
+  const validade = await resolveValidity(produtoCategoriaId, data_validade, conn);
+
+  const [existingLink] = await conn.query(
+    "SELECT id FROM estoque_produtos WHERE estoque_id = ? AND produto_id = ? LIMIT 1",
+    [estoque_id, produtoId],
+  );
+
+  if (existingLink.length) {
+    throw Object.assign(new Error("Produto ja vinculado a este estoque"), {
+      status: 409,
+    });
+  }
+
+  const [linkResult] = await conn.query(
+    `INSERT INTO estoque_produtos
+        (estoque_id, produto_id, estoque_atual, estoque_minimo, data_validade, criado_em)
+       VALUES (?, ?, 0, ?, NULL, NOW())`,
+    [estoque_id, produtoId, estoque_minimo],
+  );
+
+  if (Number(estoque_atual) > 0 || lote) {
+    const loteCriado = await loteService.upsertLot(conn, linkResult.insertId, {
+      lote,
+      data_validade: validade,
+      quantidade: Number(estoque_atual) || 0,
+      categoria_id: produtoCategoriaId,
+    });
+    await loteService.recalcStockProduct(conn, loteCriado.estoque_produto_id);
+  }
+
+  return { produtoId, estoqueId: estoque_id };
+}
+
+async function create(data) {
+  const conn = await pool.getConnection();
+
+  try {
+    await conn.beginTransaction();
+    const created = await createWithConnection(conn, data);
+
+    await conn.commit();
+
+    return findById(created.produtoId, created.estoqueId);
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
+async function createMany(items) {
   const conn = await pool.getConnection();
 
   try {
     await conn.beginTransaction();
 
-    const [existingProducts] = await conn.query(
-      "SELECT id, categoria_id FROM produtos WHERE codigo_barras = ? LIMIT 1",
-      [codigo_barras],
-    );
-
-    let produtoId;
-    let produtoCategoriaId = categoria_id;
-
-    if (existingProducts.length) {
-      produtoId = existingProducts[0].id;
-      produtoCategoriaId = existingProducts[0].categoria_id;
-    } else {
-      const [produtoResult] = await conn.query(
-        `INSERT INTO produtos
-          (codigo_barras, nome, categoria_id, unidade, preco_venda, ativo, criado_em, atualizado_em)
-         VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-        [codigo_barras, nome, categoria_id, unidade, preco_venda, ativo ? 1 : 0],
-      );
-      produtoId = produtoResult.insertId;
-    }
-
-    const validade = await resolveValidity(produtoCategoriaId, data_validade, conn);
-
-    const [existingLink] = await conn.query(
-      "SELECT id FROM estoque_produtos WHERE estoque_id = ? AND produto_id = ? LIMIT 1",
-      [estoque_id, produtoId],
-    );
-
-    if (existingLink.length) {
-      throw Object.assign(new Error("Produto ja vinculado a este estoque"), {
-        status: 409,
-      });
-    }
-
-    const [linkResult] = await conn.query(
-      `INSERT INTO estoque_produtos
-        (estoque_id, produto_id, estoque_atual, estoque_minimo, data_validade, criado_em)
-       VALUES (?, ?, 0, ?, NULL, NOW())`,
-      [estoque_id, produtoId, estoque_minimo],
-    );
-
-    if (Number(estoque_atual) > 0 || lote) {
-      const loteCriado = await loteService.upsertLot(conn, linkResult.insertId, {
-        lote,
-        data_validade: validade,
-        quantidade: Number(estoque_atual) || 0,
-        categoria_id: produtoCategoriaId,
-      });
-      await loteService.recalcStockProduct(conn, loteCriado.estoque_produto_id);
+    const createdRows = [];
+    for (const [index, item] of items.entries()) {
+      try {
+        const created = await createWithConnection(conn, item);
+        createdRows.push(created);
+      } catch (e) {
+        if (!String(e.message || "").startsWith("Linha ")) {
+          e.message = `Linha ${index + 1}: ${e.message}`;
+        }
+        throw e;
+      }
     }
 
     await conn.commit();
 
-    return findById(produtoId, estoque_id);
+    const products = [];
+    for (const created of createdRows) {
+      products.push(await findById(created.produtoId, created.estoqueId));
+    }
+    return products;
   } catch (e) {
     await conn.rollback();
     throw e;
@@ -553,6 +592,7 @@ module.exports = {
   findById,
   existsByBarcode,
   create,
+  createMany,
   update,
   setStatus,
   remove,

@@ -19,8 +19,8 @@ const BASE_INVENTORY_SELECT = `
     p.ativo
   FROM produtos p
   LEFT JOIN categorias c ON c.id = p.categoria_id
-  INNER JOIN estoque_produtos ep ON ep.produto_id = p.id
-  INNER JOIN estoques e ON e.id = ep.estoque_id
+  LEFT JOIN estoque_produtos ep ON ep.produto_id = p.id
+  LEFT JOIN estoques e ON e.id = ep.estoque_id
   LEFT JOIN (
     SELECT estoque_produto_id,
       COALESCE(SUM(quantidade), 0) AS estoque_atual,
@@ -30,34 +30,40 @@ const BASE_INVENTORY_SELECT = `
   ) lotes ON lotes.estoque_produto_id = ep.id
 `;
 
-const HIDE_EXPIRED_EMPTY_ITEMS = `
-  AND NOT (
-    COALESCE(lotes.estoque_atual, ep.estoque_atual, 0) <= 0
-    AND COALESCE(lotes.data_validade, ep.data_validade) IS NOT NULL
-    AND COALESCE(lotes.data_validade, ep.data_validade) < CURDATE()
-  )
-`;
-
 function isAllStocks(estoqueId) {
   return !estoqueId || estoqueId === "all" || estoqueId === "null";
 }
 
+function isExpired(row) {
+  if (!row.data_validade) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expiration = new Date(`${String(row.data_validade).slice(0, 10)}T00:00:00`);
+  return !Number.isNaN(expiration.getTime()) && expiration < today;
+}
+
+function getInventoryStock(row) {
+  if (isExpired(row)) return 0;
+  return Number(row.estoque_atual);
+}
+
 function getInventoryStatus(row) {
+  if (isExpired(row)) return "sem_estoque";
+  if (getInventoryStock(row) <= 0) return "sem_estoque";
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   if (row.data_validade) {
     const expiration = new Date(`${String(row.data_validade).slice(0, 10)}T00:00:00`);
     if (!Number.isNaN(expiration.getTime())) {
-      if (expiration < today) return "vencido";
       const msUntilExpiration = expiration.getTime() - today.getTime();
       const daysUntilExpiration = Math.ceil(msUntilExpiration / 86400000);
       if (daysUntilExpiration <= 30) return "proximo_vencimento";
     }
   }
 
-  if (Number(row.estoque_atual) <= 0) return "sem_estoque";
-  if (Number(row.estoque_minimo) > 0 && Number(row.estoque_atual) <= Number(row.estoque_minimo)) {
+  if (Number(row.estoque_minimo) > 0 && getInventoryStock(row) <= Number(row.estoque_minimo)) {
     return "estoque_baixo";
   }
   return "ok";
@@ -76,7 +82,7 @@ function mapInventoryRow(row) {
     estoque_id: row.estoque_id,
     estoque_nome: row.estoque_nome,
     data_validade: row.data_validade,
-    estoque_atual: Number(row.estoque_atual),
+    estoque_atual: getInventoryStock(row),
     estoque_minimo: Number(row.estoque_minimo),
     ativo: row.ativo,
     status: getInventoryStatus(row),
@@ -97,20 +103,49 @@ async function getEstoqueAtual(estoqueId = "all") {
     }
 
     const [rows] = await pool.query(
-      `${BASE_INVENTORY_SELECT}
-       WHERE ep.estoque_id = ? AND p.ativo = 1
-       ${HIDE_EXPIRED_EMPTY_ITEMS}
+      `SELECT
+         p.id AS produto_id,
+         p.codigo_barras,
+         p.nome AS produto_nome,
+         p.categoria_id,
+         c.nome AS categoria_nome,
+         COALESCE(c.exige_validade, 0) AS exige_validade,
+         p.unidade,
+         p.preco_venda,
+         ep.estoque_id,
+         e.nome AS estoque_nome,
+         COALESCE(lotes.data_validade, ep.data_validade) AS data_validade,
+         COALESCE(lotes.estoque_atual, ep.estoque_atual, 0) AS estoque_atual,
+         COALESCE(ep.estoque_minimo, 0) AS estoque_minimo,
+         p.ativo
+       FROM produtos p
+       LEFT JOIN categorias c ON c.id = p.categoria_id
+       LEFT JOIN estoque_produtos ep ON ep.produto_id = p.id AND ep.estoque_id = ?
+       LEFT JOIN estoques e ON e.id = ?
+       LEFT JOIN (
+         SELECT estoque_produto_id,
+           COALESCE(SUM(quantidade), 0) AS estoque_atual,
+           MIN(CASE WHEN quantidade > 0 THEN data_validade ELSE NULL END) AS data_validade
+         FROM produto_lotes
+         GROUP BY estoque_produto_id
+       ) lotes ON lotes.estoque_produto_id = ep.id
+       WHERE p.ativo = 1
        ORDER BY p.nome ASC`,
-      [id],
+      [id, id],
     );
 
-    return rows.map(mapInventoryRow);
+    return rows.map((row) =>
+      mapInventoryRow({
+        ...row,
+        estoque_id: row.estoque_id ?? id,
+        estoque_nome: row.estoque_nome ?? estoque.nome,
+      }),
+    );
   }
 
   const [rows] = await pool.query(
     `${BASE_INVENTORY_SELECT}
      WHERE p.ativo = 1
-     ${HIDE_EXPIRED_EMPTY_ITEMS}
      ORDER BY p.nome ASC, e.nome ASC`,
   );
 
@@ -122,27 +157,31 @@ async function getEstoqueAtual(estoqueId = "all") {
         ...row,
         estoque_id: null,
         estoque_nome: "Todos os estoques",
-        estoque_atual: Number(row.estoque_atual),
+        estoque_atual: getInventoryStock(row),
         estoque_minimo: Number(row.estoque_minimo),
         data_validade: row.data_validade,
-        estoques: [
-          {
-            estoque_id: row.estoque_id,
-            estoque_nome: row.estoque_nome,
-            estoque_atual: Number(row.estoque_atual),
-          },
-        ],
+        estoques: row.estoque_id
+          ? [
+              {
+                estoque_id: row.estoque_id,
+                estoque_nome: row.estoque_nome,
+                estoque_atual: getInventoryStock(row),
+              },
+            ]
+          : [],
       });
       return;
     }
 
-    current.estoque_atual = Number(current.estoque_atual) + Number(row.estoque_atual);
+    current.estoque_atual = Number(current.estoque_atual) + getInventoryStock(row);
     current.estoque_minimo = Number(current.estoque_minimo) + Number(row.estoque_minimo);
-    current.estoques.push({
-      estoque_id: row.estoque_id,
-      estoque_nome: row.estoque_nome,
-      estoque_atual: Number(row.estoque_atual),
-    });
+    if (row.estoque_id) {
+      current.estoques.push({
+        estoque_id: row.estoque_id,
+        estoque_nome: row.estoque_nome,
+        estoque_atual: getInventoryStock(row),
+      });
+    }
 
     if (!current.data_validade || (row.data_validade && row.data_validade < current.data_validade)) {
       current.data_validade = row.data_validade;

@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Activity, ArrowDownCircle, ArrowUpCircle, Clock, Loader2, Package, Printer, Trash2, UserRound, Warehouse } from "lucide-react";
+import { Activity, ArrowDownCircle, ArrowUpCircle, Clock, Loader2, Package, Printer, RefreshCw, Trash2, UserRound, Warehouse } from "lucide-react";
 import { PageHeader, EmptyState } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,7 @@ export const Route = createFileRoute("/admin/movimentacoes")({
 function movementLabel(type: Movement["type"]) {
   if (type === "entrada") return "Entrada";
   if (type === "desperdicio") return "Desperdício";
+  if (type === "ajuste") return "Ajuste";
   return "Saída";
 }
 
@@ -47,6 +48,16 @@ function movementConfig(type: Movement["type"]) {
       badge: "border-rose-200 bg-rose-50 text-rose-700",
       amount: "text-rose-700",
       sign: "-",
+    };
+  }
+
+  if (type === "ajuste") {
+    return {
+      icon: RefreshCw,
+      tone: "text-sky-700 bg-sky-50 border-sky-200",
+      badge: "border-sky-200 bg-sky-50 text-sky-700",
+      amount: "text-sky-700",
+      sign: "",
     };
   }
 
@@ -145,6 +156,9 @@ function MovementCard({
       <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground md:block">
         <Clock className="h-4 w-4 md:hidden" />
         <span>{formatMovementTime(movement.createdAt)}</span>
+        <span className="hidden text-xs font-medium text-muted-foreground md:block">
+          {movement.stockBefore} -&gt; {movement.stockAfter}
+        </span>
       </div>
 
       <div className={cn("flex h-11 w-11 items-center justify-center rounded-full border", config.tone)}>
@@ -191,6 +205,9 @@ function MovementCard({
         <div className={cn("text-lg font-bold tabular-nums", config.amount)}>
           {config.sign}
           {movement.quantity}
+        </div>
+        <div className="text-xs text-muted-foreground md:hidden">
+          {movement.stockBefore} -&gt; {movement.stockAfter}
         </div>
       </div>
     </article>
@@ -270,7 +287,9 @@ function MovsPage() {
           ? "Entrada"
           : typeFilter === "desperdicio"
             ? "Desperdicio"
-            : "Saida";
+            : typeFilter === "ajuste"
+              ? "Ajuste"
+              : "Saida";
     const dateName = dateFilter ? formatShortDate(dateFilter) : "Todas as datas";
 
     const totals = movs.reduce(
@@ -280,9 +299,10 @@ function MovsPage() {
         if (movement.type === "entrada") acc.entradas += quantity;
         if (movement.type === "saida") acc.saidas += quantity;
         if (movement.type === "desperdicio") acc.desperdicios += quantity;
+        if (movement.type === "ajuste") acc.ajustes += quantity;
         return acc;
       },
-      { total: 0, entradas: 0, saidas: 0, desperdicios: 0 },
+      { total: 0, entradas: 0, saidas: 0, desperdicios: 0, ajustes: 0 },
     );
 
     const rows = movs
@@ -303,6 +323,8 @@ function MovsPage() {
             <td>${escapeHtml(movement.estoqueNome ?? "Sem estoque")}</td>
             <td>${escapeHtml(lot)}</td>
             <td class="number">${escapeHtml(movement.quantity)}</td>
+            <td class="number">${escapeHtml(movement.stockBefore)}</td>
+            <td class="number">${escapeHtml(movement.stockAfter)}</td>
             <td>${escapeHtml(movement.userName)}</td>
             <td>${escapeHtml(noteParts.join(" | ") || "-")}</td>
           </tr>
@@ -405,7 +427,7 @@ function MovsPage() {
             <div class="box"><span class="label">Entradas</span><span class="value">${escapeHtml(totals.entradas)}</span></div>
             <div class="box"><span class="label">Saidas</span><span class="value">${escapeHtml(totals.saidas)}</span></div>
             <div class="box"><span class="label">Desperdicios</span><span class="value">${escapeHtml(totals.desperdicios)}</span></div>
-            <div class="box"><span class="label">Quantidade total</span><span class="value">${escapeHtml(totals.total)}</span></div>
+            <div class="box"><span class="label">Ajustes</span><span class="value">${escapeHtml(totals.ajustes)}</span></div>
           </section>
 
           <table>
@@ -417,6 +439,8 @@ function MovsPage() {
                 <th>Estoque</th>
                 <th>Lote</th>
                 <th class="number">Qtd.</th>
+                <th class="number">Antes</th>
+                <th class="number">Depois</th>
                 <th>Funcionario</th>
                 <th>Observacao</th>
               </tr>
@@ -435,7 +459,7 @@ function MovsPage() {
     <>
       <PageHeader
         title="Movimentações"
-        subtitle="Histórico completo de entradas, saídas e desperdícios"
+        subtitle="Histórico completo de entradas, saídas, desperdícios e ajustes"
         actions={
           <Button variant="outline" className="gap-2" onClick={printReport} disabled={loading}>
             <Printer className="h-4 w-4" /> Imprimir relatório
@@ -476,6 +500,7 @@ function MovsPage() {
               <SelectItem value="entrada">Entrada</SelectItem>
               <SelectItem value="saida">Saída</SelectItem>
               <SelectItem value="desperdicio">Desperdício</SelectItem>
+              <SelectItem value="ajuste">Ajuste</SelectItem>
             </SelectContent>
           </Select>
           {(dateFilter || categoryFilter !== "all" || typeFilter !== "all") && (

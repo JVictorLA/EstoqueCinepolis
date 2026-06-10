@@ -17,6 +17,7 @@ import {
   History,
   Warehouse,
   Trash2,
+  Boxes,
   type LucideIcon,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,7 @@ const adminNav: NavItem[] = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { to: "/admin/estoques", label: "Estoques", icon: Warehouse },
   { to: "/admin/produtos", label: "Produtos", icon: Package },
+  { to: "/admin/kits", label: "Montagem de Kit", icon: Boxes },
   { to: "/admin/entrada", label: "Entrada de Produtos", icon: ArrowDownToLine },
   { to: "/admin/retirada", label: "Retirada de Produtos", icon: ArrowUpFromLine },
   { to: "/admin/desperdicios", label: "Desperdícios", icon: Trash2 },
@@ -44,6 +46,7 @@ const adminNav: NavItem[] = [
 const operadorNav: NavItem[] = [
   { to: "/operador/entrada", label: "Entrada de Produtos", icon: ArrowDownToLine },
   { to: "/operador/retirada", label: "Retirada de Produtos", icon: ArrowUpFromLine },
+  { to: "/operador/kits", label: "Retirada de Kit", icon: Boxes },
   { to: "/operador/desperdicio", label: "Registrar desperdício", icon: Trash2 },
   { to: "/operador/historico", label: "Histórico", icon: History },
 ];

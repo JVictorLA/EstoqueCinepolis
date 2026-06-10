@@ -148,9 +148,12 @@ async function ensureDatabaseSchema() {
   );
 
   const columnType = String(tipoColumns[0]?.COLUMN_TYPE || tipoColumns[0]?.column_type || "");
-  if (/^enum/i.test(columnType) && !columnType.includes("'desperdicio'")) {
+  if (
+    /^enum/i.test(columnType) &&
+    (!columnType.includes("'desperdicio'") || !columnType.includes("'ajuste'"))
+  ) {
     await pool.query(
-      "ALTER TABLE movimentacoes MODIFY tipo ENUM('entrada','saida','desperdicio') NOT NULL",
+      "ALTER TABLE movimentacoes MODIFY tipo ENUM('entrada','saida','desperdicio','ajuste') NOT NULL",
     );
   }
 
@@ -202,6 +205,94 @@ async function ensureDatabaseSchema() {
     "desperdicios",
     "idx_desperdicios_motivo",
     "CREATE INDEX idx_desperdicios_motivo ON desperdicios(motivo_id)",
+  );
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS kits_caixa (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      estoque_id INT NOT NULL,
+      nome VARCHAR(150) NOT NULL,
+      status VARCHAR(40) NOT NULL DEFAULT 'kit_incompleto',
+      responsavel_atual_id INT NULL,
+      criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+      atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_kits_caixa_estoque
+        FOREIGN KEY (estoque_id) REFERENCES estoques(id),
+      CONSTRAINT fk_kits_caixa_responsavel
+        FOREIGN KEY (responsavel_atual_id) REFERENCES usuarios(id)
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS kit_itens (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      kit_id INT NOT NULL,
+      produto_id INT NOT NULL,
+      quantidade_padrao DECIMAL(10,2) NOT NULL,
+      quantidade_atual DECIMAL(10,2) NOT NULL DEFAULT 0,
+      criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+      atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_kit_itens_kit
+        FOREIGN KEY (kit_id) REFERENCES kits_caixa(id) ON DELETE CASCADE,
+      CONSTRAINT fk_kit_itens_produto
+        FOREIGN KEY (produto_id) REFERENCES produtos(id)
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS kit_movimentacoes (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      kit_id INT NOT NULL,
+      estoque_id INT NOT NULL,
+      usuario_id INT NOT NULL,
+      tipo VARCHAR(30) NOT NULL,
+      observacao TEXT NULL,
+      criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_kit_mov_kit
+        FOREIGN KEY (kit_id) REFERENCES kits_caixa(id),
+      CONSTRAINT fk_kit_mov_estoque
+        FOREIGN KEY (estoque_id) REFERENCES estoques(id),
+      CONSTRAINT fk_kit_mov_usuario
+        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS kit_movimentacao_itens (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      kit_movimentacao_id INT NOT NULL,
+      produto_id INT NOT NULL,
+      quantidade_anterior DECIMAL(10,2) NOT NULL,
+      reposicao_operacao DECIMAL(10,2) NOT NULL DEFAULT 0,
+      quantidade_movimentada DECIMAL(10,2) NOT NULL,
+      quantidade_final DECIMAL(10,2) NOT NULL,
+      CONSTRAINT fk_kit_mov_itens_mov
+        FOREIGN KEY (kit_movimentacao_id) REFERENCES kit_movimentacoes(id) ON DELETE CASCADE,
+      CONSTRAINT fk_kit_mov_itens_produto
+        FOREIGN KEY (produto_id) REFERENCES produtos(id)
+    )
+  `);
+
+  await ensureColumn(
+    "kit_movimentacao_itens",
+    "reposicao_operacao",
+    "ALTER TABLE kit_movimentacao_itens ADD COLUMN reposicao_operacao DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER quantidade_anterior",
+  );
+
+  await ensureIndex(
+    "kits_caixa",
+    "idx_kits_caixa_estoque_status",
+    "CREATE INDEX idx_kits_caixa_estoque_status ON kits_caixa(estoque_id, status)",
+  );
+  await ensureIndex(
+    "kit_itens",
+    "uq_kit_itens_kit_produto",
+    "ALTER TABLE kit_itens ADD CONSTRAINT uq_kit_itens_kit_produto UNIQUE (kit_id, produto_id)",
+  );
+  await ensureIndex(
+    "kit_movimentacoes",
+    "idx_kit_movimentacoes_kit_data",
+    "CREATE INDEX idx_kit_movimentacoes_kit_data ON kit_movimentacoes(kit_id, criado_em)",
   );
 }
 

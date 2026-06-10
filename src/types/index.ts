@@ -61,7 +61,7 @@ export interface FefoWarning {
   exigirJustificativaFefo?: boolean | number | string;
 }
 
-export type MovementType = "entrada" | "saida" | "desperdicio";
+export type MovementType = "entrada" | "saida" | "desperdicio" | "ajuste";
 
 export interface Movement {
   id: number;
@@ -264,4 +264,79 @@ export interface ConferenceProductOption {
   estoqueId: number;
   estoqueNome: string;
   systemQuantity: number;
+}
+
+export type KitStatus =
+  | "pronto_para_retirada"
+  | "em_uso"
+  | "aguardando_recebimento"
+  | "kit_incompleto";
+
+export type KitMovementType =
+  | "criacao"
+  | "montagem"
+  | "retirada"
+  | "recebimento"
+  | "reposicao"
+  | "ajuste";
+
+export interface KitItem {
+  id: number;
+  kitId: number;
+  productId: number;
+  productName: string;
+  barcode: string;
+  unit: string;
+  defaultQuantity: number;
+  currentQuantity: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Kit {
+  id: number;
+  estoqueId: number;
+  estoqueNome: string;
+  name: string;
+  status: KitStatus;
+  responsibleId: number | null;
+  responsibleName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastMovementType?: KitMovementType | null;
+  lastMovementAt?: string | null;
+  items?: KitItem[];
+}
+
+export interface KitProductOption {
+  id: number;
+  barcode: string;
+  name: string;
+  unit: string;
+  categoryId: number | null;
+  categoryName: string | null;
+  stock: number;
+}
+
+export interface KitMovementItem {
+  productId: number;
+  productName: string;
+  previousQuantity: number;
+  operationReplenishment: number;
+  movedQuantity: number;
+  finalQuantity: number;
+}
+
+export interface KitMovementHistory {
+  id: number;
+  kitId: number;
+  kitName: string;
+  estoqueId: number;
+  estoqueNome: string;
+  userId: number;
+  userName: string;
+  type: KitMovementType;
+  note: string | null;
+  createdAt: string;
+  items: KitMovementItem[];
 }

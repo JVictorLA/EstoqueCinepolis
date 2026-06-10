@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 import {
   Package,
   AlertTriangle,
@@ -8,7 +8,6 @@ import {
   Search,
   Filter,
   FolderOpen,
-  Download,
   Plus,
   Star,
   Pencil,
@@ -29,6 +28,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Dialog,
   DialogContent,
@@ -63,6 +72,7 @@ import {
   getCategories,
   getEstoques,
   getProductLots,
+  adjustStock,
   updateProductLot,
 } from "@/services/api";
 import type { Product, Category, Estoque, ProductLot } from "@/types";
@@ -89,6 +99,52 @@ const emptyFilters: ProductFilters = {
   unit: "",
 };
 
+const adjustmentReasons = [
+  "Contagem fisica / inventario",
+  "Correcao de lancamento",
+  "Produto encontrado no estoque",
+  "Erro de cadastro de saldo",
+  "Ajuste administrativo",
+  "Outro",
+];
+
+type AdjustmentStockOption = {
+  id: number;
+  nome: string;
+  stock: number;
+  requiresExpiration: boolean;
+};
+
+type AdjustmentProductOption = {
+  id: number;
+  name: string;
+  barcode: string;
+  unit: string;
+  stocks: AdjustmentStockOption[];
+};
+
+type AdjustmentRow = {
+  id: string;
+  productId: string;
+  productQuery: string;
+  stockId: string;
+  lotId: string;
+  quantityFinal: string;
+  reason: string;
+};
+
+function createAdjustmentRow(): AdjustmentRow {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    productId: "",
+    productQuery: "",
+    stockId: "",
+    lotId: "",
+    quantityFinal: "",
+    reason: "",
+  };
+}
+
 function formatDate(value?: string | null) {
   if (!value) return "";
   const [year, month, day] = value.split("-");
@@ -112,6 +168,60 @@ function generateInternalBarcode() {
   const randomPart = Math.floor(Math.random() * 100).toString().padStart(2, "0");
   const base = `29${timestampPart}${randomPart}`;
   return `${base}${ean13CheckDigit(base)}`;
+}
+
+function adjustmentProductLabel(product: AdjustmentProductOption) {
+  return `${product.name} - ${product.barcode}`;
+}
+
+function isAdjustmentRowTouched(row: AdjustmentRow) {
+  return !!(
+    row.productQuery.trim() ||
+    row.productId ||
+    row.stockId ||
+    row.lotId ||
+    row.quantityFinal.trim() ||
+    row.reason
+  );
+}
+
+function getAdjustmentProduct(catalog: AdjustmentProductOption[], row: AdjustmentRow) {
+  return catalog.find((product) => String(product.id) === row.productId) ?? null;
+}
+
+function getAdjustmentStock(catalog: AdjustmentProductOption[], row: AdjustmentRow) {
+  return getAdjustmentProduct(catalog, row)?.stocks.find((stock) => String(stock.id) === row.stockId) ?? null;
+}
+
+function adjustmentRequiresLot(
+  row: AdjustmentRow,
+  catalog: AdjustmentProductOption[],
+  lots: ProductLot[],
+) {
+  const stock = getAdjustmentStock(catalog, row);
+  return !!stock?.requiresExpiration || lots.length > 1;
+}
+
+function validateAdjustmentRow(
+  row: AdjustmentRow,
+  catalog: AdjustmentProductOption[],
+  lots: ProductLot[],
+) {
+  if (!row.productId) return "Selecione o produto";
+  if (!row.stockId) return "Selecione o estoque";
+  if (adjustmentRequiresLot(row, catalog, lots) && !row.lotId) return "Selecione o lote";
+  if (!row.reason) return "Selecione o motivo do ajuste";
+  const quantity = Number(row.quantityFinal);
+  if (!Number.isFinite(quantity) || quantity < 0) return "Informe uma quantidade final valida";
+  return null;
+}
+
+function isAdjustmentRowComplete(
+  row: AdjustmentRow,
+  catalog: AdjustmentProductOption[],
+  lots: ProductLot[],
+) {
+  return isAdjustmentRowTouched(row) && !validateAdjustmentRow(row, catalog, lots);
 }
 
 function ExpirationBadges({ product }: { product: Product }) {
@@ -144,20 +254,28 @@ export const Route = createFileRoute("/admin/produtos")({
 });
 
 function ProdutosPage() {
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [estoques, setEstoques] = useState<Estoque[]>([]);
   const [selectedEstoqueId, setSelectedEstoqueId] = useState("all");
   const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [wasteProduct, setWasteProduct] = useState<Product | null>(null);
   const [lotProduct, setLotProduct] = useState<Product | null>(null);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   const [deletingProductId, setDeletingProductId] = useState<number | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [draftFilters, setDraftFilters] = useState<ProductFilters>(emptyFilters);
   const [appliedFilters, setAppliedFilters] = useState<ProductFilters>(emptyFilters);
+  const [adjustmentMode, setAdjustmentMode] = useState(false);
+  const [adjustmentCatalog, setAdjustmentCatalog] = useState<AdjustmentProductOption[]>([]);
+  const [adjustmentRows, setAdjustmentRows] = useState<AdjustmentRow[]>([createAdjustmentRow()]);
+  const [adjustmentLots, setAdjustmentLots] = useState<Record<string, ProductLot[]>>({});
+  const [loadingAdjustmentCatalog, setLoadingAdjustmentCatalog] = useState(false);
+  const [savingAdjustments, setSavingAdjustments] = useState(false);
 
   const loadCategories = () => {
     getCategories().then(setCategories);
@@ -252,6 +370,134 @@ function ProdutosPage() {
     setAppliedFilters(emptyFilters);
   };
 
+  const loadAdjustmentCatalog = async () => {
+    setLoadingAdjustmentCatalog(true);
+    try {
+      const activeStocks = estoques.filter((estoque) => estoque.ativo);
+      const productsByStock = await Promise.all(
+        activeStocks.map(async (estoque) => ({
+          estoque,
+          products: await getProducts(estoque.id),
+        })),
+      );
+      const map = new Map<number, AdjustmentProductOption>();
+      productsByStock.forEach(({ estoque, products: stockProducts }) => {
+        stockProducts
+          .filter((product) => product.active)
+          .forEach((product) => {
+            const current =
+              map.get(product.id) ??
+              {
+                id: product.id,
+                name: product.name,
+                barcode: product.barcode,
+                unit: product.unit,
+                stocks: [],
+              };
+            current.stocks.push({
+              id: estoque.id,
+              nome: estoque.nome,
+              stock: product.stock,
+              requiresExpiration: product.requiresExpiration,
+            });
+            map.set(product.id, current);
+          });
+      });
+      setAdjustmentCatalog(Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao carregar produtos para ajuste");
+    } finally {
+      setLoadingAdjustmentCatalog(false);
+    }
+  };
+
+  const enterAdjustmentMode = () => {
+    setAdjustmentMode(true);
+    setFiltersOpen(false);
+    setAdjustmentRows([createAdjustmentRow()]);
+    setAdjustmentLots({});
+    loadAdjustmentCatalog();
+  };
+
+  const exitAdjustmentMode = () => {
+    setAdjustmentMode(false);
+    setAdjustmentRows([createAdjustmentRow()]);
+    setAdjustmentLots({});
+  };
+
+  const updateAdjustmentRow = (id: string, patch: Partial<AdjustmentRow>) => {
+    setAdjustmentRows((rows) => {
+      const next = rows.map((row) => (row.id === id ? { ...row, ...patch } : row));
+      const last = next[next.length - 1];
+      if (last && isAdjustmentRowComplete(last, adjustmentCatalog, adjustmentLots[last.id] ?? [])) {
+        return [...next, createAdjustmentRow()];
+      }
+      return next;
+    });
+  };
+
+  const selectAdjustmentProduct = (row: AdjustmentRow, value: string) => {
+    const selected = adjustmentCatalog.find(
+      (product) => adjustmentProductLabel(product) === value || product.barcode === value,
+    );
+    updateAdjustmentRow(row.id, {
+      productQuery: value,
+      productId: selected ? String(selected.id) : "",
+      stockId: "",
+      lotId: "",
+      quantityFinal: "",
+    });
+    setAdjustmentLots((current) => ({ ...current, [row.id]: [] }));
+  };
+
+  const selectAdjustmentStock = async (row: AdjustmentRow, stockId: string) => {
+    updateAdjustmentRow(row.id, { stockId, lotId: "", quantityFinal: "" });
+    if (!row.productId || !stockId) return;
+    try {
+      const lots = await getProductLots(Number(row.productId), stockId);
+      setAdjustmentLots((current) => ({ ...current, [row.id]: lots }));
+    } catch {
+      setAdjustmentLots((current) => ({ ...current, [row.id]: [] }));
+      toast.error("Erro ao carregar lotes do produto");
+    }
+  };
+
+  const saveAdjustments = async () => {
+    const filledRows = adjustmentRows.filter(isAdjustmentRowTouched);
+    if (!filledRows.length) {
+      toast.error("Informe pelo menos um ajuste");
+      return;
+    }
+
+    for (const row of filledRows) {
+      const validation = validateAdjustmentRow(row, adjustmentCatalog, adjustmentLots[row.id] ?? []);
+      if (validation) {
+        toast.error(validation);
+        return;
+      }
+    }
+
+    setSavingAdjustments(true);
+    try {
+      await adjustStock({
+        itens: filledRows.map((row) => ({
+          produto_id: Number(row.productId),
+          estoque_id: Number(row.stockId),
+          lote_id: row.lotId && row.lotId !== "none" ? Number(row.lotId) : null,
+          quantidade_final: Number(row.quantityFinal),
+          motivo: row.reason,
+        })),
+      });
+      toast.success("Ajuste de estoque registrado");
+      exitAdjustmentMode();
+      loadProducts();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao salvar ajustes");
+    } finally {
+      setSavingAdjustments(false);
+    }
+  };
+
   const toggleProductStatus = async (product: Product, active: boolean) => {
     if (product.requiresExpiration && isExpired(product.expirationDate)) {
       toast.error("Produto vencido fica fora do catalogo automaticamente");
@@ -270,14 +516,11 @@ function ProdutosPage() {
   };
 
   const removeProduct = async (product: Product) => {
-    if (!window.confirm(`Excluir o produto "${product.name}"?`)) {
-      return;
-    }
-
     setDeletingProductId(product.id);
     try {
       await deleteProduct(product.id);
       setProducts((items) => items.filter((item) => item.id !== product.id));
+      setProductToDelete(null);
       toast.success("Produto excluido");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro ao excluir produto");
@@ -289,6 +532,10 @@ function ProdutosPage() {
   const lowStock = products.filter((p) => p.stock > 0 && p.stock <= p.minStock).length;
   const noStock = products.filter((p) => p.stock === 0).length;
   const total = products.reduce((s, p) => s + p.price * p.stock, 0);
+
+  if (pathname === "/admin/produtos/cadastro") {
+    return <Outlet />;
+  }
 
   return (
     <>
@@ -311,6 +558,24 @@ function ProdutosPage() {
 
       <div className="rounded-xl bg-card border shadow-[var(--shadow-soft)] overflow-hidden">
         <div className="p-4 flex flex-wrap items-center gap-2 border-b">
+          {adjustmentMode ? (
+            <>
+              <div className="min-w-[220px] flex-1">
+                <div className="font-semibold">Ajuste de estoque</div>
+                <div className="text-sm text-muted-foreground">
+                  Informe o saldo final por produto, estoque e lote.
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={exitAdjustmentMode} disabled={savingAdjustments}>
+                Cancelar
+              </Button>
+              <Button size="sm" className="gap-2" onClick={saveAdjustments} disabled={savingAdjustments}>
+                {savingAdjustments ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Salvar ajustes
+              </Button>
+            </>
+          ) : (
+            <>
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -347,8 +612,8 @@ function ProdutosPage() {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" className="gap-2">
-            <Download className="h-4 w-4" /> Exportar
+          <Button variant="outline" size="sm" className="gap-2" onClick={enterAdjustmentMode}>
+            <RefreshCw className="h-4 w-4" /> Ajuste de estoque
           </Button>
           <Dialog open={categoryOpen} onOpenChange={setCategoryOpen}>
             <DialogTrigger asChild>
@@ -364,21 +629,13 @@ function ProdutosPage() {
               }}
             />
           </Dialog>
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="gap-2">
-                <Plus className="h-4 w-4" /> Produto
-              </Button>
-            </DialogTrigger>
-            <NewProductDialog
-              estoques={estoques}
-              selectedEstoqueId={selectedEstoqueId}
-              onCreated={() => {
-                setOpen(false);
-                loadProducts();
-              }}
-            />
-          </Dialog>
+          <Button
+            size="sm"
+            className="gap-2"
+            onClick={() => navigate({ to: "/admin/produtos/cadastro" })}
+          >
+            <Plus className="h-4 w-4" /> Produto
+          </Button>
           <Dialog
             open={!!editingProduct}
             onOpenChange={(isOpen) => {
@@ -398,9 +655,11 @@ function ProdutosPage() {
               />
             )}
           </Dialog>
+            </>
+          )}
         </div>
 
-        {filtersOpen && (
+        {filtersOpen && !adjustmentMode && (
           <div className="border-b bg-muted/20 p-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div className="space-y-2">
@@ -542,13 +801,26 @@ function ProdutosPage() {
           </div>
         )}
 
-        {filtered.length === 0 ? (
+        {adjustmentMode ? (
+          <AdjustmentPanel
+            rows={adjustmentRows}
+            catalog={adjustmentCatalog}
+            lotsByRow={adjustmentLots}
+            loading={loadingAdjustmentCatalog}
+            onProductChange={selectAdjustmentProduct}
+            onStockChange={selectAdjustmentStock}
+            onRowChange={updateAdjustmentRow}
+          />
+        ) : filtered.length === 0 ? (
           <EmptyState
             icon={Package}
             title="Nenhum produto cadastrado"
             description="Cadastre seu primeiro produto para começar a controlar o estoque."
             action={
-              <Button onClick={() => setOpen(true)} className="gap-2">
+              <Button
+                onClick={() => navigate({ to: "/admin/produtos/cadastro" })}
+                className="gap-2"
+              >
                 <Plus className="h-4 w-4" /> Cadastrar produto
               </Button>
             }
@@ -676,7 +948,7 @@ function ProdutosPage() {
                             disabled={deletingProductId === p.id}
                             onClick={(event) => {
                               event.stopPropagation();
-                              removeProduct(p);
+                              setProductToDelete(p);
                             }}
                           >
                             <Trash2 className="h-4 w-4" />
@@ -707,7 +979,196 @@ function ProdutosPage() {
         initialBarcode={wasteProduct?.barcode ?? ""}
         onSaved={loadProducts}
       />
+      <AlertDialog
+        open={!!productToDelete}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setProductToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir produto?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acao remove o produto "{productToDelete?.name}" do cadastro. Ela so e permitida
+              quando o produto ainda nao possui movimentacoes registradas.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!deletingProductId}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={!productToDelete || !!deletingProductId}
+              onClick={(event) => {
+                event.preventDefault();
+                if (productToDelete) removeProduct(productToDelete);
+              }}
+            >
+              Excluir produto
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
+  );
+}
+
+function AdjustmentPanel({
+  rows,
+  catalog,
+  lotsByRow,
+  loading,
+  onProductChange,
+  onStockChange,
+  onRowChange,
+}: {
+  rows: AdjustmentRow[];
+  catalog: AdjustmentProductOption[];
+  lotsByRow: Record<string, ProductLot[]>;
+  loading: boolean;
+  onProductChange: (row: AdjustmentRow, value: string) => void;
+  onStockChange: (row: AdjustmentRow, stockId: string) => void;
+  onRowChange: (id: string, patch: Partial<AdjustmentRow>) => void;
+}) {
+  const productOptions = useMemo(() => catalog.map(adjustmentProductLabel), [catalog]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-56 items-center justify-center text-sm text-muted-foreground">
+        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+        Carregando produtos para ajuste...
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 bg-muted/15 p-4">
+      <div className="rounded-lg border bg-background p-4 text-sm text-muted-foreground">
+        A quantidade informada sera o saldo final do lote ou produto selecionado. Cada linha salva
+        uma movimentacao de ajuste com usuario, motivo, estoque antes e estoque depois.
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border bg-background">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="min-w-72">Produto</TableHead>
+              <TableHead className="min-w-56">Estoque</TableHead>
+              <TableHead className="min-w-56">Lote</TableHead>
+              <TableHead className="min-w-40 text-right">Quantidade final</TableHead>
+              <TableHead className="min-w-64">Motivo</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row, index) => {
+              const product = getAdjustmentProduct(catalog, row);
+              const stock = getAdjustmentStock(catalog, row);
+              const lots = lotsByRow[row.id] ?? [];
+              const requiresLot = adjustmentRequiresLot(row, catalog, lots);
+
+              return (
+                <TableRow key={row.id}>
+                  <TableCell>
+                    <Input
+                      list={`adjustment-products-${row.id}`}
+                      value={row.productQuery}
+                      onChange={(event) => onProductChange(row, event.target.value)}
+                      placeholder="Digite nome ou codigo"
+                    />
+                    <datalist id={`adjustment-products-${row.id}`}>
+                      {productOptions.map((option) => (
+                        <option key={option} value={option} />
+                      ))}
+                    </datalist>
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={row.stockId}
+                      onValueChange={(value) => onStockChange(row, value)}
+                      disabled={!product}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder={product ? "Selecione" : "Escolha produto"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {product?.stocks.map((item) => (
+                          <SelectItem key={item.id} value={String(item.id)}>
+                            {item.nome} - atual {item.stock}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={row.lotId}
+                      onValueChange={(value) => onRowChange(row.id, { lotId: value })}
+                      disabled={!row.stockId || lots.length === 0}
+                    >
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={
+                            !row.stockId
+                              ? "Escolha estoque"
+                              : lots.length === 0
+                                ? "Sem lote"
+                                : requiresLot
+                                  ? "Selecione lote"
+                                  : "Opcional"
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {!requiresLot && <SelectItem value="none">Sem lote</SelectItem>}
+                        {lots.map((lot) => (
+                          <SelectItem key={lot.id} value={String(lot.id)}>
+                            {lot.lot} - atual {lot.quantity}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+                  <TableCell>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      className="text-right"
+                      value={row.quantityFinal}
+                      onChange={(event) =>
+                        onRowChange(row.id, { quantityFinal: event.target.value })
+                      }
+                      placeholder={stock ? String(stock.stock) : "0"}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={row.reason}
+                      onValueChange={(value) => onRowChange(row.id, { reason: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione o motivo" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {adjustmentReasons.map((reason) => (
+                          <SelectItem key={reason} value={reason}>
+                            {reason}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {index === rows.length - 1 && !isAdjustmentRowTouched(row) ? (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        Deixe esta linha vazia para finalizar.
+                      </div>
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
   );
 }
 

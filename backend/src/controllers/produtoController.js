@@ -68,6 +68,83 @@ async function criar(req, res) {
   }
 }
 
+function normalizeProductPayload(raw, index) {
+  const label = `Linha ${index + 1}`;
+  const {
+    codigo_barras,
+    nome,
+    categoria_id,
+    unidade,
+    preco_venda,
+    estoque_id,
+    estoque_atual,
+    estoque_minimo,
+    data_validade,
+    lote,
+    ativo,
+  } = raw || {};
+
+  if (!codigo_barras || !String(codigo_barras).trim()) {
+    throw Object.assign(new Error(`${label}: codigo_barras e obrigatorio`), { status: 400 });
+  }
+  if (!nome || !String(nome).trim()) {
+    throw Object.assign(new Error(`${label}: nome e obrigatorio`), { status: 400 });
+  }
+  if (categoria_id == null || !Number(categoria_id)) {
+    throw Object.assign(new Error(`${label}: categoria_id e obrigatorio`), { status: 400 });
+  }
+  if (preco_venda == null || isNaN(Number(preco_venda)) || Number(preco_venda) < 0) {
+    throw Object.assign(new Error(`${label}: preco_venda invalido`), { status: 400 });
+  }
+  if (!Number(estoque_id)) {
+    throw Object.assign(new Error(`${label}: estoque_id e obrigatorio`), { status: 400 });
+  }
+  if (estoque_atual != null && (isNaN(Number(estoque_atual)) || Number(estoque_atual) < 0)) {
+    throw Object.assign(new Error(`${label}: estoque_atual invalido`), { status: 400 });
+  }
+  if (estoque_minimo != null && (isNaN(Number(estoque_minimo)) || Number(estoque_minimo) < 0)) {
+    throw Object.assign(new Error(`${label}: estoque_minimo invalido`), { status: 400 });
+  }
+
+  return {
+    codigo_barras: String(codigo_barras).trim(),
+    nome: String(nome).trim(),
+    categoria_id: Number(categoria_id),
+    unidade: unidade ? String(unidade).trim() : "un",
+    preco_venda: Number(preco_venda),
+    estoque_id: Number(estoque_id),
+    estoque_atual: estoque_atual != null ? Number(estoque_atual) : 0,
+    estoque_minimo: estoque_minimo != null ? Number(estoque_minimo) : 0,
+    data_validade,
+    lote: lote ? String(lote).trim() : "",
+    ativo: ativo === undefined ? true : !!ativo,
+  };
+}
+
+async function criarEmLote(req, res) {
+  const { produtos } = req.body || {};
+
+  if (!Array.isArray(produtos) || produtos.length === 0) {
+    return fail(res, 400, "Informe ao menos um produto");
+  }
+
+  try {
+    const normalized = produtos.map(normalizeProductPayload);
+    const estoqueIds = [...new Set(normalized.map((produto) => produto.estoque_id))];
+
+    for (const estoqueId of estoqueIds) {
+      if (!(await estoqueService.findById(estoqueId))) {
+        return fail(res, 404, `Estoque nao encontrado: ${estoqueId}`);
+      }
+    }
+
+    const criados = await produtoService.createMany(normalized);
+    return created(res, criados, "Produtos cadastrados");
+  } catch (e) {
+    return fail(res, e.status || 500, e.message || "Erro ao cadastrar produtos");
+  }
+}
+
 async function listarLotes(req, res) {
   const id = Number(req.params.id);
   if (!id) return fail(res, 400, "Produto invalido");
@@ -184,6 +261,7 @@ module.exports = {
   listar,
   buscarPorCodigo,
   criar,
+  criarEmLote,
   atualizar,
   atualizarLote,
   alterarStatus,

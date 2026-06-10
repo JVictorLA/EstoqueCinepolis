@@ -59,6 +59,7 @@ export function WasteDialog({
   const [estoqueId, setEstoqueId] = useState("");
   const [barcode, setBarcode] = useState(initialBarcode);
   const [product, setProduct] = useState<Product | null>(null);
+  const [availableStockIds, setAvailableStockIds] = useState<number[] | null>(null);
   const [quantity, setQuantity] = useState("");
   const [lot, setLot] = useState("");
   const [lots, setLots] = useState<ProductLot[]>([]);
@@ -67,6 +68,7 @@ export function WasteDialog({
   const [password, setPassword] = useState("");
   const [user, setUser] = useState<EmployeeLookup | null>(null);
   const [loading, setLoading] = useState(false);
+  const [credentialsOpen, setCredentialsOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -76,6 +78,11 @@ export function WasteDialog({
     if (fixedEstoqueName) return fixedEstoqueName;
     return estoques.find((estoque) => String(estoque.id) === selectedEstoqueId)?.nome;
   }, [estoques, fixedEstoqueName, selectedEstoqueId]);
+  const filteredEstoques = useMemo(() => {
+    const activeStocks = estoques.filter((estoque) => estoque.ativo);
+    if (!availableStockIds) return activeStocks;
+    return activeStocks.filter((estoque) => availableStockIds.includes(estoque.id));
+  }, [availableStockIds, estoques]);
 
   useEffect(() => {
     if (!open) return;
@@ -98,6 +105,43 @@ export function WasteDialog({
     const firstActive = estoques.find((estoque) => estoque.ativo) ?? estoques[0];
     if (firstActive && !estoqueId) setEstoqueId(String(firstActive.id));
   }, [estoqueId, estoques, fixedEstoqueId]);
+
+  useEffect(() => {
+    if (fixedEstoqueId) return;
+
+    const code = barcode.trim();
+    if (!code) {
+      setAvailableStockIds(null);
+      return;
+    }
+
+    const activeStocks = estoques.filter((estoque) => estoque.ativo);
+    if (!activeStocks.length) {
+      setAvailableStockIds([]);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      Promise.all(
+        activeStocks.map((estoque) =>
+          getProductByBarcode(code, estoque.id)
+            .then((found) => (found ? estoque.id : null))
+            .catch(() => null),
+        ),
+      ).then((ids) => {
+        const linkedIds = ids.filter((id): id is number => id !== null);
+        setAvailableStockIds(linkedIds);
+
+        if (linkedIds.length && !linkedIds.includes(Number(estoqueId))) {
+          setEstoqueId(String(linkedIds[0]));
+        } else if (!linkedIds.length) {
+          setEstoqueId("");
+        }
+      });
+    }, 350);
+
+    return () => window.clearTimeout(timeout);
+  }, [barcode, estoqueId, estoques, fixedEstoqueId]);
 
   useEffect(() => {
     if (!barcode || !selectedEstoqueId) {
@@ -142,26 +186,63 @@ export function WasteDialog({
   const reset = () => {
     setBarcode("");
     setProduct(null);
+    setAvailableStockIds(null);
     setQuantity("");
     setLot("");
     setLots([]);
     setMatricula("");
     setPassword("");
     setUser(null);
+    setCredentialsOpen(false);
     setNewPassword("");
     setConfirmPassword("");
   };
 
-  const save = async () => {
-    if (!Number(selectedEstoqueId)) return toast.error("Selecione o estoque");
-    if (!barcode.trim()) return toast.error("Informe o codigo de barras");
-    if (!Number(reasonId)) return toast.error("Selecione o motivo");
-    if (!matricula.trim() || !password) return toast.error("Informe matricula e senha");
-    if (product?.requiresExpiration && !lot.trim()) return toast.error("Informe o lote");
+  const validateWasteDetails = () => {
+    if (!Number(selectedEstoqueId)) {
+      toast.error("Selecione o estoque");
+      return null;
+    }
+    if (!barcode.trim()) {
+      toast.error("Informe o codigo de barras");
+      return null;
+    }
+    if (!product) {
+      toast.error("Produto nao encontrado no estoque selecionado");
+      return null;
+    }
+    if (!Number(reasonId)) {
+      toast.error("Selecione o motivo");
+      return null;
+    }
+    if (product?.requiresExpiration && !lot.trim()) {
+      toast.error("Informe o lote");
+      return null;
+    }
 
     const qtd = Number(quantity);
-    if (!Number.isFinite(qtd) || qtd <= 0) return toast.error("Informe uma quantidade valida");
-    if (product && qtd > product.stock) return toast.error("Quantidade maior que o estoque atual");
+    if (!Number.isFinite(qtd) || qtd <= 0) {
+      toast.error("Informe uma quantidade valida");
+      return null;
+    }
+    if (product && qtd > product.stock) {
+      toast.error("Quantidade maior que o estoque atual");
+      return null;
+    }
+
+    return qtd;
+  };
+
+  const requestCredentials = () => {
+    const qtd = validateWasteDetails();
+    if (!qtd) return;
+    setCredentialsOpen(true);
+  };
+
+  const save = async () => {
+    const qtd = validateWasteDetails();
+    if (!qtd) return;
+    if (!matricula.trim() || !password) return toast.error("Informe matricula e senha");
 
     if (password === "123456" && (user?.precisa_trocar_senha || user?.precisaTrocarSenha)) {
       setChangePasswordOpen(true);
@@ -234,13 +315,18 @@ export function WasteDialog({
                     <SelectValue placeholder="Selecione o estoque" />
                   </SelectTrigger>
                   <SelectContent>
-                    {estoques.map((estoque) => (
+                    {filteredEstoques.map((estoque) => (
                       <SelectItem key={estoque.id} value={String(estoque.id)}>
                         {estoque.nome}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {barcode.trim() && availableStockIds?.length === 0 && (
+                  <p className="text-xs text-destructive">
+                    Este produto nao esta cadastrado em nenhum estoque disponivel.
+                  </p>
+                )}
               </div>
             )}
 
@@ -319,20 +405,51 @@ export function WasteDialog({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+          </div>
 
-              <div className="space-y-2">
-                <Label>Matricula</Label>
-                <Input value={matricula} onChange={(e) => setMatricula(e.target.value)} />
-              </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+              Cancelar
+            </Button>
+            <Button onClick={requestCredentials} disabled={loading} className="gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              Criar desperdicio
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-              <div className="space-y-2">
-                <Label>Senha</Label>
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
+      <Dialog open={credentialsOpen} onOpenChange={setCredentialsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirmar responsavel</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
+              <div className="font-medium">{product?.name ?? "Produto informado"}</div>
+              <div className="text-xs text-muted-foreground">
+                Quantidade: {quantity || 0} {product?.unit ?? ""}
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Matricula</Label>
+              <Input
+                value={matricula}
+                onChange={(e) => setMatricula(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Senha</Label>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
             </div>
 
             {user && (
@@ -343,14 +460,14 @@ export function WasteDialog({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-              Cancelar
+            <Button variant="outline" onClick={() => setCredentialsOpen(false)} disabled={loading}>
+              Voltar
             </Button>
             <Button onClick={save} disabled={loading} className="gap-2">
               {loading ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <AlertTriangle className="h-4 w-4" />
+                <Trash2 className="h-4 w-4" />
               )}
               Registrar desperdicio
             </Button>

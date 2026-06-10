@@ -2,6 +2,15 @@ const { pool } = require("../database/connection");
 const loteService = require("./loteService");
 const configuracaoService = require("./configuracaoService");
 
+const ADJUSTMENT_REASONS = new Set([
+  "Contagem fisica / inventario",
+  "Correcao de lancamento",
+  "Produto encontrado no estoque",
+  "Erro de cadastro de saldo",
+  "Ajuste administrativo",
+  "Outro",
+]);
+
 function parseBooleanConfig(value, fallback) {
   if (value === null || value === undefined || value === "") return fallback;
   if (typeof value === "boolean") return value;
@@ -594,6 +603,187 @@ async function transferirEstoque({
   }
 }
 
+async function getDefaultAdjustmentLot(conn, stockProduct) {
+  const [rows] = await conn.query(
+    `SELECT *
+     FROM produto_lotes
+     WHERE estoque_produto_id = ? AND lote = ?
+     LIMIT 1
+     FOR UPDATE`,
+    [stockProduct.estoque_produto_id, loteService.DEFAULT_LOT_CODE],
+  );
+  if (rows.length) return rows[0];
+
+  const [result] = await conn.query(
+    `INSERT INTO produto_lotes
+       (estoque_produto_id, lote, data_validade, quantidade, criado_em, atualizado_em)
+     VALUES (?, ?, NULL, 0, NOW(), NOW())`,
+    [stockProduct.estoque_produto_id, loteService.DEFAULT_LOT_CODE],
+  );
+
+  return {
+    id: result.insertId,
+    estoque_produto_id: stockProduct.estoque_produto_id,
+    lote: loteService.DEFAULT_LOT_CODE,
+    data_validade: null,
+    quantidade: 0,
+  };
+}
+
+async function getAdjustmentLot(conn, stockProduct, loteId) {
+  const [[category]] = await conn.query(
+    "SELECT COALESCE(exige_validade, 0) AS exige_validade FROM categorias WHERE id = ? LIMIT 1",
+    [stockProduct.categoria_id],
+  );
+  const requiresValidity = !!category?.exige_validade;
+
+  if (requiresValidity && !Number(loteId)) {
+    throw Object.assign(new Error("Selecione o lote do produto"), { status: 400 });
+  }
+
+  if (Number(loteId)) {
+    const [rows] = await conn.query(
+      `SELECT *
+       FROM produto_lotes
+       WHERE id = ? AND estoque_produto_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [Number(loteId), stockProduct.estoque_produto_id],
+    );
+    if (!rows.length) {
+      throw Object.assign(new Error("Lote nao encontrado neste estoque"), { status: 404 });
+    }
+    return rows[0];
+  }
+
+  return getDefaultAdjustmentLot(conn, stockProduct);
+}
+
+async function ajustarEstoque({ usuario, itens }) {
+  const normalizedItems = (itens || [])
+    .map((item) => ({
+      produto_id: Number(item.produto_id),
+      estoque_id: Number(item.estoque_id),
+      lote_id: item.lote_id === undefined || item.lote_id === null || item.lote_id === "" ? null : Number(item.lote_id),
+      quantidade_final: Number(item.quantidade_final),
+      motivo: String(item.motivo || "").trim(),
+    }))
+    .filter((item) => item.produto_id || item.estoque_id || item.motivo || Number.isFinite(item.quantidade_final));
+
+  if (!normalizedItems.length) {
+    throw Object.assign(new Error("Informe pelo menos um ajuste"), { status: 400 });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const results = [];
+
+    for (const item of normalizedItems) {
+      if (!item.produto_id) throw Object.assign(new Error("Produto e obrigatorio"), { status: 400 });
+      if (!item.estoque_id) throw Object.assign(new Error("Estoque e obrigatorio"), { status: 400 });
+      if (!Number.isFinite(item.quantidade_final) || item.quantidade_final < 0) {
+        throw Object.assign(new Error("Quantidade final invalida"), { status: 400 });
+      }
+      if (!ADJUSTMENT_REASONS.has(item.motivo)) {
+        throw Object.assign(new Error("Motivo do ajuste invalido"), { status: 400 });
+      }
+
+      const stockProduct = await loteService.getStockProduct(
+        conn,
+        item.produto_id,
+        item.estoque_id,
+        true,
+      );
+      if (!stockProduct) {
+        throw Object.assign(new Error("Produto nao vinculado ao estoque selecionado"), {
+          status: 400,
+        });
+      }
+      if (!stockProduct.ativo) {
+        throw Object.assign(new Error("Produto inativo"), { status: 400 });
+      }
+
+      await loteService.ensureDefaultLotFromCache(conn, stockProduct);
+      const lote = await getAdjustmentLot(conn, stockProduct, item.lote_id);
+      const estoqueAntes = await loteService.recalcStockProduct(conn, stockProduct.estoque_produto_id);
+      const loteAntes = Number(lote.quantidade || 0);
+
+      await conn.query(
+        "UPDATE produto_lotes SET quantidade = ?, atualizado_em = NOW() WHERE id = ?",
+        [item.quantidade_final, lote.id],
+      );
+
+      const estoqueDepois = await loteService.recalcStockProduct(
+        conn,
+        stockProduct.estoque_produto_id,
+      );
+      const quantidadeMovimentada = Math.abs(item.quantidade_final - loteAntes);
+
+      await conn.query("UPDATE produtos SET atualizado_em = NOW() WHERE id = ?", [item.produto_id]);
+
+      const [mov] = await conn.query(
+        `INSERT INTO movimentacoes
+          (estoque_id, produto_id, usuario_id, tipo, quantidade,
+           estoque_antes, estoque_depois,
+           usuario_nome, produto_nome, observacao, criado_em)
+         VALUES (?, ?, ?, 'ajuste', ?, ?, ?, ?, ?, ?, NOW())`,
+        [
+          item.estoque_id,
+          item.produto_id,
+          usuario.id,
+          quantidadeMovimentada,
+          estoqueAntes,
+          estoqueDepois,
+          usuario.nome,
+          stockProduct.produto_nome,
+          `Ajuste de estoque: ${item.motivo}`,
+        ],
+      );
+
+      await loteService.insertMovementLot(conn, {
+        movimentacaoId: mov.insertId,
+        loteId: lote.id,
+        quantidade: quantidadeMovimentada,
+      });
+
+      const alerta_criado = await atualizarAlertasEstoque(
+        conn,
+        item.produto_id,
+        item.estoque_id,
+        estoqueDepois,
+        stockProduct.estoque_minimo,
+      );
+
+      results.push({
+        id: mov.insertId,
+        produto_id: item.produto_id,
+        usuario_id: usuario.id,
+        estoque_id: item.estoque_id,
+        estoque_nome: stockProduct.estoque_nome,
+        tipo: "ajuste",
+        quantidade: quantidadeMovimentada,
+        estoque_antes: estoqueAntes,
+        estoque_depois: estoqueDepois,
+        usuario_nome: usuario.nome,
+        produto_nome: stockProduct.produto_nome,
+        observacao: `Ajuste de estoque: ${item.motivo}`,
+        alerta_criado,
+        lote_id: lote.id,
+        lote_codigo: loteService.displayLotCode(lote.lote),
+      });
+    }
+
+    await conn.commit();
+    return results;
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
 async function listar(filtros = {}) {
   const where = [];
   const params = [];
@@ -668,6 +858,7 @@ async function listar(filtros = {}) {
 module.exports = {
   registrarMovimentacao,
   transferirEstoque,
+  ajustarEstoque,
   listar,
   atualizarAlertasEstoque,
 };

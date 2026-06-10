@@ -15,6 +15,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as OperadorIndexRouteImport } from './routes/operador.index'
 import { Route as AdminIndexRouteImport } from './routes/admin.index'
 import { Route as OperadorRetiradaRouteImport } from './routes/operador.retirada'
+import { Route as OperadorKitsRouteImport } from './routes/operador.kits'
 import { Route as OperadorHistoricoRouteImport } from './routes/operador.historico'
 import { Route as OperadorEntradaRouteImport } from './routes/operador.entrada'
 import { Route as OperadorDesperdicioRouteImport } from './routes/operador.desperdicio'
@@ -22,11 +23,13 @@ import { Route as AdminUsuariosRouteImport } from './routes/admin.usuarios'
 import { Route as AdminRetiradaRouteImport } from './routes/admin.retirada'
 import { Route as AdminProdutosRouteImport } from './routes/admin.produtos'
 import { Route as AdminMovimentacoesRouteImport } from './routes/admin.movimentacoes'
+import { Route as AdminKitsRouteImport } from './routes/admin.kits'
 import { Route as AdminInventarioRouteImport } from './routes/admin.inventario'
 import { Route as AdminEstoquesRouteImport } from './routes/admin.estoques'
 import { Route as AdminEntradaRouteImport } from './routes/admin.entrada'
 import { Route as AdminDesperdiciosRouteImport } from './routes/admin.desperdicios'
 import { Route as AdminConfiguracoesRouteImport } from './routes/admin.configuracoes'
+import { Route as AdminProdutosCadastroRouteImport } from './routes/admin.produtos.cadastro'
 
 const OperadorRoute = OperadorRouteImport.update({
   id: '/operador',
@@ -56,6 +59,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const OperadorRetiradaRoute = OperadorRetiradaRouteImport.update({
   id: '/retirada',
   path: '/retirada',
+  getParentRoute: () => OperadorRoute,
+} as any)
+const OperadorKitsRoute = OperadorKitsRouteImport.update({
+  id: '/kits',
+  path: '/kits',
   getParentRoute: () => OperadorRoute,
 } as any)
 const OperadorHistoricoRoute = OperadorHistoricoRouteImport.update({
@@ -93,6 +101,11 @@ const AdminMovimentacoesRoute = AdminMovimentacoesRouteImport.update({
   path: '/movimentacoes',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminKitsRoute = AdminKitsRouteImport.update({
+  id: '/kits',
+  path: '/kits',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminInventarioRoute = AdminInventarioRouteImport.update({
   id: '/inventario',
   path: '/inventario',
@@ -118,6 +131,11 @@ const AdminConfiguracoesRoute = AdminConfiguracoesRouteImport.update({
   path: '/configuracoes',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminProdutosCadastroRoute = AdminProdutosCadastroRouteImport.update({
+  id: '/cadastro',
+  path: '/cadastro',
+  getParentRoute: () => AdminProdutosRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -128,16 +146,19 @@ export interface FileRoutesByFullPath {
   '/admin/entrada': typeof AdminEntradaRoute
   '/admin/estoques': typeof AdminEstoquesRoute
   '/admin/inventario': typeof AdminInventarioRoute
+  '/admin/kits': typeof AdminKitsRoute
   '/admin/movimentacoes': typeof AdminMovimentacoesRoute
-  '/admin/produtos': typeof AdminProdutosRoute
+  '/admin/produtos': typeof AdminProdutosRouteWithChildren
   '/admin/retirada': typeof AdminRetiradaRoute
   '/admin/usuarios': typeof AdminUsuariosRoute
   '/operador/desperdicio': typeof OperadorDesperdicioRoute
   '/operador/entrada': typeof OperadorEntradaRoute
   '/operador/historico': typeof OperadorHistoricoRoute
+  '/operador/kits': typeof OperadorKitsRoute
   '/operador/retirada': typeof OperadorRetiradaRoute
   '/admin/': typeof AdminIndexRoute
   '/operador/': typeof OperadorIndexRoute
+  '/admin/produtos/cadastro': typeof AdminProdutosCadastroRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -146,16 +167,19 @@ export interface FileRoutesByTo {
   '/admin/entrada': typeof AdminEntradaRoute
   '/admin/estoques': typeof AdminEstoquesRoute
   '/admin/inventario': typeof AdminInventarioRoute
+  '/admin/kits': typeof AdminKitsRoute
   '/admin/movimentacoes': typeof AdminMovimentacoesRoute
-  '/admin/produtos': typeof AdminProdutosRoute
+  '/admin/produtos': typeof AdminProdutosRouteWithChildren
   '/admin/retirada': typeof AdminRetiradaRoute
   '/admin/usuarios': typeof AdminUsuariosRoute
   '/operador/desperdicio': typeof OperadorDesperdicioRoute
   '/operador/entrada': typeof OperadorEntradaRoute
   '/operador/historico': typeof OperadorHistoricoRoute
+  '/operador/kits': typeof OperadorKitsRoute
   '/operador/retirada': typeof OperadorRetiradaRoute
   '/admin': typeof AdminIndexRoute
   '/operador': typeof OperadorIndexRoute
+  '/admin/produtos/cadastro': typeof AdminProdutosCadastroRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -167,16 +191,19 @@ export interface FileRoutesById {
   '/admin/entrada': typeof AdminEntradaRoute
   '/admin/estoques': typeof AdminEstoquesRoute
   '/admin/inventario': typeof AdminInventarioRoute
+  '/admin/kits': typeof AdminKitsRoute
   '/admin/movimentacoes': typeof AdminMovimentacoesRoute
-  '/admin/produtos': typeof AdminProdutosRoute
+  '/admin/produtos': typeof AdminProdutosRouteWithChildren
   '/admin/retirada': typeof AdminRetiradaRoute
   '/admin/usuarios': typeof AdminUsuariosRoute
   '/operador/desperdicio': typeof OperadorDesperdicioRoute
   '/operador/entrada': typeof OperadorEntradaRoute
   '/operador/historico': typeof OperadorHistoricoRoute
+  '/operador/kits': typeof OperadorKitsRoute
   '/operador/retirada': typeof OperadorRetiradaRoute
   '/admin/': typeof AdminIndexRoute
   '/operador/': typeof OperadorIndexRoute
+  '/admin/produtos/cadastro': typeof AdminProdutosCadastroRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -189,6 +216,7 @@ export interface FileRouteTypes {
     | '/admin/entrada'
     | '/admin/estoques'
     | '/admin/inventario'
+    | '/admin/kits'
     | '/admin/movimentacoes'
     | '/admin/produtos'
     | '/admin/retirada'
@@ -196,9 +224,11 @@ export interface FileRouteTypes {
     | '/operador/desperdicio'
     | '/operador/entrada'
     | '/operador/historico'
+    | '/operador/kits'
     | '/operador/retirada'
     | '/admin/'
     | '/operador/'
+    | '/admin/produtos/cadastro'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -207,6 +237,7 @@ export interface FileRouteTypes {
     | '/admin/entrada'
     | '/admin/estoques'
     | '/admin/inventario'
+    | '/admin/kits'
     | '/admin/movimentacoes'
     | '/admin/produtos'
     | '/admin/retirada'
@@ -214,9 +245,11 @@ export interface FileRouteTypes {
     | '/operador/desperdicio'
     | '/operador/entrada'
     | '/operador/historico'
+    | '/operador/kits'
     | '/operador/retirada'
     | '/admin'
     | '/operador'
+    | '/admin/produtos/cadastro'
   id:
     | '__root__'
     | '/'
@@ -227,6 +260,7 @@ export interface FileRouteTypes {
     | '/admin/entrada'
     | '/admin/estoques'
     | '/admin/inventario'
+    | '/admin/kits'
     | '/admin/movimentacoes'
     | '/admin/produtos'
     | '/admin/retirada'
@@ -234,9 +268,11 @@ export interface FileRouteTypes {
     | '/operador/desperdicio'
     | '/operador/entrada'
     | '/operador/historico'
+    | '/operador/kits'
     | '/operador/retirada'
     | '/admin/'
     | '/operador/'
+    | '/admin/produtos/cadastro'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -289,6 +325,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OperadorRetiradaRouteImport
       parentRoute: typeof OperadorRoute
     }
+    '/operador/kits': {
+      id: '/operador/kits'
+      path: '/kits'
+      fullPath: '/operador/kits'
+      preLoaderRoute: typeof OperadorKitsRouteImport
+      parentRoute: typeof OperadorRoute
+    }
     '/operador/historico': {
       id: '/operador/historico'
       path: '/historico'
@@ -338,6 +381,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminMovimentacoesRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/kits': {
+      id: '/admin/kits'
+      path: '/kits'
+      fullPath: '/admin/kits'
+      preLoaderRoute: typeof AdminKitsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/inventario': {
       id: '/admin/inventario'
       path: '/inventario'
@@ -373,8 +423,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminConfiguracoesRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/produtos/cadastro': {
+      id: '/admin/produtos/cadastro'
+      path: '/cadastro'
+      fullPath: '/admin/produtos/cadastro'
+      preLoaderRoute: typeof AdminProdutosCadastroRouteImport
+      parentRoute: typeof AdminProdutosRoute
+    }
   }
 }
+
+interface AdminProdutosRouteChildren {
+  AdminProdutosCadastroRoute: typeof AdminProdutosCadastroRoute
+}
+
+const AdminProdutosRouteChildren: AdminProdutosRouteChildren = {
+  AdminProdutosCadastroRoute: AdminProdutosCadastroRoute,
+}
+
+const AdminProdutosRouteWithChildren = AdminProdutosRoute._addFileChildren(
+  AdminProdutosRouteChildren,
+)
 
 interface AdminRouteChildren {
   AdminConfiguracoesRoute: typeof AdminConfiguracoesRoute
@@ -382,8 +451,9 @@ interface AdminRouteChildren {
   AdminEntradaRoute: typeof AdminEntradaRoute
   AdminEstoquesRoute: typeof AdminEstoquesRoute
   AdminInventarioRoute: typeof AdminInventarioRoute
+  AdminKitsRoute: typeof AdminKitsRoute
   AdminMovimentacoesRoute: typeof AdminMovimentacoesRoute
-  AdminProdutosRoute: typeof AdminProdutosRoute
+  AdminProdutosRoute: typeof AdminProdutosRouteWithChildren
   AdminRetiradaRoute: typeof AdminRetiradaRoute
   AdminUsuariosRoute: typeof AdminUsuariosRoute
   AdminIndexRoute: typeof AdminIndexRoute
@@ -395,8 +465,9 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminEntradaRoute: AdminEntradaRoute,
   AdminEstoquesRoute: AdminEstoquesRoute,
   AdminInventarioRoute: AdminInventarioRoute,
+  AdminKitsRoute: AdminKitsRoute,
   AdminMovimentacoesRoute: AdminMovimentacoesRoute,
-  AdminProdutosRoute: AdminProdutosRoute,
+  AdminProdutosRoute: AdminProdutosRouteWithChildren,
   AdminRetiradaRoute: AdminRetiradaRoute,
   AdminUsuariosRoute: AdminUsuariosRoute,
   AdminIndexRoute: AdminIndexRoute,
@@ -408,6 +479,7 @@ interface OperadorRouteChildren {
   OperadorDesperdicioRoute: typeof OperadorDesperdicioRoute
   OperadorEntradaRoute: typeof OperadorEntradaRoute
   OperadorHistoricoRoute: typeof OperadorHistoricoRoute
+  OperadorKitsRoute: typeof OperadorKitsRoute
   OperadorRetiradaRoute: typeof OperadorRetiradaRoute
   OperadorIndexRoute: typeof OperadorIndexRoute
 }
@@ -416,6 +488,7 @@ const OperadorRouteChildren: OperadorRouteChildren = {
   OperadorDesperdicioRoute: OperadorDesperdicioRoute,
   OperadorEntradaRoute: OperadorEntradaRoute,
   OperadorHistoricoRoute: OperadorHistoricoRoute,
+  OperadorKitsRoute: OperadorKitsRoute,
   OperadorRetiradaRoute: OperadorRetiradaRoute,
   OperadorIndexRoute: OperadorIndexRoute,
 }

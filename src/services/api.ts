@@ -29,6 +29,12 @@ import type {
   ConferenceItemStatus,
   ProductLot,
   LotStatus,
+  Kit,
+  KitItem,
+  KitMovementHistory,
+  KitMovementType,
+  KitProductOption,
+  KitStatus,
 } from "@/types";
 
 const API_URL = import.meta.env?.VITE_API_URL?.replace(/\/$/, "") || "http://localhost:3333";
@@ -193,7 +199,7 @@ interface RawMovement {
   estoque_nome?: string | null;
   produto_id: number;
   usuario_id: number;
-  tipo: "entrada" | "saida" | "desperdicio";
+  tipo: "entrada" | "saida" | "desperdicio" | "ajuste";
   quantidade: number;
   estoque_antes: number | string;
   estoque_depois: number | string;
@@ -356,6 +362,65 @@ interface RawEstoque {
   criado_em: string;
 }
 
+interface RawKitItem {
+  id: number;
+  kit_id: number;
+  produto_id: number;
+  produto_nome: string;
+  codigo_barras: string;
+  unidade: string;
+  quantidade_padrao: number | string;
+  quantidade_atual: number | string;
+  criado_em: string;
+  atualizado_em: string;
+}
+
+interface RawKit {
+  id: number;
+  estoque_id: number;
+  estoque_nome: string;
+  nome: string;
+  status: KitStatus;
+  responsavel_atual_id: number | null;
+  responsavel_atual_nome: string | null;
+  criado_em: string;
+  atualizado_em: string;
+  ultima_movimentacao_tipo?: KitMovementType | null;
+  ultima_movimentacao_em?: string | null;
+  itens?: RawKitItem[];
+}
+
+interface RawKitProductOption {
+  id: number;
+  codigo_barras: string;
+  nome: string;
+  unidade: string;
+  categoria_id: number | null;
+  categoria_nome: string | null;
+  estoque_atual: number | string;
+}
+
+interface RawKitMovementHistory {
+  id: number;
+  kit_id: number;
+  kit_nome: string;
+  estoque_id: number;
+  estoque_nome: string;
+  usuario_id: number;
+  usuario_nome: string;
+  tipo: KitMovementType;
+  observacao: string | null;
+  criado_em: string;
+  itens: Array<{
+    produto_id: number;
+      produto_nome: string;
+      quantidade_anterior: number | string;
+      reposicao_operacao: number | string;
+      quantidade_movimentada: number | string;
+      quantidade_final: number | string;
+  }>;
+}
+
 interface RawInventoryItem {
   produto_id: number;
   codigo_barras: string;
@@ -507,6 +572,73 @@ function mapEstoque(r: RawEstoque): Estoque {
     nome: r.nome,
     ativo: !!r.ativo,
     criadoEm: r.criado_em,
+  };
+}
+
+function mapKitItem(r: RawKitItem): KitItem {
+  return {
+    id: r.id,
+    kitId: r.kit_id,
+    productId: r.produto_id,
+    productName: r.produto_nome,
+    barcode: r.codigo_barras,
+    unit: r.unidade,
+    defaultQuantity: Number(r.quantidade_padrao),
+    currentQuantity: Number(r.quantidade_atual),
+    createdAt: r.criado_em,
+    updatedAt: r.atualizado_em,
+  };
+}
+
+function mapKit(r: RawKit): Kit {
+  return {
+    id: r.id,
+    estoqueId: r.estoque_id,
+    estoqueNome: r.estoque_nome,
+    name: r.nome,
+    status: r.status,
+    responsibleId: r.responsavel_atual_id,
+    responsibleName: r.responsavel_atual_nome,
+    createdAt: r.criado_em,
+    updatedAt: r.atualizado_em,
+    lastMovementType: r.ultima_movimentacao_tipo ?? null,
+    lastMovementAt: r.ultima_movimentacao_em ?? null,
+    items: r.itens?.map(mapKitItem),
+  };
+}
+
+function mapKitProductOption(r: RawKitProductOption): KitProductOption {
+  return {
+    id: r.id,
+    barcode: r.codigo_barras,
+    name: r.nome,
+    unit: r.unidade,
+    categoryId: r.categoria_id,
+    categoryName: r.categoria_nome,
+    stock: Number(r.estoque_atual),
+  };
+}
+
+function mapKitMovementHistory(r: RawKitMovementHistory): KitMovementHistory {
+  return {
+    id: r.id,
+    kitId: r.kit_id,
+    kitName: r.kit_nome,
+    estoqueId: r.estoque_id,
+    estoqueNome: r.estoque_nome,
+    userId: r.usuario_id,
+    userName: r.usuario_nome,
+    type: r.tipo,
+    note: r.observacao,
+    createdAt: r.criado_em,
+    items: (r.itens ?? []).map((item) => ({
+      productId: item.produto_id,
+        productName: item.produto_nome,
+        previousQuantity: Number(item.quantidade_anterior),
+        operationReplenishment: Number(item.reposicao_operacao ?? 0),
+        movedQuantity: Number(item.quantidade_movimentada),
+        finalQuantity: Number(item.quantidade_final),
+    })),
   };
 }
 
@@ -666,6 +798,123 @@ export async function setEstoqueStatus(id: number, ativo: boolean): Promise<Esto
     body: JSON.stringify({ ativo }),
   });
   return mapEstoque(r);
+}
+
+/* ----------------- KITS DA BOMBONIERE ----------------- */
+
+export interface SaveKitPayload {
+  estoque_id: number;
+  nome: string;
+  itens: Array<{
+    produto_id: number;
+    quantidade_padrao: number;
+  }>;
+}
+
+export async function getKits(estoqueId: number | string = "all"): Promise<Kit[]> {
+  const qs = `?estoque_id=${encodeURIComponent(String(estoqueId))}`;
+  const rows = await request<RawKit[]>(`/kits${qs}`, { auth: true });
+  return rows.map(mapKit);
+}
+
+export async function getOperationalKits(estoqueId: number | string): Promise<Kit[]> {
+  const qs = `?estoque_id=${encodeURIComponent(String(estoqueId))}`;
+  const rows = await request<RawKit[]>(`/kits/operacional${qs}`);
+  return rows.map(mapKit);
+}
+
+export async function getKit(id: number): Promise<Kit> {
+  const row = await request<RawKit>(`/kits/${id}`, { auth: true });
+  return mapKit(row);
+}
+
+export async function getOperationalKit(id: number, estoqueId: number | string): Promise<Kit> {
+  const qs = `?estoque_id=${encodeURIComponent(String(estoqueId))}`;
+  const row = await request<RawKit>(`/kits/operacional/${id}${qs}`);
+  return mapKit(row);
+}
+
+export async function createKit(payload: SaveKitPayload): Promise<Kit> {
+  const row = await request<RawKit>("/kits", {
+    method: "POST",
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+  return mapKit(row);
+}
+
+export async function updateKit(id: number, payload: SaveKitPayload): Promise<Kit> {
+  const row = await request<RawKit>(`/kits/${id}`, {
+    method: "PUT",
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+  return mapKit(row);
+}
+
+export async function mountKit(id: number, observacao?: string): Promise<Kit> {
+  const row = await request<RawKit>(`/kits/${id}/montar`, {
+    method: "POST",
+    auth: true,
+    body: JSON.stringify({ observacao }),
+  });
+  return mapKit(row);
+}
+
+export async function replenishKit(id: number, observacao?: string): Promise<Kit> {
+  const row = await request<RawKit>(`/kits/${id}/repor`, {
+    method: "POST",
+    auth: true,
+    body: JSON.stringify({ observacao }),
+  });
+  return mapKit(row);
+}
+
+export async function withdrawKit(
+  id: number,
+  payload: { matricula: string; senha: string; observacao?: string },
+): Promise<Kit> {
+  const row = await request<RawKit>(`/kits/${id}/retirar`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return mapKit(row);
+}
+
+export async function receiveKit(
+  id: number,
+  payload: {
+      matricula: string;
+      senha: string;
+      observacao?: string;
+      itens: Array<{ produto_id: number; quantidade_atual: number; reposicao_operacao?: number }>;
+    },
+): Promise<Kit> {
+  const row = await request<RawKit>(`/kits/${id}/receber`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return mapKit(row);
+}
+
+export async function getKitProducts(estoqueId: number | string): Promise<KitProductOption[]> {
+  const qs = `?estoque_id=${encodeURIComponent(String(estoqueId))}`;
+  const rows = await request<RawKitProductOption[]>(`/kits/produtos${qs}`, { auth: true });
+  return rows.map(mapKitProductOption);
+}
+
+export async function getKitHistory(
+  filters: { estoque_id?: number | string; kit_id?: number | string } = {},
+): Promise<KitMovementHistory[]> {
+  const qs = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") qs.set(key, String(value));
+  });
+  const rows = await request<RawKitMovementHistory[]>(
+    `/kits/historico${qs.toString() ? `?${qs}` : ""}`,
+    { auth: true },
+  );
+  return rows.map(mapKitMovementHistory);
 }
 
 /* ----------------- CONFIGURACOES ----------------- */
@@ -851,6 +1100,17 @@ export async function createProduct(payload: CreateProductPayload): Promise<Prod
   return mapProduct(r);
 }
 
+export async function createProductsBatch(payload: {
+  produtos: CreateProductPayload[];
+}): Promise<Product[]> {
+  const rows = await request<RawProduct[]>("/produtos/batch", {
+    method: "POST",
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+  return rows.map(mapProduct);
+}
+
 export type UpdateProductPayload = Partial<
   Omit<CreateProductPayload, "estoque_atual" | "estoque_minimo">
 >;
@@ -951,7 +1211,7 @@ export async function transferStock(payload: {
 export interface MovementFilters {
   data_inicial?: string;
   data_final?: string;
-  tipo?: "entrada" | "saida" | "desperdicio";
+  tipo?: "entrada" | "saida" | "desperdicio" | "ajuste";
   categoria_id?: number | string;
   produto_id?: number;
   codigo_barras?: string;
@@ -965,6 +1225,23 @@ export async function getMovements(filters: MovementFilters = {}): Promise<Movem
   });
   const path = `/movimentacoes${qs.toString() ? `?${qs}` : ""}`;
   const rows = await request<RawMovement[]>(path);
+  return rows.map(mapMovement);
+}
+
+export async function adjustStock(payload: {
+  itens: Array<{
+    produto_id: number;
+    estoque_id: number;
+    lote_id?: number | null;
+    quantidade_final: number;
+    motivo: string;
+  }>;
+}): Promise<Movement[]> {
+  const rows = await request<RawMovement[]>("/movimentacoes/ajuste", {
+    method: "POST",
+    auth: true,
+    body: JSON.stringify(payload),
+  });
   return rows.map(mapMovement);
 }
 

@@ -1,15 +1,68 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { History as HistoryIcon, ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
+import {
+  History as HistoryIcon,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  RefreshCw,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react";
 import { PageHeader, EmptyState } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
 import { getMovements } from "@/services/api";
-import type { Movement } from "@/types";
+import type { Movement, MovementType } from "@/types";
 
 export const Route = createFileRoute("/operador/historico")({
-  head: () => ({ meta: [{ title: "Histórico · Zytrex Inventory" }] }),
+  head: () => ({ meta: [{ title: "Historico · Zytrex Inventory" }] }),
   component: HistoricoPage,
 });
+
+function movementConfig(type: MovementType): {
+  label: string;
+  sign: string;
+  icon: LucideIcon;
+  iconClass: string;
+  badgeVariant: "default" | "secondary" | "destructive" | "outline";
+} {
+  if (type === "entrada") {
+    return {
+      label: "Entrada",
+      sign: "+",
+      icon: ArrowDownToLine,
+      iconClass: "bg-success/10 text-success",
+      badgeVariant: "default",
+    };
+  }
+
+  if (type === "saida") {
+    return {
+      label: "Saida",
+      sign: "-",
+      icon: ArrowUpFromLine,
+      iconClass: "bg-destructive/10 text-destructive",
+      badgeVariant: "destructive",
+    };
+  }
+
+  if (type === "desperdicio") {
+    return {
+      label: "Desperdicio",
+      sign: "-",
+      icon: Trash2,
+      iconClass: "bg-warning/10 text-warning",
+      badgeVariant: "secondary",
+    };
+  }
+
+  return {
+    label: "Ajuste",
+    sign: "",
+    icon: RefreshCw,
+    iconClass: "bg-primary/10 text-primary",
+    badgeVariant: "outline",
+  };
+}
 
 function HistoricoPage() {
   const navigate = useNavigate();
@@ -29,45 +82,47 @@ function HistoricoPage() {
   return (
     <>
       <PageHeader
-        title="Histórico"
-        subtitle="Movimentações recentes registradas pelos operadores"
+        title="Historico"
+        subtitle="Movimentacoes recentes registradas pelos operadores"
       />
       <div className="rounded-xl bg-card border shadow-[var(--shadow-soft)]">
         {movs.length === 0 ? (
           <EmptyState
             icon={HistoryIcon}
-            title="Sem movimentações ainda"
-            description="Suas entradas e retiradas aparecerão aqui."
+            title="Sem movimentacoes ainda"
+            description="Suas entradas, retiradas, desperdicios e ajustes aparecerao aqui."
           />
         ) : (
           <ul className="divide-y">
-            {movs.map((m) => {
-              const isIn = m.type === "entrada";
-              const Icon = isIn ? ArrowDownToLine : ArrowUpFromLine;
+            {movs.map((movement) => {
+              const config = movementConfig(movement.type);
+              const Icon = config.icon;
+
               return (
-                <li key={m.id} className="p-4 flex items-center gap-4">
+                <li key={movement.id} className="p-4 flex items-center gap-4">
                   <div
-                    className={`h-10 w-10 rounded-lg flex items-center justify-center ${
-                      isIn ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
-                    }`}
+                    className={`h-10 w-10 rounded-lg flex items-center justify-center ${config.iconClass}`}
                   >
                     <Icon className="h-5 w-5" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{m.productName}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {m.estoqueNome ?? "-"} · {m.userName} ·{" "}
-                      {new Date(m.createdAt).toLocaleString("pt-BR")}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-medium truncate">{movement.productName}</div>
+                      <Badge variant="outline" className="text-[10px]">
+                        {config.label}
+                      </Badge>
                     </div>
-                    {m.note && (
-                      <div className="text-xs text-muted-foreground truncate">
-                        {m.note}
-                      </div>
+                    <div className="text-xs text-muted-foreground">
+                      {movement.estoqueNome ?? "-"} · {movement.userName} ·{" "}
+                      {new Date(movement.createdAt).toLocaleString("pt-BR")}
+                    </div>
+                    {movement.note && (
+                      <div className="text-xs text-muted-foreground truncate">{movement.note}</div>
                     )}
                   </div>
-                  <Badge variant={isIn ? "default" : "destructive"}>
-                    {isIn ? "+" : "-"}
-                    {m.quantity}
+                  <Badge variant={config.badgeVariant}>
+                    {config.sign}
+                    {movement.quantity}
                   </Badge>
                 </li>
               );

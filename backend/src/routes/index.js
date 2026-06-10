@@ -12,6 +12,7 @@ const setupCtrl = require("../controllers/setupController");
 const configuracaoCtrl = require("../controllers/configuracaoController");
 const inventarioCtrl = require("../controllers/inventarioController");
 const conferenciaCtrl = require("../controllers/conferenciaController");
+const kitCtrl = require("../controllers/kitController");
 const estoqueRoutes = require("./estoqueRoutes");
 const desperdicioRoutes = require("./desperdicioRoutes");
 
@@ -94,14 +95,30 @@ router.delete(
   asyncHandler(produtoCtrl.remover),
 );
 router.get("/produtos/:codigo_barras", asyncHandler(produtoCtrl.buscarPorCodigo));
+router.post("/produtos/batch", auth.authMiddleware, auth.adminOnly, asyncHandler(produtoCtrl.criarEmLote));
 router.post("/produtos", auth.authMiddleware, auth.adminOnly, asyncHandler(produtoCtrl.criar));
 
 // Movimentações
 router.post("/movimentacoes/transferencia", asyncHandler(movCtrl.transferir));
+router.post("/movimentacoes/ajuste", auth.authMiddleware, auth.adminOnly, asyncHandler(movCtrl.ajustar));
 router.post("/movimentacoes/entrada", asyncHandler(movCtrl.criarEntrada));
 router.post("/movimentacoes/saida", asyncHandler(movCtrl.criarSaida));
 router.post("/movimentacoes", asyncHandler(movCtrl.criar));
 router.get("/movimentacoes", asyncHandler(movCtrl.listar));
+
+// Kits da bomboniere
+router.get("/kits/operacional", asyncHandler(kitCtrl.listarOperacional));
+router.get("/kits/operacional/:id", asyncHandler(kitCtrl.buscarOperacional));
+router.get("/kits/produtos", auth.authMiddleware, auth.adminOnly, asyncHandler(kitCtrl.produtosDisponiveis));
+router.get("/kits/historico", auth.authMiddleware, auth.adminOnly, asyncHandler(kitCtrl.historico));
+router.get("/kits", auth.authMiddleware, auth.adminOnly, asyncHandler(kitCtrl.listar));
+router.post("/kits", auth.authMiddleware, auth.adminOnly, asyncHandler(kitCtrl.criar));
+router.get("/kits/:id", auth.authMiddleware, auth.adminOnly, asyncHandler(kitCtrl.buscar));
+router.put("/kits/:id", auth.authMiddleware, auth.adminOnly, asyncHandler(kitCtrl.atualizar));
+router.post("/kits/:id/montar", auth.authMiddleware, auth.adminOnly, asyncHandler(kitCtrl.montar));
+router.post("/kits/:id/repor", auth.authMiddleware, auth.adminOnly, asyncHandler(kitCtrl.repor));
+router.post("/kits/:id/retirar", asyncHandler(kitCtrl.retirar));
+router.post("/kits/:id/receber", asyncHandler(kitCtrl.receber));
 
 router.get("/inventario/estoque-atual", asyncHandler(inventarioCtrl.estoqueAtual));
 router.get(

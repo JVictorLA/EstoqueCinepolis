@@ -155,6 +155,21 @@ async function transferir(req, res) {
   }
 }
 
+async function ajustar(req, res) {
+  const itens = req.body?.itens;
+  if (!Array.isArray(itens)) return fail(res, 400, "itens deve ser uma lista");
+
+  try {
+    const ajustes = await movService.ajustarEstoque({
+      usuario: { id: req.user.id, nome: req.user.nome },
+      itens,
+    });
+    return created(res, ajustes, "Ajuste de estoque registrado");
+  } catch (e) {
+    return fail(res, e.status || 500, e.message || "Erro ao ajustar estoque");
+  }
+}
+
 async function listar(req, res) {
   const rows = await movService.listar({
     data_inicial: req.query.data_inicial,
@@ -169,4 +184,4 @@ async function listar(req, res) {
   return ok(res, rows);
 }
 
-module.exports = { criar, criarEntrada, criarSaida, transferir, listar };
+module.exports = { criar, criarEntrada, criarSaida, transferir, ajustar, listar };
