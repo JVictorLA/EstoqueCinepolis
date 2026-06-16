@@ -1,5 +1,13 @@
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+export type ExpirationStatus =
+  | "vencido"
+  | "proximo_vencimento"
+  | "validade_15"
+  | "validade_30"
+  | "ok"
+  | "sem_validade";
+
 function parseDateOnly(value?: string | null): Date | null {
   if (!value) return null;
   const [year, month, day] = value.split("-").map(Number);
@@ -13,14 +21,21 @@ function startOfToday() {
 }
 
 export function isExpired(value?: string | null) {
-  const date = parseDateOnly(value);
-  if (!date) return false;
-  return date < startOfToday();
+  return getExpirationStatus(value) === "vencido";
 }
 
 export function isNearExpiration(value?: string | null) {
+  return getExpirationStatus(value) === "proximo_vencimento";
+}
+
+export function getExpirationStatus(value?: string | null): ExpirationStatus {
   const date = parseDateOnly(value);
-  if (!date || isExpired(value)) return false;
+  if (!date) return "sem_validade";
+
   const diffDays = Math.ceil((date.getTime() - startOfToday().getTime()) / DAY_MS);
-  return diffDays <= 7;
+  if (diffDays < 0) return "vencido";
+  if (diffDays <= 7) return "proximo_vencimento";
+  if (diffDays <= 15) return "validade_15";
+  if (diffDays <= 30) return "validade_30";
+  return "ok";
 }

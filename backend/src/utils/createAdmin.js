@@ -22,14 +22,15 @@ const { pool } = require("../database/connection");
   );
   if (existing.length) {
     await pool.query(
-      "UPDATE usuarios SET nome = ?, email = ?, senha_hash = ?, tipo = 'admin', ativo = 1 WHERE id = ?",
+      "UPDATE usuarios SET nome = ?, email = ?, senha_hash = ?, tipo = 'admin', ativo = 1, atualizado_em = NOW(), senha_atualizada_em = NOW(), precisa_trocar_senha = 0 WHERE id = ?",
       [nome, email || null, senha_hash, existing[0].id]
     );
     console.log(`✅ Admin atualizado (id=${existing[0].id}, matrícula=${matricula})`);
   } else {
     const [r] = await pool.query(
-      `INSERT INTO usuarios (matricula, nome, email, senha_hash, tipo, ativo, criado_em)
-       VALUES (?, ?, ?, ?, 'admin', 1, NOW())`,
+      `INSERT INTO usuarios
+        (matricula, nome, email, senha_hash, tipo, ativo, criado_em, atualizado_em, senha_atualizada_em, precisa_trocar_senha)
+       VALUES (?, ?, ?, ?, 'admin', 1, NOW(), NOW(), NOW(), 0)`,
       [matricula, nome, email || null, senha_hash]
     );
     console.log(`✅ Admin criado (id=${r.insertId}, matrícula=${matricula})`);

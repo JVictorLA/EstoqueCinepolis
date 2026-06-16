@@ -190,6 +190,13 @@ router.put(
 // Alterar senha
 router.put("/usuarios/:id/senha", asyncHandler(usuarioCtrl.alterarSenha));
 
+router.patch(
+  "/usuarios/me/preferencias",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(usuarioCtrl.atualizarPreferencias),
+);
+
 // Alterar status
 router.patch(
   "/usuarios/:id/status",

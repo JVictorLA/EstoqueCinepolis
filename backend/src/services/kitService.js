@@ -28,6 +28,18 @@ async function validateUserCredentials(matricula, senha) {
   const user = await usuarioService.validateCredentials(matricula, senha);
   if (!user) throw Object.assign(new Error("Matricula ou senha invalidos"), { status: 401 });
   if (user.error === "inactive") throw Object.assign(new Error("Usuario inativo"), { status: 403 });
+  if (user.password_status) {
+    const message =
+      user.password_status === "expired"
+        ? "Sua senha expirou. Troque-a para continuar."
+        : "Primeiro acesso detectado. Troque a senha para continuar.";
+
+    throw Object.assign(new Error(message), {
+      status: 403,
+      password_status: user.password_status,
+      password_challenge: usuarioService.buildPasswordChallenge(user),
+    });
+  }
   return user;
 }
 

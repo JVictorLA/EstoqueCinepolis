@@ -3,6 +3,20 @@ const usuarioService = require("../services/usuarioService");
 const movService = require("../services/movimentacaoService");
 const { ok, created, fail } = require("../utils/response");
 
+function sendPasswordChallenge(res, cred) {
+  const message =
+    cred.password_status === "expired"
+      ? "Sua senha expirou. Troque-a para continuar."
+      : "Primeiro acesso detectado. Troque a senha para continuar.";
+
+  return res.status(403).json({
+    success: false,
+    message,
+    data: usuarioService.buildPasswordChallenge(cred),
+    error: message,
+  });
+}
+
 async function criar(req, res) {
   const {
     codigo_barras,
@@ -33,6 +47,7 @@ async function criar(req, res) {
   const cred = await usuarioService.validateCredentials(matricula, senha);
   if (!cred) return fail(res, 401, "Matricula ou senha invalidos");
   if (cred.error === "inactive") return fail(res, 403, "Usuario inativo");
+  if (cred.password_status) return sendPasswordChallenge(res, cred);
 
   const produto =
     tipo === "entrada"
@@ -122,6 +137,7 @@ async function transferir(req, res) {
   const cred = await usuarioService.validateCredentials(matricula, senha);
   if (!cred) return fail(res, 401, "Matricula ou senha invalidos");
   if (cred.error === "inactive") return fail(res, 403, "Usuario inativo");
+  if (cred.password_status) return sendPasswordChallenge(res, cred);
 
   const produto = await produtoService.findByBarcode(codigo_barras, estoque_origem_id);
   if (!produto) return fail(res, 404, "Produto nao encontrado no estoque de origem");

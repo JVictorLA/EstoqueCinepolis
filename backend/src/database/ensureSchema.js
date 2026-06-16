@@ -88,6 +88,31 @@ async function ensureDatabaseSchema() {
   `);
 
   await ensureColumn(
+    "usuarios",
+    "atualizado_em",
+    "ALTER TABLE usuarios ADD COLUMN atualizado_em DATETIME NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER criado_em",
+  );
+
+  await ensureColumn(
+    "usuarios",
+    "senha_atualizada_em",
+    "ALTER TABLE usuarios ADD COLUMN senha_atualizada_em DATETIME NULL AFTER atualizado_em",
+  );
+
+  await ensureColumn(
+    "usuarios",
+    "theme_preference",
+    "ALTER TABLE usuarios ADD COLUMN theme_preference VARCHAR(10) NOT NULL DEFAULT 'light' AFTER senha_atualizada_em",
+  );
+
+  await pool.query(`
+    UPDATE usuarios
+    SET atualizado_em = COALESCE(atualizado_em, criado_em, NOW()),
+        senha_atualizada_em = COALESCE(senha_atualizada_em, criado_em, NOW())
+    WHERE atualizado_em IS NULL OR senha_atualizada_em IS NULL
+  `);
+
+  await ensureColumn(
     "desperdicios",
     "estoque_id",
     "ALTER TABLE desperdicios ADD COLUMN estoque_id INT NULL AFTER id",

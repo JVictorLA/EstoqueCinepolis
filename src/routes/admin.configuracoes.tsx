@@ -10,10 +10,16 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useTheme } from "@/components/theme/ThemeProvider";
-import { getStoredUser, getSystemConfigs, updateSystemConfigs } from "@/services/api";
+import {
+  getStoredUser,
+  getSystemConfigs,
+  setStoredUser,
+  updateMyPreferences,
+  updateSystemConfigs,
+} from "@/services/api";
 
 export const Route = createFileRoute("/admin/configuracoes")({
-  head: () => ({ meta: [{ title: "Configurações · Zytrex Inventory" }] }),
+  head: () => ({ meta: [{ title: "Configuracoes · Zytrex Inventory" }] }),
   component: ConfigPage,
 });
 
@@ -21,11 +27,7 @@ type SettingsState = {
   nomeEmpresa: string;
   unidadeEmpresa: string;
   cnpjEmpresa: string;
-  temaPadrao: "light" | "dark";
-  alertasEstoqueBaixo: boolean;
-  bloquearRetiradaSemEstoque: boolean;
-  emailDiarioMovimentacoes: boolean;
-  resumoSemanalInventario: boolean;
+  temaPreferido: "light" | "dark";
   exigirSenhaMovimentacao: boolean;
   bloquearSaidaProdutoVencido: boolean;
   registrarVencidoAoTentarRetirar: boolean;
@@ -38,11 +40,7 @@ const defaults: SettingsState = {
   nomeEmpresa: "",
   unidadeEmpresa: "Zytrex Inventory · Unidade Central",
   cnpjEmpresa: "",
-  temaPadrao: "light",
-  alertasEstoqueBaixo: true,
-  bloquearRetiradaSemEstoque: true,
-  emailDiarioMovimentacoes: false,
-  resumoSemanalInventario: true,
+  temaPreferido: "light",
   exigirSenhaMovimentacao: true,
   bloquearSaidaProdutoVencido: true,
   registrarVencidoAoTentarRetirar: true,
@@ -63,7 +61,10 @@ function ConfigPage() {
   const { theme, setTheme } = useTheme();
   const user = getStoredUser();
   const isMaster = user?.tipo === "master";
-  const [settings, setSettings] = useState<SettingsState>({ ...defaults, temaPadrao: theme });
+  const [settings, setSettings] = useState<SettingsState>({
+    ...defaults,
+    temaPreferido: user?.themePreference ?? theme,
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -78,23 +79,7 @@ function ConfigPage() {
           nomeEmpresa: byKey.get("nome_empresa") ?? defaults.nomeEmpresa,
           unidadeEmpresa: byKey.get("unidade_empresa") ?? defaults.unidadeEmpresa,
           cnpjEmpresa: byKey.get("cnpj_empresa") ?? defaults.cnpjEmpresa,
-          temaPadrao: byKey.get("tema_padrao") === "dark" ? "dark" : "light",
-          alertasEstoqueBaixo: boolFromConfig(
-            byKey.get("alertas_estoque_baixo"),
-            defaults.alertasEstoqueBaixo,
-          ),
-          bloquearRetiradaSemEstoque: boolFromConfig(
-            byKey.get("bloquear_retirada_sem_estoque"),
-            defaults.bloquearRetiradaSemEstoque,
-          ),
-          emailDiarioMovimentacoes: boolFromConfig(
-            byKey.get("email_diario_movimentacoes"),
-            defaults.emailDiarioMovimentacoes,
-          ),
-          resumoSemanalInventario: boolFromConfig(
-            byKey.get("resumo_semanal_inventario"),
-            defaults.resumoSemanalInventario,
-          ),
+          temaPreferido: user?.themePreference === "dark" ? "dark" : "light",
           exigirSenhaMovimentacao: boolFromConfig(
             byKey.get("exigir_senha_movimentacao"),
             defaults.exigirSenhaMovimentacao,
@@ -118,10 +103,10 @@ function ConfigPage() {
           modoManutencao: boolFromConfig(byKey.get("modo_manutencao"), defaults.modoManutencao),
         };
         setSettings(next);
-        setTheme(next.temaPadrao);
+        setTheme(next.temaPreferido);
       })
       .catch((err: unknown) => {
-        toast.error(err instanceof Error ? err.message : "Erro ao carregar configurações");
+        toast.error(err instanceof Error ? err.message : "Erro ao carregar configuracoes");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -130,47 +115,22 @@ function ConfigPage() {
     return () => {
       active = false;
     };
-  }, [setTheme]);
+  }, [setTheme, user?.themePreference]);
 
   const update = <K extends keyof SettingsState>(key: K, value: SettingsState[K]) => {
     setSettings((current) => ({ ...current, [key]: value }));
-    if (key === "temaPadrao") setTheme(value as "light" | "dark");
+    if (key === "temaPreferido") setTheme(value as "light" | "dark");
   };
 
   const save = async () => {
     setSaving(true);
     try {
+      await updateMyPreferences({ themePreference: settings.temaPreferido });
+      if (user) {
+        setStoredUser({ ...user, themePreference: settings.temaPreferido });
+      }
+
       const configs = [
-        {
-          chave: "tema_padrao",
-          valor: settings.temaPadrao,
-          categoria: "sistema",
-          nivelAcesso: "admin" as const,
-        },
-        {
-          chave: "alertas_estoque_baixo",
-          valor: settings.alertasEstoqueBaixo,
-          categoria: "estoque",
-          nivelAcesso: "admin" as const,
-        },
-        {
-          chave: "bloquear_retirada_sem_estoque",
-          valor: settings.bloquearRetiradaSemEstoque,
-          categoria: "estoque",
-          nivelAcesso: "admin" as const,
-        },
-        {
-          chave: "email_diario_movimentacoes",
-          valor: settings.emailDiarioMovimentacoes,
-          categoria: "notificacoes",
-          nivelAcesso: "admin" as const,
-        },
-        {
-          chave: "resumo_semanal_inventario",
-          valor: settings.resumoSemanalInventario,
-          categoria: "notificacoes",
-          nivelAcesso: "admin" as const,
-        },
         {
           chave: "exigir_senha_movimentacao",
           valor: settings.exigirSenhaMovimentacao,
@@ -233,9 +193,9 @@ function ConfigPage() {
       }
 
       await updateSystemConfigs(configs);
-      toast.success("Configurações salvas com sucesso");
+      toast.success("Configuracoes salvas com sucesso");
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro ao salvar configurações");
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar configuracoes");
     } finally {
       setSaving(false);
     }
@@ -252,36 +212,35 @@ function ConfigPage() {
   return (
     <>
       <PageHeader
-        title="Configurações"
-        subtitle="Preferências do sistema e da unidade"
+        title="Configuracoes"
+        subtitle="Preferencias do sistema e da unidade"
         actions={
           <Button onClick={save} disabled={saving}>
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            Salvar alterações
+            Salvar alteracoes
           </Button>
         }
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Section
-          title="Aparência"
-          description="Escolha o tema visual usado no Zytrex Inventory."
-        >
+        <Section title="Aparencia" description="Escolha o tema visual da sua conta administrativa.">
           <RadioGroup
-            value={settings.temaPadrao}
-            onValueChange={(value) => update("temaPadrao", value === "dark" ? "dark" : "light")}
+            value={settings.temaPreferido}
+            onValueChange={(value) =>
+              update("temaPreferido", value === "dark" ? "dark" : "light")
+            }
           >
             <ThemeOption
               value="light"
               title="Claro"
               description="Melhor para ambientes administrativos e uso diurno"
-              onSelect={() => update("temaPadrao", "light")}
+              onSelect={() => update("temaPreferido", "light")}
             />
             <ThemeOption
               value="dark"
               title="Escuro"
-              description="Melhor para baixa luminosidade e operação noturna"
-              onSelect={() => update("temaPadrao", "dark")}
+              description="Melhor para baixa luminosidade e operacao noturna"
+              onSelect={() => update("temaPreferido", "dark")}
             />
           </RadioGroup>
         </Section>
@@ -304,42 +263,21 @@ function ConfigPage() {
           </Field>
           {!isMaster && (
             <p className="text-xs text-muted-foreground">
-              Dados da unidade só podem ser alterados pelo usuário master.
+              Dados da unidade so podem ser alterados pelo usuario master.
             </p>
           )}
         </Section>
 
         <Section title="Estoque">
-          <ToggleRow
-            label="Alertas de estoque baixo"
-            hint="Notificar quando atingir estoque mínimo"
-            checked={settings.alertasEstoqueBaixo}
-            onCheckedChange={(checked) => update("alertasEstoqueBaixo", checked)}
-          />
-          <ToggleRow
-            label="Bloquear retirada sem estoque"
-            hint="Não permitir retirada se estoque = 0"
-            checked={settings.bloquearRetiradaSemEstoque}
-            onCheckedChange={(checked) => update("bloquearRetiradaSemEstoque", checked)}
-          />
+          <p className="text-sm leading-6 text-muted-foreground">
+            Regras basicas de estoque, como bloqueio de retirada sem saldo e alertas de estoque
+            baixo, permanecem ativas no sistema e nao podem ser desligadas por aqui.
+          </p>
         </Section>
 
-        <Section title="Notificações">
+        <Section title="Seguranca">
           <ToggleRow
-            label="E-mail diário de movimentações"
-            checked={settings.emailDiarioMovimentacoes}
-            onCheckedChange={(checked) => update("emailDiarioMovimentacoes", checked)}
-          />
-          <ToggleRow
-            label="Resumo semanal de inventário"
-            checked={settings.resumoSemanalInventario}
-            onCheckedChange={(checked) => update("resumoSemanalInventario", checked)}
-          />
-        </Section>
-
-        <Section title="Segurança">
-          <ToggleRow
-            label="Exigir senha em toda movimentação"
+            label="Exigir senha em toda movimentacao"
             checked={settings.exigirSenhaMovimentacao}
             onCheckedChange={(checked) => update("exigirSenhaMovimentacao", checked)}
           />
@@ -347,19 +285,19 @@ function ConfigPage() {
 
         {isMaster && (
           <Section
-            title="Configurações avançadas"
-            description="Opções reservadas para o usuário master."
+            title="Configuracoes avancadas"
+            description="Opcoes reservadas para o usuario master."
           >
             <Field label="Nome da empresa">
               <Input
                 value={settings.nomeEmpresa}
                 onChange={(event) => update("nomeEmpresa", event.target.value)}
-                placeholder="Nome exibido nos relatórios e cabeçalhos"
+                placeholder="Nome exibido nos relatorios e cabecalhos"
               />
             </Field>
             <ToggleRow
-              label="Bloquear saída de produto vencido"
-              hint="Impede movimentações de saída para lotes vencidos"
+              label="Bloquear saida de produto vencido"
+              hint="Impede movimentacoes de saida para lotes vencidos"
               checked={settings.bloquearSaidaProdutoVencido}
               onCheckedChange={(checked) => update("bloquearSaidaProdutoVencido", checked)}
             />
@@ -382,8 +320,8 @@ function ConfigPage() {
               onCheckedChange={(checked) => update("exigirJustificativaFefo", checked)}
             />
             <ToggleRow
-              label="Modo manutenção"
-              hint="Reservado para operações assistidas"
+              label="Modo manutencao"
+              hint="Reservado para operacoes assistidas"
               checked={settings.modoManutencao}
               onCheckedChange={(checked) => update("modoManutencao", checked)}
             />

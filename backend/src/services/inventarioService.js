@@ -48,7 +48,7 @@ function getInventoryStock(row) {
 }
 
 function getInventoryStatus(row) {
-  if (isExpired(row)) return "sem_estoque";
+  if (isExpired(row)) return "vencido";
   if (getInventoryStock(row) <= 0) return "sem_estoque";
 
   const today = new Date();
@@ -59,7 +59,9 @@ function getInventoryStatus(row) {
     if (!Number.isNaN(expiration.getTime())) {
       const msUntilExpiration = expiration.getTime() - today.getTime();
       const daysUntilExpiration = Math.ceil(msUntilExpiration / 86400000);
-      if (daysUntilExpiration <= 30) return "proximo_vencimento";
+      if (daysUntilExpiration <= 7) return "proximo_vencimento";
+      if (daysUntilExpiration <= 15) return "validade_15";
+      if (daysUntilExpiration <= 30) return "validade_30";
     }
   }
 

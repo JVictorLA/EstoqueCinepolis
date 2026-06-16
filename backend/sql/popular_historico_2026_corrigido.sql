@@ -1,4 +1,4 @@
-USE estoque_cinema;
+USE zytrex_inventory;
 
 -- Historico corrigido para demonstracao/seed.
 -- Periodo coberto: 2026-01-01 ate 2026-05-19.

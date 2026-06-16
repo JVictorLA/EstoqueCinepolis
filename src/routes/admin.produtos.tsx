@@ -1,5 +1,5 @@
 import { Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Package,
   AlertTriangle,
@@ -56,10 +56,15 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { BarcodeInput } from "@/components/scanner/BarcodeInput";
 import { WasteDialog } from "@/components/waste/WasteDialog";
 import { toast } from "sonner";
-import { isExpired, isNearExpiration } from "@/lib/expiration";
+import { getExpirationStatus, isExpired } from "@/lib/expiration";
+import {
+  filterProducts as applyProductFilters,
+  generateInternalBarcode as createInternalBarcode,
+} from "@/lib/productRules";
 import {
   getProducts,
   createProduct,
@@ -75,7 +80,7 @@ import {
   adjustStock,
   updateProductLot,
 } from "@/services/api";
-import type { Product, Category, Estoque, ProductLot } from "@/types";
+import type { Product, Category, Estoque, ProductLot, LotStatus } from "@/types";
 
 type ProductFilters = {
   categoryId: string;
@@ -156,20 +161,6 @@ function money(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function ean13CheckDigit(base: string) {
-  const sum = base
-    .split("")
-    .reduce((total, digit, index) => total + Number(digit) * (index % 2 === 0 ? 1 : 3), 0);
-  return String((10 - (sum % 10)) % 10);
-}
-
-function generateInternalBarcode() {
-  const timestampPart = Date.now().toString().slice(-8);
-  const randomPart = Math.floor(Math.random() * 100).toString().padStart(2, "0");
-  const base = `29${timestampPart}${randomPart}`;
-  return `${base}${ean13CheckDigit(base)}`;
-}
-
 function adjustmentProductLabel(product: AdjustmentProductOption) {
   return `${product.name} - ${product.barcode}`;
 }
@@ -224,26 +215,68 @@ function isAdjustmentRowComplete(
   return isAdjustmentRowTouched(row) && !validateAdjustmentRow(row, catalog, lots);
 }
 
+function expirationStatusBadge(status: LotStatus) {
+  const descriptions: Record<LotStatus, string> = {
+    vencido: "Este produto já passou da data de validade.",
+    proximo_vencimento: "Este produto vence em até 7 dias. Priorize a saída ou conferência.",
+    validade_15: "Este produto vence em até 15 dias. Acompanhe com atenção.",
+    validade_30: "Este produto vence em até 30 dias. Comece a acompanhar a validade.",
+    ok: "Este produto está dentro do prazo de validade.",
+    sem_validade: "Este produto não possui validade cadastrada.",
+  };
+
+  const withTooltip = (badge: ReactNode) => (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex cursor-help">{badge}</span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs text-center">
+          {descriptions[status]}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+
+  if (status === "vencido") return withTooltip(<Badge variant="destructive">Vencido</Badge>);
+  if (status === "proximo_vencimento") {
+    return withTooltip(
+      <Badge variant="secondary" className="bg-destructive/15 text-destructive border-destructive/30">
+        Próximo do vencimento
+      </Badge>,
+    );
+  }
+  if (status === "validade_15") {
+    return withTooltip(
+      <Badge variant="secondary" className="bg-orange-500/15 text-orange-700 border-orange-500/30 dark:text-orange-300">
+        Alerta
+      </Badge>,
+    );
+  }
+  if (status === "validade_30") {
+    return withTooltip(
+      <Badge variant="secondary" className="bg-warning/15 text-warning border-warning/30">
+        Atenção
+      </Badge>,
+    );
+  }
+  if (status === "sem_validade") return withTooltip(<Badge variant="outline">Sem validade</Badge>);
+  return withTooltip(<Badge variant="secondary">OK</Badge>);
+}
+
 function ExpirationBadges({ product }: { product: Product }) {
   if (!product.requiresExpiration) {
     return null;
   }
 
+  const status = getExpirationStatus(product.expirationDate);
+  if (status === "ok" || status === "sem_validade") {
+    return null;
+  }
+
   return (
     <div className="flex w-full flex-wrap justify-center gap-1.5">
-      {isExpired(product.expirationDate) && (
-        <Badge variant="destructive" className="h-5 whitespace-nowrap">
-          Vencido
-        </Badge>
-      )}
-      {isNearExpiration(product.expirationDate) && (
-        <Badge
-          variant="secondary"
-          className="h-5 whitespace-nowrap bg-warning/15 text-warning border-warning/30"
-        >
-          Próximo do vencimento
-        </Badge>
-      )}
+      {expirationStatusBadge(status)}
     </div>
   );
 }
@@ -297,64 +330,7 @@ function ProdutosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEstoqueId]);
 
-  const numberFilter = (value: string) => {
-    if (!value.trim()) return null;
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-
-  const filtered = products.filter((p) => {
-    const expired = p.requiresExpiration && isExpired(p.expirationDate);
-    const alreadyMovedToWaste = expired && p.stock <= 0;
-    if (alreadyMovedToWaste) return false;
-
-    const normalizedQuery = query.trim().toLowerCase();
-    const matchesQuery =
-      !normalizedQuery ||
-      p.name.toLowerCase().includes(normalizedQuery) ||
-      p.barcode.includes(normalizedQuery);
-
-    const matchesCategory =
-      appliedFilters.categoryId === "all" || String(p.categoryId) === appliedFilters.categoryId;
-
-    const matchesStatus =
-      appliedFilters.status === "all" ||
-      (appliedFilters.status === "active" && p.active) ||
-      (appliedFilters.status === "inactive" && !p.active);
-
-    const hasLowStock = p.minStock > 0 && p.stock <= p.minStock;
-    const matchesStockStatus =
-      appliedFilters.stockStatus === "all" ||
-      (appliedFilters.stockStatus === "available" && p.stock > 0) ||
-      (appliedFilters.stockStatus === "no_stock" && p.stock === 0) ||
-      (appliedFilters.stockStatus === "low_stock" && hasLowStock);
-
-    const minPrice = numberFilter(appliedFilters.minPrice);
-    const maxPrice = numberFilter(appliedFilters.maxPrice);
-    const minStockValue = numberFilter(appliedFilters.minStock);
-    const maxStockValue = numberFilter(appliedFilters.maxStock);
-
-    const matchesPrice =
-      (minPrice === null || p.price >= minPrice) && (maxPrice === null || p.price <= maxPrice);
-
-    const matchesStock =
-      (minStockValue === null || p.stock >= minStockValue) &&
-      (maxStockValue === null || p.stock <= maxStockValue);
-
-    const matchesUnit =
-      !appliedFilters.unit.trim() ||
-      p.unit.toLowerCase().includes(appliedFilters.unit.trim().toLowerCase());
-
-    return (
-      matchesQuery &&
-      matchesCategory &&
-      matchesStatus &&
-      matchesStockStatus &&
-      matchesPrice &&
-      matchesStock &&
-      matchesUnit
-    );
-  });
+  const filtered = applyProductFilters(products, query, appliedFilters);
 
   const activeFilterCount = Object.entries(appliedFilters).filter(([key, value]) => {
     const emptyValue = emptyFilters[key as keyof ProductFilters];
@@ -1193,18 +1169,7 @@ function ProductLotsDialog({
       .finally(() => setLoading(false));
   }, [product, estoqueId]);
 
-  const statusBadge = (lot: ProductLot) => {
-    if (lot.status === "vencido") return <Badge variant="destructive">Vencido</Badge>;
-    if (lot.status === "proximo_vencimento") {
-      return (
-        <Badge variant="secondary" className="bg-warning/15 text-warning border-warning/30">
-          Proximo do vencimento
-        </Badge>
-      );
-    }
-    if (lot.status === "sem_validade") return <Badge variant="outline">Sem validade</Badge>;
-    return <Badge variant="secondary">OK</Badge>;
-  };
+  const statusBadge = (lot: ProductLot) => expirationStatusBadge(lot.status);
 
   return (
     <Dialog open={!!product} onOpenChange={onOpenChange}>
@@ -1783,7 +1748,7 @@ function NewProductDialog({
   }, [estoques, selectedEstoqueId]);
 
   const generateBarcode = () => {
-    const code = generateInternalBarcode();
+    const code = createInternalBarcode();
     setBarcode(code);
     toast.success("Codigo de barras gerado");
   };

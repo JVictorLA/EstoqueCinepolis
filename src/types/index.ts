@@ -35,7 +35,13 @@ export interface Product {
   createdAt: string;
 }
 
-export type LotStatus = "vencido" | "proximo_vencimento" | "ok" | "sem_validade";
+export type LotStatus =
+  | "vencido"
+  | "proximo_vencimento"
+  | "validade_15"
+  | "validade_30"
+  | "ok"
+  | "sem_validade";
 
 export interface ProductLot {
   id: number;
@@ -111,6 +117,7 @@ export interface SystemUser {
   role: UserRole;
   active: boolean;
   createdAt: string;
+  themePreference?: "light" | "dark";
 }
 
 export interface AuthUser {
@@ -120,7 +127,26 @@ export interface AuthUser {
   email?: string;
   tipo: UserRole;
   ativo: boolean;
+  themePreference: "light" | "dark";
   precisaTrocarSenha?: boolean;
+  senhaExpirada?: boolean;
+}
+
+export type PasswordStatus = "first_access" | "expired";
+
+export interface PasswordChallengeUser {
+  id: number;
+  matricula: string;
+  nome: string;
+  tipo?: UserRole;
+  themePreference?: "light" | "dark";
+  precisaTrocarSenha?: boolean;
+  senhaExpirada?: boolean;
+}
+
+export interface PasswordChallenge {
+  password_status: PasswordStatus;
+  usuario: PasswordChallengeUser;
 }
 
 export interface WasteReason {
@@ -192,6 +218,8 @@ export type InventoryStatus =
   | "estoque_baixo"
   | "sem_estoque"
   | "vencido"
+  | "validade_15"
+  | "validade_30"
   | "proximo_vencimento";
 
 export interface InventoryStockLocation {

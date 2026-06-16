@@ -51,12 +51,15 @@ import {
   changeUserPassword,
   getEstoques,
   getStoredUser,
+  getPasswordChallenge,
   getProductLots,
   ApiError,
 } from "@/services/api";
 
 import type { Estoque, Product, ProductLot, FefoWarning } from "@/types";
 import { isExpired, isNearExpiration } from "@/lib/expiration";
+import { validateMovement } from "@/lib/movementRules";
+import { passwordChallengeMessage, resolvePasswordStatus } from "@/lib/passwordChallenge";
 
 interface MovementFormProps {
   type: "entrada" | "saida";
@@ -133,9 +136,13 @@ export function MovementForm({
   const [loadingUser, setLoadingUser] =
     useState(false);
 
-  // 🔥 PRIMEIRO ACESSO
+  // PRIMEIRO ACESSO
   const [showChangePassword, setShowChangePassword] =
     useState(false);
+  const [passwordStatus, setPasswordStatus] =
+    useState<"first_access" | "expired">("first_access");
+  const [currentPassword, setCurrentPassword] =
+    useState("");
 
   const [newPassword, setNewPassword] =
     useState("");
@@ -256,47 +263,19 @@ export function MovementForm({
   }, [product, selectedEstoqueId, type]);
 
   const handleConfirmClick = () => {
-    if (!barcode) {
-      return toast.error(
-        "Informe o código de barras"
-      );
-    }
-
-    if (!selectedEstoqueId) {
-      return toast.error(
-        "Selecione o estoque"
-      );
-    }
-
-    if (operation === "transferencia") {
-      if (!targetEstoqueId) {
-        return toast.error("Selecione o estoque de destino");
-      }
-
-      if (targetEstoqueId === selectedEstoqueId) {
-        return toast.error("O destino precisa ser diferente da origem");
-      }
-    }
-
-    if (!quantity || parseInt(quantity) <= 0) {
-      return toast.error(
-        "Informe a quantidade"
-      );
-    }
-
-    if (product?.requiresExpiration && !lot.trim()) {
-      return toast.error("Informe o lote");
-    }
-
-    if (type === "entrada" && product?.requiresExpiration && !expirationDate) {
-      return toast.error("Informe a validade do lote");
-    }
-
-    if (!matricula) {
-      return toast.error(
-        "Informe a matrícula"
-      );
-    }
+    const validation = validateMovement({
+      barcode,
+      selectedEstoqueId,
+      targetEstoqueId,
+      operation,
+      quantity,
+      product,
+      type,
+      lot,
+      expirationDate,
+      matricula,
+    });
+    if (validation) return toast.error(validation);
 
     setConfirmOpen(true);
   };
@@ -306,24 +285,7 @@ export function MovementForm({
       return toast.error("Informe a senha");
     }
 
-    // 🔥 PRIMEIRO LOGIN
-    if (
-      password === "123456" &&
-      (user?.precisa_trocar_senha || user?.precisaTrocarSenha)
-    ) {
-      setUserId(user.id);
-
-      setConfirmOpen(false);
-
-      setShowChangePassword(true);
-
-      toast.warning(
-        "Primeiro acesso detectado. Crie uma nova senha."
-      );
-
-      return;
-    }
-
+    // PRIMEIRO LOGIN
     setConfirmOpen(false);
     setReviewOpen(true);
   };
@@ -388,6 +350,36 @@ export function MovementForm({
       setReviewOpen(false);
 
     } catch (e: any) {
+      const challenge = getPasswordChallenge(e);
+      if (challenge) {
+        setUserId(challenge.usuario.id);
+        setCurrentPassword(password);
+        setPasswordStatus(challenge.password_status);
+        setConfirmOpen(false);
+        setReviewOpen(false);
+        setShowChangePassword(true);
+        toast.warning(passwordChallengeMessage(challenge.password_status));
+        return;
+      }
+      const errorMessage = e instanceof Error ? e.message : "";
+      if (/expir|primeiro acesso|troque a senha/i.test(errorMessage) && matricula) {
+        try {
+          const lookup = await getUserByMatricula(matricula);
+          const resolvedStatus = resolvePasswordStatus(lookup);
+          if (resolvedStatus === "expired" || resolvedStatus === "first_access") {
+            setUserId(lookup.id);
+            setCurrentPassword(password);
+            setPasswordStatus(resolvedStatus);
+            setConfirmOpen(false);
+            setReviewOpen(false);
+            setShowChangePassword(true);
+            toast.warning(passwordChallengeMessage(resolvedStatus));
+            return;
+          }
+        } catch {
+          // segue para o tratamento original
+        }
+      }
       if (e instanceof ApiError && (e.data as any)?.fefo) {
         setFefoWarning((e.data as { fefo: FefoWarning }).fefo);
         setFefoJustification("");
@@ -420,7 +412,7 @@ export function MovementForm({
     }
   };
 
-  // 🔥 ALTERAR SENHA
+  // ALTERAR SENHA
   const changeFirstPassword = async () => {
     if (!newPassword || !confirmPassword) {
       return toast.error(
@@ -443,7 +435,7 @@ export function MovementForm({
     try {
       await changeUserPassword(
         userId,
-        "123456",
+        currentPassword,
         newPassword
       );
 
@@ -458,6 +450,8 @@ export function MovementForm({
       setShowChangePassword(false);
 
       setPassword("");
+      setCurrentPassword("");
+      setPasswordStatus("first_access");
 
       setNewPassword("");
       setConfirmPassword("");
@@ -655,7 +649,7 @@ export function MovementForm({
                   >
                     <span className="font-medium">{item.lot}</span>
                     <span className="text-xs text-muted-foreground">
-                      {item.expirationDate ? formatDate(item.expirationDate) : "Sem validade"} · {item.quantity}
+                      {item.expirationDate ? formatDate(item.expirationDate) : "Sem validade"} - {item.quantity}
                     </span>
                   </button>
                 ))}
@@ -748,7 +742,7 @@ export function MovementForm({
         {searching ? (
           <div className="text-sm text-muted-foreground flex items-center gap-2">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Procurando…
+            Procurando...
           </div>
 
         ) : product ? (
@@ -867,7 +861,7 @@ export function MovementForm({
                     </span>
                   )}
 
-                {!matricula && "—"}
+                {!matricula && "-"}
 
               </div>
 
@@ -922,7 +916,7 @@ export function MovementForm({
         </DialogContent>
       </Dialog>
 
-      {/* 🔥 MODAL TROCAR SENHA */}
+      {/* MODAL TROCAR SENHA */}
       <AlertDialog
         open={reviewOpen}
         onOpenChange={setReviewOpen}
@@ -1078,15 +1072,16 @@ export function MovementForm({
 
           <DialogHeader>
             <DialogTitle>
-              Primeiro acesso
+              {passwordStatus === "expired" ? "Senha vencida" : "Primeiro acesso"}
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
 
             <div className="text-sm text-muted-foreground">
-              Você está utilizando a senha padrão do sistema.
-              Crie uma nova senha para continuar.
+              {passwordStatus === "expired"
+                ? "Sua senha venceu após 7 dias. Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. A movimentação não foi executada."
+                : "Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. A movimentação não foi executada."}
             </div>
 
             <div className="space-y-2">

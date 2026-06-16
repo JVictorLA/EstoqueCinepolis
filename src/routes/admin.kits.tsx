@@ -38,12 +38,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  changeUserPassword,
   createKit,
   getEstoques,
   getKit,
   getKitHistory,
   getKitProducts,
   getKits,
+  getPasswordChallenge,
+  getUserByMatricula,
   mountKit,
   receiveKit,
   replenishKit,
@@ -701,6 +704,12 @@ function KitActionDialog({
   const [received, setReceived] = useState<Record<number, string>>({});
   const [operationReplenishment, setOperationReplenishment] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [passwordStatus, setPasswordStatus] = useState<"first_access" | "expired">("first_access");
+  const [challengeUserId, setChallengeUserId] = useState<number | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const open = !!kit && !!type;
 
   useEffect(() => {
@@ -722,6 +731,12 @@ function KitActionDialog({
     setNote("");
     setReceived({});
     setOperationReplenishment({});
+    setChangePasswordOpen(false);
+    setPasswordStatus("first_access");
+    setChallengeUserId(null);
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
   }, [open]);
 
   const submit = async () => {
@@ -756,9 +771,76 @@ function KitActionDialog({
       }
       onDone();
     } catch (error: unknown) {
+      const challenge = getPasswordChallenge(error);
+      if (challenge) {
+        setChallengeUserId(challenge.usuario.id);
+        setCurrentPassword(senha);
+        setPasswordStatus(challenge.password_status);
+        setChangePasswordOpen(true);
+        toast.warning(
+          challenge.password_status === "expired"
+            ? "Sua senha venceu. Troque-a para continuar."
+            : "Primeiro acesso detectado. Crie uma nova senha.",
+        );
+        return;
+      }
+      const errorMessage = error instanceof Error ? error.message : "";
+      if (/expir|primeiro acesso|troque a senha/i.test(errorMessage) && matricula.trim()) {
+        try {
+          const lookup = await getUserByMatricula(matricula.trim());
+          const resolvedStatus =
+            lookup?.passwordStatus ??
+            lookup?.password_status ??
+            (lookup?.senhaExpirada || lookup?.senha_expirada ? "expired" : null) ??
+            (lookup?.precisaTrocarSenha || lookup?.precisa_trocar_senha ? "first_access" : null);
+          if (resolvedStatus === "expired" || resolvedStatus === "first_access") {
+            setChallengeUserId(lookup.id);
+            setCurrentPassword(senha);
+            setPasswordStatus(resolvedStatus);
+            setChangePasswordOpen(true);
+            toast.warning(
+              resolvedStatus === "expired"
+                ? "Sua senha venceu. Troque-a para continuar."
+                : "Primeiro acesso detectado. Crie uma nova senha.",
+            );
+            return;
+          }
+        } catch {
+          // segue para o tratamento original
+        }
+      }
       toast.error(error instanceof Error ? error.message : "Erro ao processar kit");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const changePassword = async () => {
+    if (!challengeUserId) {
+      toast.error("Usuário inválido");
+      return;
+    }
+    if (!newPassword || !confirmPassword) {
+      toast.error("Preencha os campos");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("As senhas não coincidem");
+      return;
+    }
+
+    try {
+      await changeUserPassword(challengeUserId, currentPassword, newPassword);
+      toast.success("Senha alterada com sucesso");
+      toast.info("Repita a operação do kit usando a nova senha");
+      setSenha("");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordStatus("first_access");
+      setChangePasswordOpen(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Erro ao alterar senha");
     }
   };
 
@@ -772,6 +854,7 @@ function KitActionDialog({
           : "Receber Kit";
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
         <DialogHeader>
@@ -884,6 +967,43 @@ function KitActionDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <Dialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{passwordStatus === "expired" ? "Senha vencida" : "Primeiro acesso"}</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            {passwordStatus === "expired"
+              ? "Sua senha venceu após 7 dias. Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. A ação do kit não foi executada."
+              : "Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. A ação do kit não foi executada."}
+          </p>
+
+          <div className="space-y-2">
+            <Label>Nova senha</Label>
+            <Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Confirmar senha</Label>
+            <Input
+              type="password"
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button onClick={changePassword} className="w-full sm:w-auto">
+            Salvar nova senha
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

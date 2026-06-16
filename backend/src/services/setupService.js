@@ -166,8 +166,19 @@ async function executarSetupInicial(payload) {
     const senhaHash = await bcrypt.hash(master.senha, 10);
     const [userResult] = await conn.query(
       `INSERT INTO usuarios
-        (matricula, nome, email, senha_hash, tipo, ativo, criado_em, precisa_trocar_senha)
-       VALUES (?, ?, ?, ?, 'master', 1, NOW(), 0)`,
+        (
+          matricula,
+          nome,
+          email,
+          senha_hash,
+          tipo,
+          ativo,
+          criado_em,
+          atualizado_em,
+          senha_atualizada_em,
+          precisa_trocar_senha
+        )
+       VALUES (?, ?, ?, ?, 'master', 1, NOW(), NOW(), NOW(), 0)`,
       [
         String(master.matricula).trim(),
         String(master.nome).trim(),

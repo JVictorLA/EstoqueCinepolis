@@ -13,6 +13,7 @@ import type {
   SystemUser,
   Category,
   AuthUser,
+  PasswordChallenge,
   UserRole,
   Estoque,
   TransferMovement,
@@ -36,11 +37,16 @@ import type {
   KitProductOption,
   KitStatus,
 } from "@/types";
+import { getExpirationStatus } from "@/lib/expiration";
 
 const API_URL = import.meta.env?.VITE_API_URL?.replace(/\/$/, "") || "http://localhost:3333";
 
 const TOKEN_KEY = "cinepolis.token";
 const USER_KEY = "cinepolis.user";
+
+function normalizeThemePreference(value: unknown): "light" | "dark" {
+  return value === "dark" ? "dark" : "light";
+}
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -49,7 +55,23 @@ export function getToken(): string | null {
 export function getStoredUser(): AuthUser | null {
   if (typeof window === "undefined") return null;
   const raw = localStorage.getItem(USER_KEY);
-  return raw ? (JSON.parse(raw) as AuthUser) : null;
+  if (!raw) return null;
+  const parsed = JSON.parse(raw) as AuthUser;
+  return {
+    ...parsed,
+    themePreference: normalizeThemePreference(parsed.themePreference),
+  };
+}
+
+export function setStoredUser(user: AuthUser) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(
+    USER_KEY,
+    JSON.stringify({
+      ...user,
+      themePreference: normalizeThemePreference(user.themePreference),
+    }),
+  );
 }
 export function clearSession() {
   if (typeof window === "undefined") return;
@@ -74,6 +96,71 @@ export class ApiError<T = unknown> extends Error {
     this.status = status;
     this.data = data;
   }
+}
+
+function isPasswordStatus(value: unknown): value is "first_access" | "expired" {
+  return value === "first_access" || value === "expired";
+}
+
+export function getPasswordChallenge(error: unknown): PasswordChallenge | null {
+  const candidates: unknown[] = [];
+
+  if (error instanceof ApiError) {
+    candidates.push(error.data);
+  }
+
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    candidates.push(record.data);
+    candidates.push(record.response);
+
+    const response = record.response;
+    if (response && typeof response === "object") {
+      const responseRecord = response as Record<string, unknown>;
+      candidates.push(responseRecord.data);
+      const nestedData = responseRecord.data;
+      if (nestedData && typeof nestedData === "object") {
+        candidates.push((nestedData as Record<string, unknown>).data);
+      }
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object") continue;
+
+    const record = candidate as Record<string, unknown>;
+    const directStatus = record.password_status;
+    const directUser = record.usuario;
+    if (
+      isPasswordStatus(directStatus) &&
+      directUser &&
+      typeof directUser === "object" &&
+      Number((directUser as Record<string, unknown>).id)
+    ) {
+      return {
+        password_status: directStatus,
+        usuario: directUser as PasswordChallenge["usuario"],
+      };
+    }
+
+    const nested = record.data;
+    if (!nested || typeof nested !== "object") continue;
+
+    const nestedRecord = nested as Record<string, unknown>;
+    if (
+      isPasswordStatus(nestedRecord.password_status) &&
+      nestedRecord.usuario &&
+      typeof nestedRecord.usuario === "object" &&
+      Number((nestedRecord.usuario as Record<string, unknown>).id)
+    ) {
+      return {
+        password_status: nestedRecord.password_status,
+        usuario: nestedRecord.usuario as PasswordChallenge["usuario"],
+      };
+    }
+  }
+
+  return null;
 }
 
 async function request<T>(path: string, init: RequestInit & { auth?: boolean } = {}): Promise<T> {
@@ -144,14 +231,7 @@ interface RawProductLot {
 }
 
 function lotStatus(expirationDate?: string | null): LotStatus {
-  if (!expirationDate) return "sem_validade";
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expiration = new Date(`${String(expirationDate).slice(0, 10)}T00:00:00`);
-  if (Number.isNaN(expiration.getTime())) return "sem_validade";
-  if (expiration < today) return "vencido";
-  const days = Math.ceil((expiration.getTime() - today.getTime()) / 86400000);
-  return days <= 7 ? "proximo_vencimento" : "ok";
+  return getExpirationStatus(expirationDate);
 }
 
 function mapProductLot(r: RawProductLot): ProductLot {
@@ -342,6 +422,7 @@ interface RawUser {
   tipo: UserRole;
   ativo: 0 | 1 | boolean;
   criado_em: string;
+  theme_preference?: "light" | "dark" | null;
 }
 function mapUser(r: RawUser): SystemUser {
   return {
@@ -352,6 +433,7 @@ function mapUser(r: RawUser): SystemUser {
     role: r.tipo,
     active: !!r.ativo,
     createdAt: r.criado_em,
+    themePreference: normalizeThemePreference(r.theme_preference),
   };
 }
 
@@ -655,10 +737,16 @@ export async function adminLogin(matricula: string, senha: string): Promise<Auth
 
   if (typeof window !== "undefined") {
     localStorage.setItem(TOKEN_KEY, data.token);
-    localStorage.setItem(USER_KEY, JSON.stringify(data.usuario));
+    setStoredUser({
+      ...data.usuario,
+      themePreference: normalizeThemePreference(data.usuario.themePreference),
+    });
   }
 
-  return data.usuario;
+  return {
+    ...data.usuario,
+    themePreference: normalizeThemePreference(data.usuario.themePreference),
+  };
 }
 
 /* ----------------- SETUP ----------------- */
@@ -1312,7 +1400,7 @@ export async function createUser(payload: {
   matricula: string;
   nome: string;
   email?: string;
-  senha: string;
+  senha?: string;
   tipo: UserRole;
   ativo: boolean;
 }): Promise<SystemUser> {
@@ -1376,6 +1464,31 @@ export async function changeUserPassword(
       novaSenha,
     }),
   });
+}
+
+export async function updateMyPreferences(payload: {
+  themePreference: "light" | "dark";
+}): Promise<{ themePreference: "light" | "dark" }> {
+  const response = await request<{ id: number; themePreference: "light" | "dark" }>(
+    "/usuarios/me/preferencias",
+    {
+      method: "PATCH",
+      auth: true,
+      body: JSON.stringify(payload),
+    },
+  );
+
+  const storedUser = getStoredUser();
+  if (storedUser) {
+    setStoredUser({
+      ...storedUser,
+      themePreference: normalizeThemePreference(response.themePreference),
+    });
+  }
+
+  return {
+    themePreference: normalizeThemePreference(response.themePreference),
+  };
 }
 
 export async function resetUserPassword(id: number): Promise<void> {

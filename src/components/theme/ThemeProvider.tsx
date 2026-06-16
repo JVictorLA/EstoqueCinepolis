@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { getStoredUser } from "@/services/api";
 
 type Theme = "light" | "dark";
 
@@ -12,6 +13,10 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 function readStoredTheme(): Theme {
   if (typeof window === "undefined") return "light";
+  const storedUser = getStoredUser();
+  if (storedUser?.themePreference) {
+    return storedUser.themePreference;
+  }
   const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
   return stored === "dark" ? "dark" : "light";
 }
@@ -37,8 +42,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
-      if (event.key === THEME_STORAGE_KEY) {
-        setThemeState(event.newValue === "dark" ? "dark" : "light");
+      if (event.key === THEME_STORAGE_KEY || event.key === "cinepolis.user") {
+        setThemeState(readStoredTheme());
       }
     };
 

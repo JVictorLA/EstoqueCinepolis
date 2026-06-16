@@ -2,7 +2,7 @@
 
 API REST profissional em **Node.js + Express + MySQL2** para o sistema de
 controle de estoque do cinema. Conecta-se ao banco MySQL real
-(`estoque_cinema`) usando **exatamente** os nomes de tabelas e colunas já
+(`zytrex_inventory`) usando **exatamente** os nomes de tabelas e colunas já
 existentes — nada é renomeado nem inventado.
 
 ## Estrutura
@@ -39,7 +39,7 @@ node src/utils/createAdmin.js 0001 "Gerente" SenhaSegura123 gerente@cinepolis.co
 
 ## Banco
 
-Conecta a `127.0.0.1:3306`, banco `estoque_cinema`, usuário `cinepolis_estacao`.
+Conecta a `127.0.0.1:3306`, banco `zytrex_inventory`, usuário `cinepolis_estacao`.
 Edite `.env` para apontar para outro host se precisar.
 
 Tabelas usadas (nomes EXATOS do banco real):

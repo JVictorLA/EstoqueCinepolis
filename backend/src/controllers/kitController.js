@@ -68,24 +68,48 @@ async function repor(req, res) {
 }
 
 async function retirar(req, res) {
-  const kit = await kitService.retirar({
-    kitId: Number(req.params.id),
-    matricula: req.body?.matricula,
-    senha: req.body?.senha,
-    observacao: req.body?.observacao,
-  });
-  return ok(res, kit, "Kit retirado");
+  try {
+    const kit = await kitService.retirar({
+      kitId: Number(req.params.id),
+      matricula: req.body?.matricula,
+      senha: req.body?.senha,
+      observacao: req.body?.observacao,
+    });
+    return ok(res, kit, "Kit retirado");
+  } catch (e) {
+    if (e.password_challenge) {
+      return res.status(e.status || 403).json({
+        success: false,
+        message: e.message,
+        data: e.password_challenge,
+        error: e.message,
+      });
+    }
+    return fail(res, e.status || 500, e.message || "Erro ao retirar kit");
+  }
 }
 
 async function receber(req, res) {
-  const kit = await kitService.receber({
-    kitId: Number(req.params.id),
-    matricula: req.body?.matricula,
-    senha: req.body?.senha,
-    itens: req.body?.itens,
-    observacao: req.body?.observacao,
-  });
-  return ok(res, kit, "Kit recebido");
+  try {
+    const kit = await kitService.receber({
+      kitId: Number(req.params.id),
+      matricula: req.body?.matricula,
+      senha: req.body?.senha,
+      itens: req.body?.itens,
+      observacao: req.body?.observacao,
+    });
+    return ok(res, kit, "Kit recebido");
+  } catch (e) {
+    if (e.password_challenge) {
+      return res.status(e.status || 403).json({
+        success: false,
+        message: e.message,
+        data: e.password_challenge,
+        error: e.message,
+      });
+    }
+    return fail(res, e.status || 500, e.message || "Erro ao receber kit");
+  }
 }
 
 async function historico(req, res) {

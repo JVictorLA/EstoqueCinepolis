@@ -1,29 +1,35 @@
 const bcrypt = require("bcrypt");
 const usuarioService = require("../services/usuarioService");
 const { ok, created, fail } = require("../utils/response");
-const { pool } = require("../database/connection");
 
 async function buscarPorMatricula(req, res) {
   const { matricula } = req.params;
+  const user = await usuarioService.findByMatricula(matricula);
 
-  const [rows] = await pool.query(
-    `SELECT
-      id,
-      matricula,
-      nome,
-      tipo,
-      precisa_trocar_senha
-     FROM usuarios
-     WHERE matricula = ?
-     LIMIT 1`,
-    [matricula],
-  );
-
-  if (rows.length === 0) {
+  if (!user) {
     return fail(res, 404, "Usuario nao encontrado");
   }
 
-  return ok(res, rows[0], "Usuario encontrado");
+  const passwordStatus = usuarioService.getPasswordStatus(user);
+
+  return ok(
+    res,
+    {
+      id: user.id,
+      matricula: user.matricula,
+      nome: user.nome,
+      tipo: user.tipo,
+      precisa_trocar_senha: !!user.precisa_trocar_senha,
+      precisaTrocarSenha: !!user.precisa_trocar_senha,
+      senha_expirada: passwordStatus === "expired",
+      senhaExpirada: passwordStatus === "expired",
+      password_status: passwordStatus,
+      passwordStatus: passwordStatus,
+      themePreference: user.theme_preference === "dark" ? "dark" : "light",
+      ativo: !!user.ativo,
+    },
+    "Usuario encontrado",
+  );
 }
 
 async function listar(req, res) {
@@ -36,8 +42,8 @@ async function listar(req, res) {
 async function criar(req, res) {
   const { matricula, nome, email, senha, tipo, ativo } = req.body || {};
 
-  if (!matricula || !nome || !senha || !tipo) {
-    return fail(res, 400, "matricula, nome, senha e tipo sao obrigatorios");
+  if (!matricula || !nome || !tipo) {
+    return fail(res, 400, "matricula, nome e tipo sao obrigatorios");
   }
 
   if (!["admin", "operador"].includes(tipo)) {
@@ -102,7 +108,7 @@ async function atualizar(req, res) {
 
 async function alterarSenha(req, res) {
   const id = Number(req.params.id);
-  const { senhaAtual, novaSenha } = req.body;
+  const { senhaAtual, novaSenha } = req.body || {};
 
   if (!id) return fail(res, 400, "ID invalido");
   if (!senhaAtual || !novaSenha) {
@@ -117,8 +123,33 @@ async function alterarSenha(req, res) {
     return fail(res, 401, "Senha atual incorreta");
   }
 
+  const mesmaSenha = await bcrypt.compare(novaSenha, user.senha_hash);
+  if (mesmaSenha) {
+    return fail(res, 400, "A nova senha nao pode ser igual a senha atual");
+  }
+
   await usuarioService.update(id, { senha: novaSenha });
   return ok(res, null, "Senha atualizada com sucesso");
+}
+
+async function atualizarPreferencias(req, res) {
+  const userId = Number(req.user?.id);
+  if (!userId) return fail(res, 401, "Nao autenticado");
+
+  const { themePreference } = req.body || {};
+  if (!["light", "dark"].includes(themePreference)) {
+    return fail(res, 400, "themePreference deve ser 'light' ou 'dark'");
+  }
+
+  const atualizado = await usuarioService.updateThemePreference(userId, themePreference);
+  return ok(
+    res,
+    {
+      id: atualizado.id,
+      themePreference: atualizado.theme_preference === "dark" ? "dark" : "light",
+    },
+    "Preferencias atualizadas",
+  );
 }
 
 async function alterarStatus(req, res) {
@@ -149,7 +180,7 @@ async function resetarSenha(req, res) {
   }
 
   await usuarioService.resetPassword(id);
-  return ok(res, null, "Senha resetada para 123456");
+  return ok(res, null, "Senha temporaria resetada; usuario deve troca-la no proximo acesso");
 }
 
 module.exports = {
@@ -159,5 +190,6 @@ module.exports = {
   atualizar,
   alterarStatus,
   alterarSenha,
+  atualizarPreferencias,
   resetarSenha,
 };

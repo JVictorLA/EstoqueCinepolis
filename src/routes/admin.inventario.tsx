@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -35,6 +35,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -79,12 +80,12 @@ import {
 import type {
   Conference,
   ConferenceHistory,
-  ConferenceItem,
   ConferenceProductOption,
   Estoque,
   InventoryCurrentItem,
   InventoryStatus,
 } from "@/types";
+import { getConferenceTotals, getInventorySummary } from "@/lib/inventoryRules";
 
 export const Route = createFileRoute("/admin/inventario")({
   head: () => ({ meta: [{ title: "Inventário · Zytrex Inventory" }] }),
@@ -96,7 +97,19 @@ const statusLabel: Record<InventoryStatus, string> = {
   estoque_baixo: "Estoque baixo",
   sem_estoque: "Sem estoque",
   vencido: "Vencido",
+  validade_30: "Atenção",
+  validade_15: "Alerta",
   proximo_vencimento: "Próximo do vencimento",
+};
+
+const statusDescription: Record<InventoryStatus, string> = {
+  ok: "Produto com saldo e validade dentro do prazo.",
+  estoque_baixo: "Produto com saldo igual ou abaixo do estoque mínimo configurado.",
+  sem_estoque: "Produto sem saldo disponível no estoque.",
+  vencido: "Este produto já passou da data de validade.",
+  validade_30: "Este produto vence em até 30 dias. Comece a acompanhar a validade.",
+  validade_15: "Este produto vence em até 15 dias. Acompanhe com atenção.",
+  proximo_vencimento: "Este produto vence em até 7 dias. Priorize a saída ou conferência.",
 };
 
 function formatDateTime(value?: string | null) {
@@ -126,20 +139,47 @@ function selectedStockName(estoques: Estoque[], value: string | number | null | 
 }
 
 function inventoryStatusBadge(status: InventoryStatus) {
+  const withTooltip = (badge: ReactNode) => (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex cursor-help">{badge}</span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs text-center">
+          {statusDescription[status]}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+
   if (status === "ok") {
-    return (
+    return withTooltip(
       <Badge variant="secondary" className="bg-success/15 text-success border-success/30">
         OK
-      </Badge>
+      </Badge>,
     );
   }
   if (status === "vencido" || status === "sem_estoque") {
-    return <Badge variant="destructive">{statusLabel[status]}</Badge>;
+    return withTooltip(<Badge variant="destructive">{statusLabel[status]}</Badge>);
   }
-  return (
+  if (status === "proximo_vencimento") {
+    return withTooltip(
+      <Badge variant="secondary" className="bg-destructive/15 text-destructive border-destructive/30">
+        Próximo do vencimento
+      </Badge>,
+    );
+  }
+  if (status === "validade_15") {
+    return withTooltip(
+      <Badge variant="secondary" className="bg-orange-500/15 text-orange-700 border-orange-500/30 dark:text-orange-300">
+        Alerta
+      </Badge>,
+    );
+  }
+  return withTooltip(
     <Badge variant="secondary" className="bg-warning/15 text-warning border-warning/30">
       {statusLabel[status]}
-    </Badge>
+    </Badge>,
   );
 }
 
@@ -336,16 +376,6 @@ function exportConferencePdf(conference: Conference) {
   doc.save(`relatorio-conferencia-${conference.id}.pdf`);
 }
 
-function getConferenceTotals(items: ConferenceItem[]) {
-  return {
-    items: items.length,
-    divergences: items.filter((item) => item.status !== "ok").length,
-    shortages: items.filter((item) => item.status === "falta").length,
-    surpluses: items.filter((item) => item.status === "sobra").length,
-    countedUnits: items.reduce((sum, item) => sum + item.countedQuantity, 0),
-  };
-}
-
 function InventarioPage() {
   const [estoques, setEstoques] = useState<Estoque[]>([]);
   const [activeTab, setActiveTab] = useState("estoque");
@@ -371,15 +401,7 @@ function InventarioPage() {
     () => getConferenceTotals(activeConference?.items ?? []),
     [activeConference],
   );
-  const inventorySummary = useMemo(
-    () => ({
-      products: inventoryItems.length,
-      units: inventoryItems.reduce((sum, item) => sum + item.stock, 0),
-      low: inventoryItems.filter((item) => item.status === "estoque_baixo").length,
-      critical: inventoryItems.filter((item) => item.status === "sem_estoque" || item.status === "vencido").length,
-    }),
-    [inventoryItems],
-  );
+  const inventorySummary = useMemo(() => getInventorySummary(inventoryItems), [inventoryItems]);
 
   const loadAll = async () => {
     setLoading(true);

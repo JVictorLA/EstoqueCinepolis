@@ -259,7 +259,7 @@ function EditUserDialog({
         </div>
         {resetPassword && (
           <div className="text-sm text-yellow-600 bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
-            ⚠️ A senha será redefinida para: <b>123456</b>
+             A senha será redefinida para: uma senha temporaria
             <br />O usuário será obrigado a criar uma nova senha no próximo acesso.
           </div>
         )}
@@ -314,13 +314,12 @@ function NewUserDialog({ onClose, onSuccess }: { onClose: () => void; onSuccess:
       await createUser({
         nome: name,
         matricula,
-        senha: "123456", // ✅ SENHA PADRÃO
         tipo: role,
         ativo: true,
         email: "",
       });
 
-      toast.success("Usuário criado com senha padrão: 123456");
+      toast.success("Usuario criado com senha temporaria. A troca sera obrigatoria no proximo acesso.");
 
       onSuccess();
       onClose();
@@ -355,9 +354,9 @@ function NewUserDialog({ onClose, onSuccess }: { onClose: () => void; onSuccess:
           </SelectContent>
         </Select>
 
-        {/* 🔥 AVISO VISUAL */}
+        {/*  AVISO VISUAL */}
         <div className="text-sm text-yellow-600 bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
-          ⚠️ O usuário será criado com a senha padrão: <b>123456</b>
+          O usuario sera criado com uma senha temporaria e devera troca-la no proximo acesso.
         </div>
 
         <DialogFooter>

@@ -23,9 +23,12 @@ import {
   adminLogin,
   changeUserPassword,
   createInitialSetup,
+  getPasswordChallenge,
   getSetupStatus,
+  getUserByMatricula,
   type InitialSetupPayload,
 } from "@/services/api";
+import { passwordChallengeMessage, resolvePasswordStatus } from "@/lib/passwordChallenge";
 
 import zyntraIcon from "@/icones/android-chrome-512x512.png";
 
@@ -74,6 +77,17 @@ function BrandLogo({ size = "sm" }: { size?: "sm" | "lg" }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function BrandMark({ size = 40 }: { size?: number }) {
+  return (
+    <img
+      src={zyntraIcon}
+      alt=""
+      className="shrink-0 object-contain"
+      style={{ width: size, height: size }}
+    />
   );
 }
 
@@ -474,6 +488,7 @@ function ReviewBlock({ title, items }: { title: string; items: Array<string | un
 
 function LoginPage() {
   const navigate = useNavigate();
+  const { setTheme } = useTheme();
 
   const [mode, setMode] = useState<"choose" | "admin">("choose");
 
@@ -486,6 +501,8 @@ function LoginPage() {
 
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [userId, setUserId] = useState<number | null>(null);
+  const [passwordStatus, setPasswordStatus] = useState<"first_access" | "expired">("first_access");
+  const [currentPassword, setCurrentPassword] = useState("");
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -511,17 +528,38 @@ function LoginPage() {
 
     try {
       const response = await adminLogin(matricula, pass);
-
-      if (response.precisaTrocarSenha) {
-        setUserId(response.id);
-        setShowChangePassword(true);
-        toast.warning("Primeiro acesso detectado. Crie uma nova senha.");
-        return;
-      }
+      setTheme(response.themePreference);
 
       toast.success(`Bem-vindo, ${response.nome}!`);
       navigate({ to: "/admin" });
     } catch (err: unknown) {
+      const challenge = getPasswordChallenge(err);
+      if (challenge) {
+        setUserId(challenge.usuario.id);
+        setCurrentPassword(pass);
+        setPasswordStatus(challenge.password_status);
+        setShowChangePassword(true);
+        toast.warning(passwordChallengeMessage(challenge.password_status));
+        return;
+      }
+      const errorMessage = err instanceof Error ? err.message : "";
+      if (/expir|primeiro acesso|troque a senha/i.test(errorMessage)) {
+        try {
+          const user = await getUserByMatricula(matricula);
+          const resolvedStatus = resolvePasswordStatus(user);
+
+          if (resolvedStatus === "expired" || resolvedStatus === "first_access") {
+            setUserId(user.id);
+            setCurrentPassword(pass);
+            setPasswordStatus(resolvedStatus);
+            setShowChangePassword(true);
+            toast.warning(passwordChallengeMessage(resolvedStatus));
+            return;
+          }
+        } catch {
+          // deixa cair para o toast original
+        }
+      }
       toast.error(err instanceof Error ? err.message : "Erro na operação");
     } finally {
       setLoading(false);
@@ -545,7 +583,7 @@ function LoginPage() {
     }
 
     try {
-      await changeUserPassword(userId, "123456", newPassword);
+      await changeUserPassword(userId, currentPassword, newPassword);
 
       toast.success("Senha alterada com sucesso");
       toast.info("Faça login novamente");
@@ -556,6 +594,8 @@ function LoginPage() {
       setNewPassword("");
       setConfirmPassword("");
       setUserId(null);
+      setCurrentPassword("");
+      setPasswordStatus("first_access");
       setMode("admin");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro na operação");
@@ -696,12 +736,15 @@ function LoginPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md space-y-4 rounded-3xl border bg-card p-6 text-card-foreground shadow-[var(--shadow-card)]">
             <div className="flex items-start gap-4">
-              <BrandLogo />
-              <div>
-                <h2 className="text-xl font-bold text-foreground">Primeiro acesso</h2>
+              <BrandMark />
+              <div className="min-w-0 flex-1">
+                <h2 className="text-xl font-bold text-foreground">
+                  {passwordStatus === "expired" ? "Senha vencida" : "Primeiro acesso"}
+                </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Você está utilizando a senha padrão do sistema. Crie uma nova senha para
-                  continuar.
+                  {passwordStatus === "expired"
+                    ? "Sua senha venceu após 7 dias. Crie uma nova senha para continuar. A nova senha não pode ser igual à atual."
+                    : "Você está utilizando a senha padrão do sistema. Crie uma nova senha para continuar. A nova senha não pode ser igual à atual."}
                 </p>
               </div>
             </div>

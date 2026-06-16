@@ -7,17 +7,31 @@ async function login(req, res) {
   const { matricula, senha } = req.body || {};
 
   if (!matricula || !senha) {
-    return fail(res, 400, "Informe matrícula e senha");
+    return fail(res, 400, "Informe matricula e senha");
   }
 
   const result = await usuarioService.validateCredentials(matricula, senha);
 
   if (!result) {
-    return fail(res, 401, "Matrícula ou senha inválidos");
+    return fail(res, 401, "Matricula ou senha invalidos");
   }
 
   if (result.error === "inactive") {
-    return fail(res, 403, "Usuário inativo");
+    return fail(res, 403, "Usuario inativo");
+  }
+
+  if (result.password_status) {
+    const message =
+      result.password_status === "expired"
+        ? "Sua senha expirou. Troque-a para continuar."
+        : "Primeiro acesso detectado. Troque a senha para continuar.";
+
+    return res.status(403).json({
+      success: false,
+      message,
+      data: usuarioService.buildPasswordChallenge(result),
+      error: message,
+    });
   }
 
   if (!["admin", "master"].includes(result.tipo)) {
@@ -46,8 +60,9 @@ async function login(req, res) {
         email: result.email,
         tipo: result.tipo,
         ativo: !!result.ativo,
-
+        themePreference: result.theme_preference === "dark" ? "dark" : "light",
         precisaTrocarSenha: !!result.precisa_trocar_senha,
+        senhaExpirada: !!result.senha_expirada,
       },
     },
     "Login realizado",

@@ -20,6 +20,7 @@ import {
 import { BarcodeInput } from "@/components/scanner/BarcodeInput";
 import {
   changeUserPassword,
+  getPasswordChallenge,
   getProductByBarcode,
   getProductLots,
   getUserByMatricula,
@@ -28,12 +29,18 @@ import {
 } from "@/services/api";
 import type { Estoque, Product, ProductLot, WasteReason } from "@/types";
 import { toast } from "sonner";
+import { passwordChallengeMessage, resolvePasswordStatus } from "@/lib/passwordChallenge";
+import { validateWaste } from "@/lib/wasteRules";
 
 interface EmployeeLookup {
   id: number;
   nome: string;
   precisa_trocar_senha?: boolean;
   precisaTrocarSenha?: boolean;
+  senha_expirada?: boolean;
+  senhaExpirada?: boolean;
+  password_status?: "first_access" | "expired";
+  passwordStatus?: "first_access" | "expired";
 }
 
 interface WasteDialogProps {
@@ -70,6 +77,8 @@ export function WasteDialog({
   const [loading, setLoading] = useState(false);
   const [credentialsOpen, setCredentialsOpen] = useState(false);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [passwordStatus, setPasswordStatus] = useState<"first_access" | "expired">("first_access");
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
@@ -199,38 +208,19 @@ export function WasteDialog({
   };
 
   const validateWasteDetails = () => {
-    if (!Number(selectedEstoqueId)) {
-      toast.error("Selecione o estoque");
+    const validation = validateWaste({
+      selectedEstoqueId,
+      barcode,
+      product,
+      reasonId,
+      quantity,
+      lot,
+    });
+    if ("error" in validation) {
+      toast.error(validation.error);
       return null;
     }
-    if (!barcode.trim()) {
-      toast.error("Informe o codigo de barras");
-      return null;
-    }
-    if (!product) {
-      toast.error("Produto nao encontrado no estoque selecionado");
-      return null;
-    }
-    if (!Number(reasonId)) {
-      toast.error("Selecione o motivo");
-      return null;
-    }
-    if (product?.requiresExpiration && !lot.trim()) {
-      toast.error("Informe o lote");
-      return null;
-    }
-
-    const qtd = Number(quantity);
-    if (!Number.isFinite(qtd) || qtd <= 0) {
-      toast.error("Informe uma quantidade valida");
-      return null;
-    }
-    if (product && qtd > product.stock) {
-      toast.error("Quantidade maior que o estoque atual");
-      return null;
-    }
-
-    return qtd;
+    return validation.quantity;
   };
 
   const requestCredentials = () => {
@@ -243,12 +233,6 @@ export function WasteDialog({
     const qtd = validateWasteDetails();
     if (!qtd) return;
     if (!matricula.trim() || !password) return toast.error("Informe matricula e senha");
-
-    if (password === "123456" && (user?.precisa_trocar_senha || user?.precisaTrocarSenha)) {
-      setChangePasswordOpen(true);
-      toast.warning("Primeiro acesso detectado. Crie uma nova senha.");
-      return;
-    }
 
     setLoading(true);
     try {
@@ -266,6 +250,33 @@ export function WasteDialog({
       onOpenChange(false);
       onSaved?.();
     } catch (err: unknown) {
+      const challenge = getPasswordChallenge(err);
+      if (challenge) {
+        setCurrentPassword(password);
+        setPasswordStatus(challenge.password_status);
+        setChangePasswordOpen(true);
+        setCredentialsOpen(false);
+        toast.warning(passwordChallengeMessage(challenge.password_status));
+        return;
+      }
+      const errorMessage = err instanceof Error ? err.message : "";
+      if (/expir|primeiro acesso|troque a senha/i.test(errorMessage) && matricula.trim()) {
+        try {
+          const lookup = await getUserByMatricula(matricula.trim());
+          const resolvedStatus = resolvePasswordStatus(lookup);
+          if (resolvedStatus === "expired" || resolvedStatus === "first_access") {
+            setUser(lookup);
+            setCurrentPassword(password);
+            setPasswordStatus(resolvedStatus);
+            setChangePasswordOpen(true);
+            setCredentialsOpen(false);
+            toast.warning(passwordChallengeMessage(resolvedStatus));
+            return;
+          }
+        } catch {
+          // segue para o tratamento original
+        }
+      }
       toast.error(err instanceof Error ? err.message : "Erro ao registrar desperdicio");
     } finally {
       setLoading(false);
@@ -278,10 +289,12 @@ export function WasteDialog({
     if (newPassword !== confirmPassword) return toast.error("As senhas nao coincidem");
 
     try {
-      await changeUserPassword(user.id, "123456", newPassword);
+      await changeUserPassword(user.id, currentPassword, newPassword);
       toast.success("Senha alterada com sucesso");
       toast.info("Repita o desperdicio usando a nova senha");
       setPassword("");
+      setCurrentPassword("");
+      setPasswordStatus("first_access");
       setNewPassword("");
       setConfirmPassword("");
       setChangePasswordOpen(false);
@@ -478,10 +491,14 @@ export function WasteDialog({
       <Dialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Primeiro acesso</DialogTitle>
+            <DialogTitle>{passwordStatus === "expired" ? "Senha vencida" : "Primeiro acesso"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="text-sm text-muted-foreground">Crie uma nova senha para continuar.</div>
+            <div className="text-sm text-muted-foreground">
+              {passwordStatus === "expired"
+                ? "Sua senha venceu após 7 dias. Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. O desperdício não foi registrado."
+                : "Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. O desperdício não foi registrado."}
+            </div>
             <div className="space-y-2">
               <Label>Nova senha</Label>
               <Input
