@@ -1,13 +1,8 @@
-const { fail } = require("../utils/response");
-
-// 404 para rotas não encontradas
+﻿const { fail } = require("../utils/response");
 function notFound(req, res) {
   return fail(res, 404, `Rota não encontrada: ${req.method} ${req.originalUrl}`);
 }
-
-// Handler global de erros
 function errorHandler(err, req, res, _next) {
-  // eslint-disable-next-line no-console
   console.error("[ERROR]", err);
 
   const status = err.status || 500;

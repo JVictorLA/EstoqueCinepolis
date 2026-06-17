@@ -29,12 +29,12 @@ function OperadorDesperdicioPage() {
   return (
     <>
       <PageHeader
-        title="Registrar desperdicio"
+        title="Registrar desperdício"
         subtitle={estoque ? `Estoque selecionado: ${estoque.nome}` : "Estoque selecionado"}
         actions={
           <Button className="gap-2" onClick={() => setOpen(true)} disabled={!estoque}>
             <Trash2 className="h-4 w-4" />
-            Registrar desperdicio
+            Registrar desperdício
           </Button>
         }
       />

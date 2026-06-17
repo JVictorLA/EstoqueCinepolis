@@ -1,4 +1,4 @@
-const { Router } = require("express");
+﻿const { Router } = require("express");
 const asyncHandler = require("../utils/asyncHandler");
 const auth = require("../middlewares/auth");
 
@@ -52,7 +52,7 @@ router.get("/setup/status", asyncHandler(setupCtrl.status));
 router.post("/setup/inicial", asyncHandler(setupCtrl.setupInicial));
 router.post("/setup/master", asyncHandler(setupCtrl.criarMaster));
 
-// Configuracoes
+// Configurações
 router.get(
   "/configuracoes",
   auth.authMiddleware,
@@ -204,9 +204,6 @@ router.patch(
   auth.adminOnly,
   asyncHandler(usuarioCtrl.alterarStatus),
 );
-
-// 🔥 IMPORTANTE: DEIXAR POR ÚLTIMO
-
 router.get("/usuarios/:matricula", asyncHandler(usuarioCtrl.buscarPorMatricula));
 
 router.patch(
@@ -215,12 +212,5 @@ router.patch(
   auth.adminOnly,
   asyncHandler(usuarioCtrl.resetarSenha),
 );
-
-/* 
-// ✅ ALTERNATIVA MAIS SEGURA (recomendado)
-router.get(
-  "/usuarios/matricula/:matricula",
-  asyncHandler(usuarioCtrl.buscarPorMatricula)
-); */
 
 module.exports = router;

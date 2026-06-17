@@ -160,7 +160,7 @@ async function registrarManual({ estoque_id, codigo_barras, quantidade, motivo_i
       estoque_id,
     ]);
     if (!estoques.length) {
-      throw Object.assign(new Error("Estoque nao encontrado"), { status: 404 });
+      throw Object.assign(new Error("Estoque não encontrado"), { status: 404 });
     }
     if (!estoques[0].ativo) {
       throw Object.assign(new Error("Estoque inativo"), { status: 400 });
@@ -171,7 +171,7 @@ async function registrarManual({ estoque_id, codigo_barras, quantidade, motivo_i
       [motivo_id],
     );
     if (!motivos.length || !motivos[0].ativo) {
-      throw Object.assign(new Error("Motivo de desperdicio invalido"), { status: 400 });
+      throw Object.assign(new Error("Motivo de desperdício inválido"), { status: 400 });
     }
 
     const [produtos] = await conn.query(
@@ -193,7 +193,7 @@ async function registrarManual({ estoque_id, codigo_barras, quantidade, motivo_i
     );
 
     if (!produtos.length) {
-      throw Object.assign(new Error("Produto nao encontrado neste estoque"), {
+      throw Object.assign(new Error("Produto não encontrado neste estoque"), {
         status: 404,
       });
     }
@@ -239,7 +239,7 @@ async function listar(filtros = {}) {
       COALESCE(p.nome, CONCAT('Produto #', d.produto_id)) AS produto_nome,
       p.codigo_barras,
       d.usuario_id,
-      COALESCE(u.nome, 'Usuario removido') AS usuario_nome,
+      COALESCE(u.nome, 'Usuário removido') AS usuario_nome,
       u.matricula,
       d.motivo_id,
       COALESCE(m.nome, 'Motivo removido') AS motivo_nome,
@@ -305,7 +305,7 @@ async function resumo(filtros = {}) {
         params,
       ),
       pool.query(
-        `SELECT d.usuario_id, COALESCE(u.nome, 'Usuario removido') AS usuario_nome,
+        `SELECT d.usuario_id, COALESCE(u.nome, 'Usuário removido') AS usuario_nome,
           COALESCE(SUM(d.quantidade), 0) AS quantidade,
           COALESCE(SUM(d.valor_total), 0) AS valor_total
          ${baseJoin}
@@ -329,7 +329,7 @@ async function resumo(filtros = {}) {
         `SELECT d.id, d.criado_em,
           COALESCE(e.nome, 'Estoque removido') AS estoque_nome,
           COALESCE(p.nome, CONCAT('Produto #', d.produto_id)) AS produto_nome,
-          COALESCE(u.nome, 'Usuario removido') AS usuario_nome,
+          COALESCE(u.nome, 'Usuário removido') AS usuario_nome,
           COALESCE(m.nome, 'Motivo removido') AS motivo_nome,
           d.quantidade,
           d.valor_total
@@ -363,7 +363,7 @@ async function processarVencidos(usuario) {
       "SELECT id, nome FROM motivos_desperdicio WHERE nome = 'Produto vencido' AND ativo = 1 LIMIT 1",
     );
     if (!motivos.length) {
-      throw Object.assign(new Error("Motivo 'Produto vencido' nao encontrado"), {
+      throw Object.assign(new Error("Motivo 'Produto vencido' não encontrado"), {
         status: 400,
       });
     }

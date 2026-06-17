@@ -100,7 +100,7 @@ export function WasteDialog({
         setReasons(data);
         if (data[0] && !reasonId) setReasonId(String(data[0].id));
       })
-      .catch(() => toast.error("Erro ao carregar motivos de desperdicio"));
+      .catch(() => toast.error("Erro ao carregar motivos de desperdício"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -232,7 +232,7 @@ export function WasteDialog({
   const save = async () => {
     const qtd = validateWasteDetails();
     if (!qtd) return;
-    if (!matricula.trim() || !password) return toast.error("Informe matricula e senha");
+    if (!matricula.trim() || !password) return toast.error("Informe matrícula e senha");
 
     setLoading(true);
     try {
@@ -245,7 +245,7 @@ export function WasteDialog({
         senha: password,
         lote: lot.trim(),
       });
-      toast.success("Desperdicio registrado");
+      toast.success("Desperdício registrado");
       reset();
       onOpenChange(false);
       onSaved?.();
@@ -277,21 +277,21 @@ export function WasteDialog({
           // segue para o tratamento original
         }
       }
-      toast.error(err instanceof Error ? err.message : "Erro ao registrar desperdicio");
+      toast.error(err instanceof Error ? err.message : "Erro ao registrar desperdício");
     } finally {
       setLoading(false);
     }
   };
 
   const changeFirstPassword = async () => {
-    if (!user?.id) return toast.error("Usuario invalido");
+    if (!user?.id) return toast.error("Usuário inválido");
     if (!newPassword || !confirmPassword) return toast.error("Preencha os campos");
-    if (newPassword !== confirmPassword) return toast.error("As senhas nao coincidem");
+    if (newPassword !== confirmPassword) return toast.error("As senhas não coincidem");
 
     try {
       await changeUserPassword(user.id, currentPassword, newPassword);
       toast.success("Senha alterada com sucesso");
-      toast.info("Repita o desperdicio usando a nova senha");
+      toast.info("Repita o desperdício usando a nova senha");
       setPassword("");
       setCurrentPassword("");
       setPasswordStatus("first_access");
@@ -310,7 +310,7 @@ export function WasteDialog({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Trash2 className="h-5 w-5 text-destructive" />
-              Criar desperdicio
+              Criar desperdício
             </DialogTitle>
           </DialogHeader>
 
@@ -337,7 +337,7 @@ export function WasteDialog({
                 </Select>
                 {barcode.trim() && availableStockIds?.length === 0 && (
                   <p className="text-xs text-destructive">
-                    Este produto nao esta cadastrado em nenhum estoque disponivel.
+                    Este produto não está cadastrado em nenhum estoque disponível.
                   </p>
                 )}
               </div>
@@ -377,7 +377,7 @@ export function WasteDialog({
 
               {product && lots.length > 0 && (
                 <div className="space-y-2 sm:col-span-2">
-                  <Label>Lotes disponiveis</Label>
+                  <Label>Lotes disponíveis</Label>
                   <div className="grid gap-2">
                     {lots
                       .filter((item) =>
@@ -427,7 +427,7 @@ export function WasteDialog({
             </Button>
             <Button onClick={requestCredentials} disabled={loading} className="gap-2">
               <AlertTriangle className="h-4 w-4" />
-              Criar desperdicio
+              Criar desperdício
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -436,7 +436,7 @@ export function WasteDialog({
       <Dialog open={credentialsOpen} onOpenChange={setCredentialsOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Confirmar responsavel</DialogTitle>
+            <DialogTitle>Confirmar responsável</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -448,7 +448,7 @@ export function WasteDialog({
             </div>
 
             <div className="space-y-2">
-              <Label>Matricula</Label>
+              <Label>Matrícula</Label>
               <Input
                 value={matricula}
                 onChange={(e) => setMatricula(e.target.value)}
@@ -467,7 +467,7 @@ export function WasteDialog({
 
             {user && (
               <div className="text-xs text-muted-foreground">
-                Funcionario: <span className="font-medium">{user.nome}</span>
+                Funcionário: <span className="font-medium">{user.nome}</span>
               </div>
             )}
           </div>
@@ -482,7 +482,7 @@ export function WasteDialog({
               ) : (
                 <Trash2 className="h-4 w-4" />
               )}
-              Registrar desperdicio
+              Registrar desperdício
             </Button>
           </DialogFooter>
         </DialogContent>

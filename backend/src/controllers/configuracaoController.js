@@ -15,7 +15,7 @@ async function atualizar(req, res) {
   const isMaster = req.user?.tipo === "master";
   const hasMasterConfig = configs.some((item) => item.nivelAcesso === "master");
   if (hasMasterConfig && !isMaster) {
-    return fail(res, 403, "Configuracoes master so podem ser alteradas pelo master");
+    return fail(res, 403, "Configurações master só podem ser alteradas pelo master");
   }
 
   await configuracaoService.setManyConfigs(
@@ -28,7 +28,7 @@ async function atualizar(req, res) {
     req.user?.id || null,
   );
 
-  return ok(res, null, "Configuracoes atualizadas");
+  return ok(res, null, "Configurações atualizadas");
 }
 
 module.exports = { listar, atualizar };

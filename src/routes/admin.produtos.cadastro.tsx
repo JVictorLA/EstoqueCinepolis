@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { createProductsBatch, getCategories, getEstoques, type CreateProductPayload } from "@/services/api";
 import type { Category, Estoque } from "@/types";
 import { toast } from "sonner";
+import { generateInternalBarcode } from "@/lib/productRules";
 
 export const Route = createFileRoute("/admin/produtos/cadastro")({
   head: () => ({ meta: [{ title: "Cadastro de produtos · Zytrex Inventory" }] }),
@@ -49,20 +50,6 @@ function createRow(): ProductBatchRow {
   };
 }
 
-function ean13CheckDigit(base: string) {
-  const sum = base
-    .split("")
-    .reduce((total, digit, index) => total + Number(digit) * (index % 2 === 0 ? 1 : 3), 0);
-  return String((10 - (sum % 10)) % 10);
-}
-
-function generateInternalBarcode() {
-  const timestampPart = Date.now().toString().slice(-8);
-  const randomPart = Math.floor(Math.random() * 100).toString().padStart(2, "0");
-  const base = `29${timestampPart}${randomPart}`;
-  return `${base}${ean13CheckDigit(base)}`;
-}
-
 function parseNumber(value: string) {
   if (!value.trim()) return 0;
   return Number(value.replace(",", "."));
@@ -87,18 +74,18 @@ function getCategory(categories: Category[], row: ProductBatchRow) {
 }
 
 function validateRow(row: ProductBatchRow, categories: Category[]) {
-  if (!row.codigoBarras.trim()) return "Informe o codigo de barras";
+  if (!row.codigoBarras.trim()) return "Informe o código de barras";
   if (!row.nome.trim()) return "Informe o nome";
   if (!row.categoriaId) return "Selecione a categoria";
-  if (!row.preco.trim()) return "Informe o preco";
+  if (!row.preco.trim()) return "Informe o preço";
   if (!row.estoqueId) return "Selecione o estoque";
 
   const price = parseNumber(row.preco);
   const currentStock = parseNumber(row.estoqueAtual);
   const minStock = parseNumber(row.estoqueMinimo);
-  if (!Number.isFinite(price) || price < 0) return "Preco invalido";
-  if (!Number.isFinite(currentStock) || currentStock < 0) return "Estoque inicial invalido";
-  if (!Number.isFinite(minStock) || minStock < 0) return "Estoque minimo invalido";
+  if (!Number.isFinite(price) || price < 0) return "Preço inválido";
+  if (!Number.isFinite(currentStock) || currentStock < 0) return "Estoque inicial inválido";
+  if (!Number.isFinite(minStock) || minStock < 0) return "Estoque mínimo inválido";
 
   const category = getCategory(categories, row);
   if (category?.exigeValidade && !row.lote.trim()) return "Informe o lote";
@@ -157,7 +144,7 @@ function ProductBatchCreatePage() {
 
   const generateBarcode = (rowId: string) => {
     updateRow(rowId, "codigoBarras", generateInternalBarcode());
-    toast.success("Codigo de barras gerado");
+    toast.success("Código de barras gerado");
   };
 
   const buildPayload = (): CreateProductPayload[] | null => {
@@ -212,7 +199,7 @@ function ProductBatchCreatePage() {
     <>
       <PageHeader
         title="Cadastro de produtos"
-        subtitle="Cadastre varios produtos em uma unica operacao. Se uma linha falhar, nada sera salvo."
+        subtitle="Cadastre vários produtos em uma única operação. Se uma linha falhar, nada será salvo."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button
@@ -238,7 +225,7 @@ function ProductBatchCreatePage() {
               <h2 className="text-sm font-semibold">Produtos do cadastro</h2>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Linhas vazias sao ignoradas. Ao completar uma linha, uma nova aparece automaticamente.
+              Linhas vazias são ignoradas. Ao completar uma linha, uma nova aparece automaticamente.
             </p>
           </div>
           <Badge variant="secondary">{filledRows.length} preenchidos</Badge>
@@ -253,15 +240,15 @@ function ProductBatchCreatePage() {
           <div className="overflow-x-auto">
             <div className="min-w-[1500px]">
               <div className="grid grid-cols-[170px_40px_240px_190px_90px_120px_180px_120px_120px_150px_150px_90px_52px] gap-2 border-b bg-muted/30 px-4 py-3 text-xs font-medium text-muted-foreground">
-                <div>Codigo</div>
+                <div>Código</div>
                 <div></div>
                 <div>Nome</div>
                 <div>Categoria</div>
                 <div>Unidade</div>
-                <div>Preco</div>
+                <div>Preço</div>
                 <div>Estoque</div>
                 <div>Inicial</div>
-                <div>Minimo</div>
+                <div>Mínimo</div>
                 <div>Lote</div>
                 <div>Validade</div>
                 <div>Ativo</div>
@@ -280,7 +267,7 @@ function ProductBatchCreatePage() {
                       className="grid grid-cols-[170px_40px_240px_190px_90px_120px_180px_120px_120px_150px_150px_90px_52px] gap-2 px-4 py-3"
                     >
                       <div className="space-y-1">
-                        <Label className="sr-only">Codigo da linha {index + 1}</Label>
+                        <Label className="sr-only">Código da linha {index + 1}</Label>
                         <Input
                           value={row.codigoBarras}
                           onChange={(event) => updateRow(row.id, "codigoBarras", event.target.value)}
@@ -291,7 +278,7 @@ function ProductBatchCreatePage() {
                         type="button"
                         variant="outline"
                         size="icon"
-                        title="Gerar codigo de barras"
+                        title="Gerar código de barras"
                         onClick={() => generateBarcode(row.id)}
                       >
                         <Barcode className="h-4 w-4" />

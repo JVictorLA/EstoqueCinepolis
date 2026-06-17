@@ -18,8 +18,10 @@ import {
   updateSystemConfigs,
 } from "@/services/api";
 
+type ConfigUpdate = Parameters<typeof updateSystemConfigs>[0][number];
+
 export const Route = createFileRoute("/admin/configuracoes")({
-  head: () => ({ meta: [{ title: "Configuracoes · Zytrex Inventory" }] }),
+  head: () => ({ meta: [{ title: "Configurações · Zytrex Inventory" }] }),
   component: ConfigPage,
 });
 
@@ -106,7 +108,7 @@ function ConfigPage() {
         setTheme(next.temaPreferido);
       })
       .catch((err: unknown) => {
-        toast.error(err instanceof Error ? err.message : "Erro ao carregar configuracoes");
+        toast.error(err instanceof Error ? err.message : "Erro ao carregar configurações");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -130,7 +132,7 @@ function ConfigPage() {
         setStoredUser({ ...user, themePreference: settings.temaPreferido });
       }
 
-      const configs = [
+      const configs: ConfigUpdate[] = [
         {
           chave: "exigir_senha_movimentacao",
           valor: settings.exigirSenhaMovimentacao,
@@ -193,9 +195,9 @@ function ConfigPage() {
       }
 
       await updateSystemConfigs(configs);
-      toast.success("Configuracoes salvas com sucesso");
+      toast.success("Configurações salvas com sucesso");
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro ao salvar configuracoes");
+      toast.error(err instanceof Error ? err.message : "Erro ao salvar configurações");
     } finally {
       setSaving(false);
     }
@@ -212,18 +214,18 @@ function ConfigPage() {
   return (
     <>
       <PageHeader
-        title="Configuracoes"
-        subtitle="Preferencias do sistema e da unidade"
+        title="Configurações"
+        subtitle="Preferências do sistema e da unidade"
         actions={
           <Button onClick={save} disabled={saving}>
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            Salvar alteracoes
+            Salvar alterações
           </Button>
         }
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Section title="Aparencia" description="Escolha o tema visual da sua conta administrativa.">
+        <Section title="Aparência" description="Escolha o tema visual da sua conta administrativa.">
           <RadioGroup
             value={settings.temaPreferido}
             onValueChange={(value) =>
@@ -239,7 +241,7 @@ function ConfigPage() {
             <ThemeOption
               value="dark"
               title="Escuro"
-              description="Melhor para baixa luminosidade e operacao noturna"
+              description="Melhor para baixa luminosidade e operação noturna"
               onSelect={() => update("temaPreferido", "dark")}
             />
           </RadioGroup>
@@ -263,21 +265,21 @@ function ConfigPage() {
           </Field>
           {!isMaster && (
             <p className="text-xs text-muted-foreground">
-              Dados da unidade so podem ser alterados pelo usuario master.
+              Dados da unidade só podem ser alterados pelo usuário master.
             </p>
           )}
         </Section>
 
         <Section title="Estoque">
           <p className="text-sm leading-6 text-muted-foreground">
-            Regras basicas de estoque, como bloqueio de retirada sem saldo e alertas de estoque
-            baixo, permanecem ativas no sistema e nao podem ser desligadas por aqui.
+            Regras básicas de estoque, como bloqueio de retirada sem saldo e alertas de estoque
+            baixo, permanecem ativas no sistema e não podem ser desligadas por aqui.
           </p>
         </Section>
 
-        <Section title="Seguranca">
+        <Section title="Segurança">
           <ToggleRow
-            label="Exigir senha em toda movimentacao"
+            label="Exigir senha em toda movimentação"
             checked={settings.exigirSenhaMovimentacao}
             onCheckedChange={(checked) => update("exigirSenhaMovimentacao", checked)}
           />
@@ -285,25 +287,25 @@ function ConfigPage() {
 
         {isMaster && (
           <Section
-            title="Configuracoes avancadas"
-            description="Opcoes reservadas para o usuario master."
+            title="Configurações avançadas"
+            description="Opções reservadas para o usuário master."
           >
             <Field label="Nome da empresa">
               <Input
                 value={settings.nomeEmpresa}
                 onChange={(event) => update("nomeEmpresa", event.target.value)}
-                placeholder="Nome exibido nos relatorios e cabecalhos"
+                placeholder="Nome exibido nos relatórios e cabeçalhos"
               />
             </Field>
             <ToggleRow
-              label="Bloquear saida de produto vencido"
-              hint="Impede movimentacoes de saida para lotes vencidos"
+              label="Bloquear saída de produto vencido"
+              hint="Impede movimentações de saída para lotes vencidos"
               checked={settings.bloquearSaidaProdutoVencido}
               onCheckedChange={(checked) => update("bloquearSaidaProdutoVencido", checked)}
             />
             <ToggleRow
-              label="Registrar vencido como desperdicio"
-              hint="Ao tentar retirar lote vencido, bloqueia a saida e registra o lote inteiro como desperdicio"
+              label="Registrar vencido como desperdício"
+              hint="Ao tentar retirar lote vencido, bloqueia a saída e registra o lote inteiro como desperdício"
               checked={settings.registrarVencidoAoTentarRetirar}
               onCheckedChange={(checked) => update("registrarVencidoAoTentarRetirar", checked)}
             />

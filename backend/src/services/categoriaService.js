@@ -67,7 +67,7 @@ async function update(id, { nome, exige_validade }) {
   );
 
   if (!result.affectedRows) {
-    throw Object.assign(new Error("Categoria nao encontrada"), {
+    throw Object.assign(new Error("Categoria não encontrada"), {
       status: 404,
     });
   }
@@ -86,7 +86,7 @@ async function remove(id) {
   );
 
   if (linkedProducts.length) {
-    throw Object.assign(new Error("Categoria em uso nao pode ser excluida"), {
+    throw Object.assign(new Error("Categoria em uso não pode ser excluída"), {
       status: 409,
     });
   }
@@ -94,7 +94,7 @@ async function remove(id) {
   const [result] = await pool.query("DELETE FROM categorias WHERE id = ?", [id]);
 
   if (!result.affectedRows) {
-    throw Object.assign(new Error("Categoria nao encontrada"), {
+    throw Object.assign(new Error("Categoria não encontrada"), {
       status: 404,
     });
   }

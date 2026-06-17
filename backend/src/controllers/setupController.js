@@ -26,7 +26,7 @@ async function criarMaster(req, res) {
   const { nome, matricula, email, senha } = req.body || {};
 
   if (!nome || !matricula || !senha) {
-    return fail(res, 400, "nome, matricula e senha sao obrigatorios");
+    return fail(res, 400, "nome, matrícula e senha são obrigatórios");
   }
 
   if (await usuarioService.existsAdminOrMaster()) {
@@ -34,7 +34,7 @@ async function criarMaster(req, res) {
   }
 
   if (await usuarioService.existsByMatricula(matricula)) {
-    return fail(res, 409, "Matricula ja cadastrada");
+    return fail(res, 409, "Matrícula já cadastrada");
   }
 
   const master = await usuarioService.createMaster({
@@ -65,7 +65,7 @@ async function criarMaster(req, res) {
     master.id,
   );
 
-  return created(res, master, "Usuario master criado");
+  return created(res, master, "Usuário master criado");
 }
 
 module.exports = { status, setupInicial, criarMaster };

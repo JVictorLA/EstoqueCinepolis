@@ -192,7 +192,7 @@ function OperatorKitsPage() {
           <EmptyState
             icon={Boxes}
             title="Nenhum kit neste estoque"
-            description="Os kits criados para o estoque selecionado aparecerao aqui."
+            description="Os kits criados para o estoque selecionado aparecerão aqui."
           />
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -451,7 +451,7 @@ function OperatorKitActionDialog({
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-2">
-            <Label>Matricula</Label>
+            <Label>Matrícula</Label>
             <Input value={matricula} onChange={(event) => setMatricula(event.target.value)} />
           </div>
           <div className="space-y-2">
@@ -536,9 +536,9 @@ function OperatorKitActionDialog({
           <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
             <div className="flex items-center gap-2 font-medium text-foreground">
               <PackageCheck className="h-4 w-4 text-primary" />
-              Confirme a retirada do kit com matricula e senha.
+              Confirme a retirada do kit com matrícula e senha.
             </div>
-            <p className="mt-1">O kit ficara em uso no nome do funcionario informado.</p>
+            <p className="mt-1">O kit ficará em uso no nome do funcionário informado.</p>
           </div>
         )}
 

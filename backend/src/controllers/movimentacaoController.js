@@ -33,31 +33,31 @@ async function criar(req, res) {
   } =
     req.body || {};
 
-  if (!codigo_barras) return fail(res, 400, "codigo_barras e obrigatorio");
-  if (!Number(estoque_id)) return fail(res, 400, "estoque_id e obrigatorio");
-  if (!matricula || !senha) return fail(res, 400, "matricula e senha sao obrigatorias");
+  if (!codigo_barras) return fail(res, 400, "codigo_barras é obrigatório");
+  if (!Number(estoque_id)) return fail(res, 400, "estoque_id é obrigatório");
+  if (!matricula || !senha) return fail(res, 400, "matrícula e senha são obrigatórias");
   if (!["entrada", "saida"].includes(tipo)) {
     return fail(res, 400, "tipo deve ser 'entrada' ou 'saida'");
   }
   const qtd = Number(quantidade);
   if (!Number.isFinite(qtd) || qtd <= 0) {
-    return fail(res, 400, "quantidade invalida");
+    return fail(res, 400, "quantidade inválida");
   }
 
   const cred = await usuarioService.validateCredentials(matricula, senha);
-  if (!cred) return fail(res, 401, "Matricula ou senha invalidos");
-  if (cred.error === "inactive") return fail(res, 403, "Usuario inativo");
+  if (!cred) return fail(res, 401, "Matrícula ou senha inválidos");
+  if (cred.error === "inactive") return fail(res, 403, "Usuário inativo");
   if (cred.password_status) return sendPasswordChallenge(res, cred);
 
   const produto =
     tipo === "entrada"
       ? await produtoService.findByBarcode(codigo_barras, "all")
       : await produtoService.findByBarcode(codigo_barras, estoque_id);
-  if (!produto) return fail(res, 404, "Produto nao encontrado");
+  if (!produto) return fail(res, 404, "Produto não encontrado");
   if (!produto.ativo) return fail(res, 400, "Produto inativo");
-  if (produto.exige_validade && !lote) return fail(res, 400, "lote e obrigatorio");
+  if (produto.exige_validade && !lote) return fail(res, 400, "lote é obrigatório");
   if (tipo === "saida" && !produto.estoque_id) {
-    return fail(res, 404, "Produto nao vinculado ao estoque");
+    return fail(res, 404, "Produto não vinculado ao estoque");
   }
 
   try {
@@ -93,7 +93,7 @@ async function criar(req, res) {
         error: e.message,
       });
     }
-    return fail(res, e.status || 500, e.message || "Erro ao registrar movimentacao");
+    return fail(res, e.status || 500, e.message || "Erro ao registrar movimentação");
   }
 }
 
@@ -121,29 +121,29 @@ async function transferir(req, res) {
     justificativa_fefo,
   } = req.body || {};
 
-  if (!codigo_barras) return fail(res, 400, "codigo_barras e obrigatorio");
-  if (!Number(estoque_origem_id)) return fail(res, 400, "estoque_origem_id e obrigatorio");
-  if (!Number(estoque_destino_id)) return fail(res, 400, "estoque_destino_id e obrigatorio");
+  if (!codigo_barras) return fail(res, 400, "codigo_barras é obrigatório");
+  if (!Number(estoque_origem_id)) return fail(res, 400, "estoque_origem_id é obrigatório");
+  if (!Number(estoque_destino_id)) return fail(res, 400, "estoque_destino_id é obrigatório");
   if (Number(estoque_origem_id) === Number(estoque_destino_id)) {
     return fail(res, 400, "Estoque de destino deve ser diferente da origem");
   }
-  if (!matricula || !senha) return fail(res, 400, "matricula e senha sao obrigatorias");
+  if (!matricula || !senha) return fail(res, 400, "matrícula e senha são obrigatórias");
 
   const qtd = Number(quantidade);
   if (!Number.isFinite(qtd) || qtd <= 0) {
-    return fail(res, 400, "quantidade invalida");
+    return fail(res, 400, "quantidade inválida");
   }
 
   const cred = await usuarioService.validateCredentials(matricula, senha);
-  if (!cred) return fail(res, 401, "Matricula ou senha invalidos");
-  if (cred.error === "inactive") return fail(res, 403, "Usuario inativo");
+  if (!cred) return fail(res, 401, "Matrícula ou senha inválidos");
+  if (cred.error === "inactive") return fail(res, 403, "Usuário inativo");
   if (cred.password_status) return sendPasswordChallenge(res, cred);
 
   const produto = await produtoService.findByBarcode(codigo_barras, estoque_origem_id);
-  if (!produto) return fail(res, 404, "Produto nao encontrado no estoque de origem");
+  if (!produto) return fail(res, 404, "Produto não encontrado no estoque de origem");
   if (!produto.ativo) return fail(res, 400, "Produto inativo");
-  if (produto.exige_validade && !lote) return fail(res, 400, "lote e obrigatorio");
-  if (!produto.estoque_id) return fail(res, 404, "Produto nao vinculado ao estoque de origem");
+  if (produto.exige_validade && !lote) return fail(res, 400, "lote é obrigatório");
+  if (!produto.estoque_id) return fail(res, 404, "Produto não vinculado ao estoque de origem");
 
   try {
     const transferencia = await movService.transferirEstoque({

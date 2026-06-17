@@ -7,7 +7,7 @@ async function buscarPorMatricula(req, res) {
   const user = await usuarioService.findByMatricula(matricula);
 
   if (!user) {
-    return fail(res, 404, "Usuario nao encontrado");
+    return fail(res, 404, "Usuário não encontrado");
   }
 
   const passwordStatus = usuarioService.getPasswordStatus(user);
@@ -28,7 +28,7 @@ async function buscarPorMatricula(req, res) {
       themePreference: user.theme_preference === "dark" ? "dark" : "light",
       ativo: !!user.ativo,
     },
-    "Usuario encontrado",
+    "Usuário encontrado",
   );
 }
 
@@ -43,7 +43,7 @@ async function criar(req, res) {
   const { matricula, nome, email, senha, tipo, ativo } = req.body || {};
 
   if (!matricula || !nome || !tipo) {
-    return fail(res, 400, "matricula, nome e tipo sao obrigatorios");
+    return fail(res, 400, "matrícula, nome e tipo são obrigatórios");
   }
 
   if (!["admin", "operador"].includes(tipo)) {
@@ -51,7 +51,7 @@ async function criar(req, res) {
   }
 
   if (await usuarioService.existsByMatricula(matricula)) {
-    return fail(res, 409, "Matricula ja cadastrada");
+    return fail(res, 409, "Matrícula já cadastrada");
   }
 
   const novo = await usuarioService.create({
@@ -63,15 +63,15 @@ async function criar(req, res) {
     ativo: ativo === undefined ? true : !!ativo,
   });
 
-  return created(res, novo, "Usuario criado");
+  return created(res, novo, "Usuário criado");
 }
 
 async function atualizar(req, res) {
   const id = Number(req.params.id);
-  if (!id) return fail(res, 400, "id invalido");
+  if (!id) return fail(res, 400, "id inválido");
 
   const existing = await usuarioService.findById(id);
-  if (!existing) return fail(res, 404, "Usuario nao encontrado");
+  if (!existing) return fail(res, 404, "Usuário não encontrado");
 
   const { matricula, nome, email, senha, tipo, ativo } = req.body || {};
 
@@ -81,16 +81,16 @@ async function atualizar(req, res) {
 
   if (existing.tipo === "master") {
     if (tipo && tipo !== existing.tipo) {
-      return fail(res, 403, "Usuario master nao pode ter o tipo alterado");
+      return fail(res, 403, "Usuário master não pode ter o tipo alterado");
     }
     if (ativo === false || ativo === 0) {
-      return fail(res, 403, "Usuario master nao pode ser desativado");
+      return fail(res, 403, "Usuário master não pode ser desativado");
     }
   }
 
   if (matricula && matricula !== existing.matricula) {
     if (await usuarioService.existsByMatricula(matricula)) {
-      return fail(res, 409, "Matricula ja cadastrada");
+      return fail(res, 409, "Matrícula já cadastrada");
     }
   }
 
@@ -103,20 +103,20 @@ async function atualizar(req, res) {
     ativo,
   });
 
-  return ok(res, atualizado, "Usuario atualizado");
+  return ok(res, atualizado, "Usuário atualizado");
 }
 
 async function alterarSenha(req, res) {
   const id = Number(req.params.id);
   const { senhaAtual, novaSenha } = req.body || {};
 
-  if (!id) return fail(res, 400, "ID invalido");
+  if (!id) return fail(res, 400, "ID inválido");
   if (!senhaAtual || !novaSenha) {
     return fail(res, 400, "Informe senhaAtual e novaSenha");
   }
 
   const user = await usuarioService.findByIdWithPassword(id);
-  if (!user) return fail(res, 404, "Usuario nao encontrado");
+  if (!user) return fail(res, 404, "Usuário não encontrado");
 
   const senhaValida = await bcrypt.compare(senhaAtual, user.senha_hash);
   if (!senhaValida) {
@@ -125,7 +125,7 @@ async function alterarSenha(req, res) {
 
   const mesmaSenha = await bcrypt.compare(novaSenha, user.senha_hash);
   if (mesmaSenha) {
-    return fail(res, 400, "A nova senha nao pode ser igual a senha atual");
+    return fail(res, 400, "A nova senha não pode ser igual à senha atual");
   }
 
   await usuarioService.update(id, { senha: novaSenha });
@@ -134,7 +134,7 @@ async function alterarSenha(req, res) {
 
 async function atualizarPreferencias(req, res) {
   const userId = Number(req.user?.id);
-  if (!userId) return fail(res, 401, "Nao autenticado");
+  if (!userId) return fail(res, 401, "Não autenticado");
 
   const { themePreference } = req.body || {};
   if (!["light", "dark"].includes(themePreference)) {
@@ -154,15 +154,15 @@ async function atualizarPreferencias(req, res) {
 
 async function alterarStatus(req, res) {
   const id = Number(req.params.id);
-  if (!id) return fail(res, 400, "id invalido");
+  if (!id) return fail(res, 400, "id inválido");
 
   const { ativo } = req.body || {};
   if (ativo === undefined) return fail(res, 400, "Informe 'ativo' (true/false)");
 
   const existing = await usuarioService.findById(id);
-  if (!existing) return fail(res, 404, "Usuario nao encontrado");
+  if (!existing) return fail(res, 404, "Usuário não encontrado");
   if (existing.tipo === "master") {
-    return fail(res, 403, "Usuario master nao pode ser desativado");
+    return fail(res, 403, "Usuário master não pode ser desativado");
   }
 
   const atualizado = await usuarioService.setStatus(id, !!ativo);
@@ -171,16 +171,16 @@ async function alterarStatus(req, res) {
 
 async function resetarSenha(req, res) {
   const id = Number(req.params.id);
-  if (!id) return fail(res, 400, "ID invalido");
+  if (!id) return fail(res, 400, "ID inválido");
 
   const existing = await usuarioService.findById(id);
-  if (!existing) return fail(res, 404, "Usuario nao encontrado");
+  if (!existing) return fail(res, 404, "Usuário não encontrado");
   if (existing.tipo === "master") {
-    return fail(res, 403, "Senha do master nao pode ser resetada pelo CRUD comum");
+    return fail(res, 403, "Senha do master não pode ser resetada pelo CRUD comum");
   }
 
   await usuarioService.resetPassword(id);
-  return ok(res, null, "Senha temporaria resetada; usuario deve troca-la no proximo acesso");
+  return ok(res, null, "Senha temporária resetada; usuário deve trocá-la no próximo acesso");
 }
 
 module.exports = {

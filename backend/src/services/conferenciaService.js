@@ -6,7 +6,7 @@ function normalizeOptionalEstoqueId(value) {
   if (value === undefined || value === null || value === "" || value === "all") return null;
   const id = Number(value);
   if (!id) {
-    throw Object.assign(new Error("Estoque invalido"), { status: 400 });
+    throw Object.assign(new Error("Estoque inválido"), { status: 400 });
   }
   return id;
 }
@@ -58,10 +58,10 @@ async function assertEditable(conferenciaId, conn = pool) {
   );
   const conference = rows[0];
   if (!conference) {
-    throw Object.assign(new Error("Conferencia nao encontrada"), { status: 404 });
+    throw Object.assign(new Error("Conferência não encontrada"), { status: 404 });
   }
   if (conference.status === "finalizada") {
-    throw Object.assign(new Error("Conferencia finalizada nao pode ser editada"), { status: 409 });
+    throw Object.assign(new Error("Conferência finalizada não pode ser editada"), { status: 409 });
   }
   return conference;
 }
@@ -70,7 +70,7 @@ async function validateEstoque(estoqueId) {
   if (estoqueId === null) return;
   const estoque = await estoqueService.findById(estoqueId);
   if (!estoque) {
-    throw Object.assign(new Error("Estoque nao encontrado"), { status: 404 });
+    throw Object.assign(new Error("Estoque não encontrado"), { status: 404 });
   }
 }
 
@@ -107,7 +107,7 @@ async function buscarCompleta(id) {
   );
 
   if (!headers.length) {
-    throw Object.assign(new Error("Conferencia nao encontrada"), { status: 404 });
+    throw Object.assign(new Error("Conferência não encontrada"), { status: 404 });
   }
 
   const [items] = await pool.query(
@@ -201,7 +201,7 @@ async function findStockProductByBarcode(codigoBarras, estoqueId) {
 async function salvarItem(conferenciaId, data) {
   const quantidadeContada = Number(data.quantidade_contada);
   if (!Number.isFinite(quantidadeContada) || quantidadeContada < 0) {
-    throw Object.assign(new Error("Quantidade contada invalida"), { status: 400 });
+    throw Object.assign(new Error("Quantidade contada inválida"), { status: 400 });
   }
 
   const conference = await assertEditable(conferenciaId);
@@ -209,12 +209,12 @@ async function salvarItem(conferenciaId, data) {
   const requestedEstoqueId = data.estoque_id ? Number(data.estoque_id) : conferenceEstoqueId;
 
   if (!data.codigo_barras) {
-    throw Object.assign(new Error("Codigo de barras obrigatorio"), { status: 400 });
+    throw Object.assign(new Error("Código de barras obrigatório"), { status: 400 });
   }
 
   const matches = await findStockProductByBarcode(String(data.codigo_barras).trim(), requestedEstoqueId);
   if (!matches.length) {
-    throw Object.assign(new Error("Produto nao encontrado no estoque informado"), { status: 404 });
+    throw Object.assign(new Error("Produto não encontrado no estoque informado"), { status: 404 });
   }
 
   if (!requestedEstoqueId && matches.length > 1) {
@@ -298,7 +298,7 @@ async function removerItem(conferenciaId, itemId) {
   );
 
   if (!result.affectedRows) {
-    throw Object.assign(new Error("Item nao encontrado"), { status: 404 });
+    throw Object.assign(new Error("Item não encontrado"), { status: 404 });
   }
 
   await pool.query("UPDATE conferencias_estoque SET atualizado_em = NOW() WHERE id = ?", [
@@ -317,10 +317,10 @@ async function remover(id) {
     );
     const conference = rows[0];
     if (!conference) {
-      throw Object.assign(new Error("Conferencia nao encontrada"), { status: 404 });
+      throw Object.assign(new Error("Conferência não encontrada"), { status: 404 });
     }
     if (conference.status === "finalizada") {
-      throw Object.assign(new Error("Conferencia finalizada nao pode ser excluida"), {
+      throw Object.assign(new Error("Conferência finalizada não pode ser excluída"), {
         status: 409,
       });
     }

@@ -25,19 +25,19 @@ async function criar(req, res) {
   const { estoque_id, codigo_barras, quantidade, motivo_id, matricula, senha, lote } =
     req.body || {};
 
-  if (!Number(estoque_id)) return fail(res, 400, "estoque_id e obrigatorio");
-  if (!codigo_barras) return fail(res, 400, "codigo_barras e obrigatorio");
-  if (!Number(motivo_id)) return fail(res, 400, "motivo_id e obrigatorio");
-  if (!matricula || !senha) return fail(res, 400, "matricula e senha sao obrigatorias");
+  if (!Number(estoque_id)) return fail(res, 400, "estoque_id é obrigatório");
+  if (!codigo_barras) return fail(res, 400, "codigo_barras é obrigatório");
+  if (!Number(motivo_id)) return fail(res, 400, "motivo_id é obrigatório");
+  if (!matricula || !senha) return fail(res, 400, "matrícula e senha são obrigatórias");
 
   const qtd = Number(quantidade);
   if (!Number.isFinite(qtd) || qtd <= 0) {
-    return fail(res, 400, "quantidade invalida");
+    return fail(res, 400, "quantidade inválida");
   }
 
   const cred = await usuarioService.validateCredentials(matricula, senha);
-  if (!cred) return fail(res, 401, "Matricula ou senha invalidos");
-  if (cred.error === "inactive") return fail(res, 403, "Usuario inativo");
+  if (!cred) return fail(res, 401, "Matrícula ou senha inválidos");
+  if (cred.error === "inactive") return fail(res, 403, "Usuário inativo");
   if (cred.password_status) return sendPasswordChallenge(res, cred);
 
   try {

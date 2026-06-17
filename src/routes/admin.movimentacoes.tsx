@@ -272,7 +272,7 @@ function MovsPage() {
 
   const printReport = () => {
     if (movs.length === 0) {
-      toast.info("Nao ha movimentacoes para imprimir com os filtros atuais.");
+      toast.info("Não há movimentações para imprimir com os filtros atuais.");
       return;
     }
 
@@ -286,10 +286,10 @@ function MovsPage() {
         : typeFilter === "entrada"
           ? "Entrada"
           : typeFilter === "desperdicio"
-            ? "Desperdicio"
+            ? "Desperdício"
             : typeFilter === "ajuste"
               ? "Ajuste"
-              : "Saida";
+              : "Saída";
     const dateName = dateFilter ? formatShortDate(dateFilter) : "Todas as datas";
 
     const totals = movs.reduce(
@@ -334,7 +334,7 @@ function MovsPage() {
 
     const printWindow = window.open("", "_blank", "width=1100,height=800");
     if (!printWindow) {
-      toast.error("Nao foi possivel abrir a janela de impressao. Verifique o bloqueador de pop-ups.");
+      toast.error("Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-ups.");
       return;
     }
 
@@ -343,7 +343,7 @@ function MovsPage() {
       <html lang="pt-BR">
         <head>
           <meta charset="utf-8" />
-          <title>Relatorio de movimentacoes</title>
+          <title>Relatório de movimentações</title>
           <style>
             * { box-sizing: border-box; }
             body {
@@ -410,7 +410,7 @@ function MovsPage() {
           <header>
             <div>
               <div class="brand">Zytrex Inventory</div>
-              <h1>Relatorio de Movimentacoes</h1>
+              <h1>Relatório de Movimentações</h1>
               <div class="muted">Gerado em ${escapeHtml(new Date().toLocaleString("pt-BR"))}</div>
             </div>
             <div class="muted">Total de registros: ${escapeHtml(movs.length)}</div>
@@ -425,8 +425,8 @@ function MovsPage() {
 
           <section class="totals">
             <div class="box"><span class="label">Entradas</span><span class="value">${escapeHtml(totals.entradas)}</span></div>
-            <div class="box"><span class="label">Saidas</span><span class="value">${escapeHtml(totals.saidas)}</span></div>
-            <div class="box"><span class="label">Desperdicios</span><span class="value">${escapeHtml(totals.desperdicios)}</span></div>
+            <div class="box"><span class="label">Saídas</span><span class="value">${escapeHtml(totals.saidas)}</span></div>
+            <div class="box"><span class="label">Desperdícios</span><span class="value">${escapeHtml(totals.desperdicios)}</span></div>
             <div class="box"><span class="label">Ajustes</span><span class="value">${escapeHtml(totals.ajustes)}</span></div>
           </section>
 
@@ -441,8 +441,8 @@ function MovsPage() {
                 <th class="number">Qtd.</th>
                 <th class="number">Antes</th>
                 <th class="number">Depois</th>
-                <th>Funcionario</th>
-                <th>Observacao</th>
+                <th>Funcionário</th>
+                <th>Observação</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -563,7 +563,7 @@ function MovsPage() {
           <DialogHeader>
             <DialogTitle>Justificativa FEFO</DialogTitle>
             <DialogDescription>
-              Motivo informado pelo funcionario ao retirar um lote fora da ordem recomendada.
+              Motivo informado pelo funcion?rio ao retirar um lote fora da ordem recomendada.
             </DialogDescription>
           </DialogHeader>
 
@@ -574,7 +574,7 @@ function MovsPage() {
                   {selectedFefoMovement.productName}
                 </div>
                 <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2">
-                  <span>Funcionario: {selectedFefoMovement.userName}</span>
+                  <span>Funcion?rio: {selectedFefoMovement.userName}</span>
                   <span>Lote: {displayLot(selectedFefoMovement.lotCode) ?? "Sem lote"}</span>
                   <span>Quantidade: {selectedFefoMovement.quantity}</span>
                   <span>{formatShortDate(movementDateKey(selectedFefoMovement.createdAt))}</span>
@@ -583,7 +583,7 @@ function MovsPage() {
 
               <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 text-sm text-orange-950">
                 {selectedFefoMovement.fefoJustification?.trim() ||
-                  "Nenhuma justificativa foi informada para esta movimentacao."}
+                  "Nenhuma justificativa foi informada para esta movimenta??o."}
               </div>
             </div>
           )}

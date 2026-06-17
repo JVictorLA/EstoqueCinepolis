@@ -7,7 +7,7 @@ function authMiddleware(req, res, next) {
   const [scheme, token] = header.split(" ");
 
   if (scheme !== "Bearer" || !token) {
-    return fail(res, 401, "Token nao informado");
+    return fail(res, 401, "Token não informado");
   }
 
   try {
@@ -20,12 +20,12 @@ function authMiddleware(req, res, next) {
     };
     return next();
   } catch (e) {
-    return fail(res, 401, "Token invalido ou expirado");
+    return fail(res, 401, "Token inválido ou expirado");
   }
 }
 
 function adminOnly(req, res, next) {
-  if (!req.user) return fail(res, 401, "Nao autenticado");
+  if (!req.user) return fail(res, 401, "Não autenticado");
   if (!["admin", "master"].includes(req.user.tipo)) {
     return fail(res, 403, "Acesso restrito a administradores");
   }
@@ -33,7 +33,7 @@ function adminOnly(req, res, next) {
 }
 
 function masterOnly(req, res, next) {
-  if (!req.user) return fail(res, 401, "Nao autenticado");
+  if (!req.user) return fail(res, 401, "Não autenticado");
   if (req.user.tipo !== "master") return fail(res, 403, "Acesso restrito ao master");
   return next();
 }

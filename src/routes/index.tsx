@@ -262,7 +262,6 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
 
     setSaving(true);
     try {
-      const { confirmarSenha: _confirmarSenha, ...master } = payload.master;
       await createInitialSetup({
         empresa: payload.empresa,
         sistema: {
@@ -270,7 +269,12 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
           dias_alerta_validade: Number(payload.sistema.dias_alerta_validade),
         },
         estoques: payload.estoques.map((item) => item.trim()),
-        master,
+        master: {
+          nome: payload.master.nome,
+          matricula: payload.master.matricula,
+          email: payload.master.email,
+          senha: payload.master.senha,
+        },
       });
       toast.success("Configuração inicial concluída. Faça login com o usuário master.");
       onDone();

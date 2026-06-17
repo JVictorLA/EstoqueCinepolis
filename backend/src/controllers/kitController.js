@@ -7,22 +7,22 @@ async function listar(req, res) {
 }
 
 async function listarOperacional(req, res) {
-  if (!req.query.estoque_id) return fail(res, 400, "Estoque e obrigatorio");
+  if (!req.query.estoque_id) return fail(res, 400, "Estoque é obrigatório");
   const rows = await kitService.listar({ estoque_id: req.query.estoque_id });
   return ok(res, rows);
 }
 
 async function buscar(req, res) {
   const kit = await kitService.buscar(Number(req.params.id));
-  if (!kit) return fail(res, 404, "Kit nao encontrado");
+  if (!kit) return fail(res, 404, "Kit não encontrado");
   return ok(res, kit);
 }
 
 async function buscarOperacional(req, res) {
   const kit = await kitService.buscar(Number(req.params.id));
-  if (!kit) return fail(res, 404, "Kit nao encontrado");
+  if (!kit) return fail(res, 404, "Kit não encontrado");
   if (req.query.estoque_id && Number(req.query.estoque_id) !== Number(kit.estoque_id)) {
-    return fail(res, 404, "Kit nao encontrado no estoque selecionado");
+    return fail(res, 404, "Kit não encontrado no estoque selecionado");
   }
   return ok(res, kit);
 }

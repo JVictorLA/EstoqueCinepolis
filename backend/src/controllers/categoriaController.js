@@ -9,7 +9,7 @@ async function criar(req, res) {
   const { nome, exige_validade } = req.body;
 
   if (!nome || !nome.trim()) {
-    return fail(res, 400, "Nome da categoria e obrigatorio");
+    return fail(res, 400, "Nome da categoria é obrigatório");
   }
 
   try {
@@ -25,11 +25,11 @@ async function atualizar(req, res) {
   const { nome, exige_validade } = req.body;
 
   if (!id) {
-    return fail(res, 400, "Categoria invalida");
+    return fail(res, 400, "Categoria inválida");
   }
 
   if (!nome || !nome.trim()) {
-    return fail(res, 400, "Nome da categoria e obrigatorio");
+    return fail(res, 400, "Nome da categoria é obrigatório");
   }
 
   try {
@@ -44,12 +44,12 @@ async function remover(req, res) {
   const id = Number(req.params.id);
 
   if (!id) {
-    return fail(res, 400, "Categoria invalida");
+    return fail(res, 400, "Categoria inválida");
   }
 
   try {
     await categoriaService.remove(id);
-    return ok(res, null, "Categoria excluida com sucesso");
+    return ok(res, null, "Categoria excluída com sucesso");
   } catch (e) {
     return fail(res, e.status || 500, e.message || "Erro ao excluir categoria");
   }

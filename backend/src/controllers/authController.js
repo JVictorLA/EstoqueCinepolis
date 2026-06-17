@@ -13,11 +13,11 @@ async function login(req, res) {
   const result = await usuarioService.validateCredentials(matricula, senha);
 
   if (!result) {
-    return fail(res, 401, "Matricula ou senha invalidos");
+    return fail(res, 401, "Matrícula ou senha inválidos");
   }
 
   if (result.error === "inactive") {
-    return fail(res, 403, "Usuario inativo");
+    return fail(res, 403, "Usuário inativo");
   }
 
   if (result.password_status) {

@@ -36,13 +36,13 @@ function validatePayload(payload) {
   const estoques = uniqueStockNames(payload?.estoques);
 
   if (!String(empresa.nome_empresa || "").trim()) {
-    return { error: "nome_empresa e obrigatorio" };
+    return { error: "nome_empresa é obrigatório" };
   }
   if (!estoques.length) {
     return { error: "Informe pelo menos um estoque inicial" };
   }
   if (!String(master.nome || "").trim() || !String(master.matricula || "").trim() || !master.senha) {
-    return { error: "nome, matricula e senha do master sao obrigatorios" };
+    return { error: "nome, matrícula e senha do master são obrigatórios" };
   }
   if (String(master.senha).length < 6) {
     return { error: "A senha deve ter pelo menos 6 caracteres" };
@@ -158,7 +158,7 @@ async function executarSetupInicial(payload) {
       [String(master.matricula).trim()],
     );
     if (matriculaRows.length) {
-      const error = new Error("Matricula ja cadastrada");
+      const error = new Error("Matrícula já cadastrada");
       error.status = 409;
       throw error;
     }

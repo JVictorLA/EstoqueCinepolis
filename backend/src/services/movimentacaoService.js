@@ -55,7 +55,7 @@ function assertLotCanLeave(lot, rules) {
   if (rules.bloquearSaidaProdutoVencido && isExpiredLot(lot)) {
     throw Object.assign(
       new Error(
-        `Saida bloqueada: o lote ${loteService.displayLotCode(lot.lote)} esta vencido desde ${String(lot.data_validade).slice(0, 10)}.`,
+        `Saída bloqueada: o lote ${loteService.displayLotCode(lot.lote)} está vencido desde ${String(lot.data_validade).slice(0, 10)}.`,
       ),
       { status: 400 },
     );
@@ -67,7 +67,7 @@ async function getExpiredWasteReason(conn) {
     "SELECT id, nome FROM motivos_desperdicio WHERE nome = 'Produto vencido' AND ativo = 1 LIMIT 1",
   );
   if (!motivos.length) {
-    throw Object.assign(new Error("Motivo 'Produto vencido' nao encontrado"), {
+    throw Object.assign(new Error("Motivo 'Produto vencido' não encontrado"), {
       status: 400,
     });
   }
@@ -188,7 +188,7 @@ function assertFefoAllowed(fefo, rules, confirmarIgnorarFefo, justificativaFefo)
   };
 
   if (!rules.permitirIgnorarFefo) {
-    throw Object.assign(new Error("Nao e permitido ignorar a ordem FEFO"), {
+    throw Object.assign(new Error("Não é permitido ignorar a ordem FEFO"), {
       status: 409,
       fefo: fefoPayload,
     });
@@ -199,7 +199,7 @@ function assertFefoAllowed(fefo, rules, confirmarIgnorarFefo, justificativaFefo)
   }
 
   if (rules.exigirJustificativaFefo && !String(justificativaFefo || "").trim()) {
-    throw Object.assign(new Error("Justificativa FEFO obrigatoria"), {
+    throw Object.assign(new Error("Justificativa FEFO obrigatória"), {
       status: 400,
       fefo: fefoPayload,
     });
@@ -264,7 +264,7 @@ async function registrarMovimentacao({
         : await loteService.getStockProduct(conn, produto.id, estoque_id, true);
 
     if (!atual) {
-      throw Object.assign(new Error("Produto nao vinculado ao estoque"), { status: 404 });
+      throw Object.assign(new Error("Produto não vinculado ao estoque"), { status: 404 });
     }
     if (!atual.ativo) {
       throw Object.assign(new Error("Produto inativo"), { status: 400 });
@@ -331,7 +331,7 @@ async function registrarMovimentacao({
       );
       estoque_depois = estoque_antes - quantidade;
     } else {
-      throw Object.assign(new Error("Tipo invalido"), { status: 400 });
+      throw Object.assign(new Error("Tipo inválido"), { status: 400 });
     }
 
     estoque_depois = await loteService.recalcStockProduct(conn, atual.estoque_produto_id);
@@ -430,7 +430,7 @@ async function transferirEstoque({
     );
 
     if (!destinoRows.length) {
-      throw Object.assign(new Error("Estoque de destino nao encontrado"), {
+      throw Object.assign(new Error("Estoque de destino não encontrado"), {
         status: 404,
       });
     }
@@ -443,7 +443,7 @@ async function transferirEstoque({
     const origem = await loteService.getStockProduct(conn, produto.id, estoque_origem_id, true);
 
     if (!origem) {
-      throw Object.assign(new Error("Produto nao vinculado ao estoque de origem"), {
+      throw Object.assign(new Error("Produto não vinculado ao estoque de origem"), {
         status: 404,
       });
     }
@@ -651,7 +651,7 @@ async function getAdjustmentLot(conn, stockProduct, loteId) {
       [Number(loteId), stockProduct.estoque_produto_id],
     );
     if (!rows.length) {
-      throw Object.assign(new Error("Lote nao encontrado neste estoque"), { status: 404 });
+      throw Object.assign(new Error("Lote não encontrado neste estoque"), { status: 404 });
     }
     return rows[0];
   }
@@ -680,13 +680,13 @@ async function ajustarEstoque({ usuario, itens }) {
     const results = [];
 
     for (const item of normalizedItems) {
-      if (!item.produto_id) throw Object.assign(new Error("Produto e obrigatorio"), { status: 400 });
-      if (!item.estoque_id) throw Object.assign(new Error("Estoque e obrigatorio"), { status: 400 });
+      if (!item.produto_id) throw Object.assign(new Error("Produto é obrigatório"), { status: 400 });
+      if (!item.estoque_id) throw Object.assign(new Error("Estoque é obrigatório"), { status: 400 });
       if (!Number.isFinite(item.quantidade_final) || item.quantidade_final < 0) {
-        throw Object.assign(new Error("Quantidade final invalida"), { status: 400 });
+        throw Object.assign(new Error("Quantidade final inválida"), { status: 400 });
       }
       if (!ADJUSTMENT_REASONS.has(item.motivo)) {
-        throw Object.assign(new Error("Motivo do ajuste invalido"), { status: 400 });
+        throw Object.assign(new Error("Motivo do ajuste inválido"), { status: 400 });
       }
 
       const stockProduct = await loteService.getStockProduct(
@@ -696,7 +696,7 @@ async function ajustarEstoque({ usuario, itens }) {
         true,
       );
       if (!stockProduct) {
-        throw Object.assign(new Error("Produto nao vinculado ao estoque selecionado"), {
+        throw Object.assign(new Error("Produto não vinculado ao estoque selecionado"), {
           status: 400,
         });
       }

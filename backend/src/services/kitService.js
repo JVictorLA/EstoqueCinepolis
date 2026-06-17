@@ -11,7 +11,7 @@ const KIT_STATUSES = new Set([
 
 function assertStatus(status) {
   if (!KIT_STATUSES.has(status)) {
-    throw Object.assign(new Error("Status de kit invalido"), { status: 400 });
+    throw Object.assign(new Error("Status de kit inválido"), { status: 400 });
   }
 }
 
@@ -22,12 +22,12 @@ function toNumber(value) {
 
 async function validateUserCredentials(matricula, senha) {
   if (!matricula || !senha) {
-    throw Object.assign(new Error("Matricula e senha sao obrigatorias"), { status: 400 });
+    throw Object.assign(new Error("Matrícula e senha são obrigatórias"), { status: 400 });
   }
 
   const user = await usuarioService.validateCredentials(matricula, senha);
-  if (!user) throw Object.assign(new Error("Matricula ou senha invalidos"), { status: 401 });
-  if (user.error === "inactive") throw Object.assign(new Error("Usuario inativo"), { status: 403 });
+  if (!user) throw Object.assign(new Error("Matrícula ou senha inválidos"), { status: 401 });
+  if (user.error === "inactive") throw Object.assign(new Error("Usuário inativo"), { status: 403 });
   if (user.password_status) {
     const message =
       user.password_status === "expired"
@@ -58,7 +58,7 @@ async function getKitForUpdate(conn, kitId) {
     [kitId],
   );
   if (!rows.length) {
-    throw Object.assign(new Error("Kit nao encontrado"), { status: 404 });
+    throw Object.assign(new Error("Kit não encontrado"), { status: 404 });
   }
   return rows[0];
 }
@@ -132,7 +132,7 @@ async function assertProductsLinkedToStock(conn, estoqueId, items) {
   const missing = productIds.filter((id) => !linked.has(id));
   if (missing.length) {
     throw Object.assign(
-      new Error("Este produto nao esta vinculado ao estoque selecionado."),
+      new Error("Este produto não está vinculado ao estoque selecionado."),
       { status: 400 },
     );
   }
@@ -142,7 +142,7 @@ async function consumeStock(conn, produtoId, estoqueId, quantidade) {
   const stockProduct = await loteService.getStockProduct(conn, produtoId, estoqueId, true);
   if (!stockProduct) {
     throw Object.assign(
-      new Error("Este produto nao esta vinculado ao estoque selecionado."),
+      new Error("Este produto não está vinculado ao estoque selecionado."),
       { status: 400 },
     );
   }
@@ -256,9 +256,9 @@ async function buscar(id) {
 
 async function criar({ estoque_id, nome, itens, usuario_id }) {
   const estoqueId = Number(estoque_id);
-  if (!estoqueId) throw Object.assign(new Error("estoque_id e obrigatorio"), { status: 400 });
+  if (!estoqueId) throw Object.assign(new Error("estoque_id é obrigatório"), { status: 400 });
   if (!String(nome || "").trim()) {
-    throw Object.assign(new Error("Nome do kit e obrigatorio"), { status: 400 });
+    throw Object.assign(new Error("Nome do kit é obrigatório"), { status: 400 });
   }
 
   const normalizedItems = (itens || []).map((item) => ({
@@ -325,7 +325,7 @@ async function atualizar({ kitId, nome, itens, usuario_id }) {
     await conn.beginTransaction();
     const kit = await getKitForUpdate(conn, kitId);
     if (kit.status === "em_uso") {
-      throw Object.assign(new Error("Nao e permitido editar kit em uso"), { status: 400 });
+      throw Object.assign(new Error("Não é permitido editar kit em uso"), { status: 400 });
     }
 
     const normalizedItems = (itens || []).map((item) => ({
@@ -343,7 +343,7 @@ async function atualizar({ kitId, nome, itens, usuario_id }) {
     await assertProductsLinkedToStock(conn, kit.estoque_id, normalizedItems);
 
     if (nome !== undefined && !String(nome).trim()) {
-      throw Object.assign(new Error("Nome do kit e obrigatorio"), { status: 400 });
+      throw Object.assign(new Error("Nome do kit é obrigatório"), { status: 400 });
     }
     if (nome !== undefined) {
       await conn.query("UPDATE kits_caixa SET nome = ?, atualizado_em = NOW() WHERE id = ?", [
@@ -414,7 +414,7 @@ async function atualizar({ kitId, nome, itens, usuario_id }) {
 
 async function montarOuRepor({ kitId, usuario_id, tipo = "montagem", observacao }) {
   if (!["montagem", "reposicao"].includes(tipo)) {
-    throw Object.assign(new Error("Tipo de montagem invalido"), { status: 400 });
+    throw Object.assign(new Error("Tipo de montagem inválido"), { status: 400 });
   }
 
   const conn = await pool.getConnection();
@@ -422,7 +422,7 @@ async function montarOuRepor({ kitId, usuario_id, tipo = "montagem", observacao 
     await conn.beginTransaction();
     const kit = await getKitForUpdate(conn, kitId);
     if (kit.status === "em_uso") {
-      throw Object.assign(new Error("Nao e permitido montar ou repor kit em uso"), { status: 400 });
+      throw Object.assign(new Error("Não é permitido montar ou repor kit em uso"), { status: 400 });
     }
 
     const items = await getKitItems(conn, kitId, true);
@@ -487,7 +487,7 @@ async function retirar({ kitId, matricula, senha, observacao }) {
     await conn.beginTransaction();
     const kit = await getKitForUpdate(conn, kitId);
     if (kit.status !== "pronto_para_retirada") {
-      throw Object.assign(new Error("Kit nao esta pronto para retirada"), { status: 400 });
+      throw Object.assign(new Error("Kit não está pronto para retirada"), { status: 400 });
     }
 
     await conn.query(
@@ -539,7 +539,7 @@ async function receber({ kitId, matricula, senha, itens, observacao }) {
     await conn.beginTransaction();
     const kit = await getKitForUpdate(conn, kitId);
     if (kit.status !== "em_uso") {
-      throw Object.assign(new Error("Kit nao esta em uso"), { status: 400 });
+      throw Object.assign(new Error("Kit não está em uso"), { status: 400 });
     }
 
     const currentItems = await getKitItems(conn, kitId, true);
@@ -556,7 +556,7 @@ async function receber({ kitId, matricula, senha, itens, observacao }) {
       const operationReplenishment = payload.reposicao_operacao;
       const calculatedConsumption = initialQuantity + operationReplenishment - finalQuantity;
       if (finalQuantity < 0 || operationReplenishment < 0 || calculatedConsumption < 0) {
-        throw Object.assign(new Error("Quantidade recebida invalida"), { status: 400 });
+        throw Object.assign(new Error("Quantidade recebida inválida"), { status: 400 });
       }
 
       await conn.query(

@@ -25,14 +25,14 @@ function parseDate(value) {
 }
 
 function isPasswordExpired(user) {
-  const passwordUpdatedAt = parseDate(user?.senha_atualizada_em) || parseDate(user?.criado_em);
+  const passwordUpdatedAt = parseDate(user.senha_atualizada_em) || parseDate(user.criado_em);
   if (!passwordUpdatedAt) return false;
   const diffMs = Date.now() - passwordUpdatedAt.getTime();
   return diffMs >= PASSWORD_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
 }
 
 function getPasswordStatus(user) {
-  if (user?.precisa_trocar_senha) return "first_access";
+  if (user.precisa_trocar_senha) return "first_access";
   if (isPasswordExpired(user)) return "expired";
   return null;
 }

@@ -184,7 +184,7 @@ function filtersDescription(filters: WasteFiltersState, names: {
     `Periodo: ${period}`,
     `Estoque: ${names.estoque}`,
     `Produto: ${names.produto}`,
-    `Funcionario: ${names.usuario}`,
+    `Funcionário: ${names.usuario}`,
     `Motivo: ${names.motivo}`,
   ].join(" | ");
 }
@@ -249,7 +249,7 @@ function DesperdiciosPage() {
   }, []);
 
   useEffect(() => {
-    load().catch(() => toast.error("Erro ao carregar desperdicios"));
+    load().catch(() => toast.error("Erro ao carregar desperdícios"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiFilters]);
 
@@ -365,13 +365,13 @@ function DesperdiciosPage() {
       .join("");
     const printWindow = window.open("", "_blank", "width=1100,height=800");
     if (!printWindow) {
-      toast.error("Nao foi possivel abrir a janela de impressao");
+      toast.error("Não foi possível abrir a janela de impressão");
       return;
     }
     printWindow.document.write(`
       <html>
         <head>
-          <title>Relatorio de desperdicios</title>
+          <title>Relatório de desperdícios</title>
           <style>
             body { font-family: Arial, sans-serif; color: #111827; margin: 24px; }
             h1 { margin: 0 0 4px; font-size: 22px; }
@@ -383,13 +383,13 @@ function DesperdiciosPage() {
           </style>
         </head>
         <body>
-          <h1>Relatorio de Desperdicios</h1>
+          <h1>Relatório de Desperdícios</h1>
           <p>Gerado em ${formatDateTime(new Date().toISOString())}</p>
           <p>${reportSubtitle}</p>
           <table>
             <thead>
               <tr>
-                <th>Produto</th><th>Estoque</th><th>Motivo</th><th>Funcionario</th>
+                <th>Produto</th><th>Estoque</th><th>Motivo</th><th>Funcionário</th>
                 <th>Quantidade</th><th>Valor</th><th>Data</th>
               </tr>
             </thead>
@@ -407,14 +407,14 @@ function DesperdiciosPage() {
   const downloadPdf = () => {
     const doc = new jsPDF({ orientation: "landscape" });
     doc.setFontSize(16);
-    doc.text("Relatorio de Desperdicios", 14, 16);
+    doc.text("Relatório de Desperdícios", 14, 16);
     doc.setFontSize(9);
     doc.text(`Gerado em: ${formatDateTime(new Date().toISOString())}`, 14, 24);
     doc.text(reportSubtitle, 14, 30);
 
     autoTable(doc, {
       startY: 38,
-      head: [["Produto", "Estoque", "Motivo", "Funcionario", "Quantidade", "Valor", "Data"]],
+      head: [["Produto", "Estoque", "Motivo", "Funcionário", "Quantidade", "Valor", "Data"]],
       body: wastes.map((waste) => [
         waste.productName,
         waste.estoqueNome,
@@ -453,7 +453,7 @@ function DesperdiciosPage() {
   return (
     <>
       <PageHeader
-        title="Desperdicios"
+        title="Desperdícios"
         subtitle="Perdas, vencimentos e valor descartado por estoque"
         actions={
           <>
@@ -468,7 +468,7 @@ function DesperdiciosPage() {
             </Button>
             <Button className="gap-2" onClick={() => setDialogOpen(true)}>
               <Trash2 className="h-4 w-4" />
-              Criar desperdicio
+              Criar desperdício
             </Button>
           </>
         }
@@ -525,7 +525,7 @@ function DesperdiciosPage() {
             </Button>
             <Button type="button" variant="outline" className="gap-2" onClick={showAllPeriods}>
               <CalendarDays className="h-4 w-4" />
-              Todos os periodos
+              Todos os períodos
             </Button>
             <Button type="button" variant="outline" className="gap-2" onClick={printReport}>
               <Printer className="h-4 w-4" />
@@ -603,7 +603,7 @@ function DesperdiciosPage() {
           </div>
 
           <div className="space-y-2">
-            <Label>Funcionario</Label>
+            <Label>Funcionário</Label>
             <Select
               value={filters.usuario_id}
               onValueChange={(value) =>
@@ -625,7 +625,7 @@ function DesperdiciosPage() {
           </div>
 
           <div className="space-y-2">
-            <Label>Inicio</Label>
+            <Label>Início</Label>
             <Input
               type="date"
               value={filters.data_inicial}
@@ -654,7 +654,7 @@ function DesperdiciosPage() {
           <div>
             <div className="flex items-center gap-2 font-semibold">
               <BarChart3 className="h-4 w-4" />
-              Grafico de desperdicios
+              Gráfico de desperdícios
             </div>
             <div className="mt-1 text-sm text-muted-foreground">
               Valor perdido por dia conforme data e filtros selecionados.
@@ -685,7 +685,7 @@ function DesperdiciosPage() {
         </div>
         <div className="p-4">
           {chartData.length === 0 ? (
-            <EmptyState icon={BarChart3} title="Sem dados para o grafico" />
+            <EmptyState icon={BarChart3} title="Sem dados para o gráfico" />
           ) : (
             <WasteChart type={chartType} metric={chartMetric} data={chartData} />
           )}
@@ -696,7 +696,7 @@ function DesperdiciosPage() {
         <SummaryList title="Por dia" rows={summary.por_dia} labelKey="dia" />
         <SummaryList title="Por produto" rows={summary.por_produto} labelKey="produto_nome" />
         <SummaryList
-          title="Por funcionario"
+          title="Por funcionário"
           rows={summary.por_funcionario}
           labelKey="usuario_nome"
         />
@@ -707,8 +707,8 @@ function DesperdiciosPage() {
         {wastes.length === 0 ? (
           <EmptyState
             icon={PackageX}
-            title="Sem desperdicios"
-            description="Os registros aparecerao aqui."
+            title="Sem desperdícios"
+            description="Os registros aparecerão aqui."
           />
         ) : (
           <Table>
@@ -717,7 +717,7 @@ function DesperdiciosPage() {
                 <TableHead>Produto</TableHead>
                 <TableHead>Estoque</TableHead>
                 <TableHead>Motivo</TableHead>
-                <TableHead>Funcionario</TableHead>
+                <TableHead>Funcionário</TableHead>
                 <TableHead>Quantidade</TableHead>
                 <TableHead>Valor</TableHead>
                 <TableHead>Data</TableHead>
@@ -741,13 +741,13 @@ function DesperdiciosPage() {
       </div>
 
       <div className="rounded-xl bg-card border shadow-[var(--shadow-soft)] overflow-hidden mt-6">
-        <div className="border-b px-4 py-3 font-semibold">Ranking dos maiores desperdicios</div>
+        <div className="border-b px-4 py-3 font-semibold">Ranking dos maiores desperdícios</div>
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Produto</TableHead>
               <TableHead>Motivo</TableHead>
-              <TableHead>Funcionario</TableHead>
+              <TableHead>Funcionário</TableHead>
               <TableHead>Quantidade</TableHead>
               <TableHead>Valor</TableHead>
             </TableRow>

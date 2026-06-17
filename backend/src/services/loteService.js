@@ -7,12 +7,12 @@ function normalizeDateOnly(data_validade) {
 
   const value = String(data_validade).trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw Object.assign(new Error("data_validade invalida"), { status: 400 });
+    throw Object.assign(new Error("data_validade inválida"), { status: 400 });
   }
 
   const date = new Date(`${value}T00:00:00Z`);
   if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
-    throw Object.assign(new Error("data_validade invalida"), { status: 400 });
+    throw Object.assign(new Error("data_validade inválida"), { status: 400 });
   }
 
   return value;
@@ -24,7 +24,7 @@ async function categoryRequiresValidity(categoriaId, conn = pool) {
     [categoriaId],
   );
   if (!rows.length) {
-    throw Object.assign(new Error("Categoria nao encontrada"), { status: 404 });
+    throw Object.assign(new Error("Categoria não encontrada"), { status: 404 });
   }
   return !!rows[0].exige_validade;
 }
@@ -33,7 +33,7 @@ async function resolveLotValidity(categoriaId, dataValidade, conn = pool) {
   const requires = await categoryRequiresValidity(categoriaId, conn);
   const normalized = normalizeDateOnly(dataValidade);
   if (requires && !normalized) {
-    throw Object.assign(new Error("Data de validade obrigatoria para esta categoria"), {
+    throw Object.assign(new Error("Data de validade obrigatória para esta categoria"), {
       status: 400,
     });
   }
@@ -43,7 +43,7 @@ async function resolveLotValidity(categoriaId, dataValidade, conn = pool) {
 function normalizeLotCode(lote) {
   const value = String(lote || "").trim();
   if (!value) {
-    throw Object.assign(new Error("lote e obrigatorio"), { status: 400 });
+    throw Object.assign(new Error("lote é obrigatório"), { status: 400 });
   }
   return value;
 }
@@ -189,7 +189,7 @@ async function findLotMatches(conn, estoqueProdutoId, loteBusca, lock = false) {
 async function resolveLot(conn, estoqueProdutoId, loteBusca, lock = false) {
   const rows = await findLotMatches(conn, estoqueProdutoId, loteBusca, lock);
   if (!rows.length) {
-    throw Object.assign(new Error("Lote nao encontrado neste estoque"), { status: 404 });
+    throw Object.assign(new Error("Lote não encontrado neste estoque"), { status: 404 });
   }
   if (rows.length > 1) {
     throw Object.assign(new Error("Mais de um lote encontrado para esse final"), {
@@ -216,7 +216,7 @@ async function upsertLot(conn, estoqueProdutoId, { lote, data_validade, quantida
     : normalizeLotCode(lote);
   const qtd = Number(quantidade);
   if (!Number.isFinite(qtd) || qtd < 0) {
-    throw Object.assign(new Error("quantidade invalida"), { status: 400 });
+    throw Object.assign(new Error("quantidade inválida"), { status: 400 });
   }
 
   const [rows] = await conn.query(

@@ -80,6 +80,7 @@ import {
 import type {
   Conference,
   ConferenceHistory,
+  ConferenceItem,
   ConferenceProductOption,
   Estoque,
   InventoryCurrentItem,

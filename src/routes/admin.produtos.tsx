@@ -1,4 +1,4 @@
-import { Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
+﻿import { Outlet, createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Package,
@@ -62,12 +62,20 @@ import { WasteDialog } from "@/components/waste/WasteDialog";
 import { toast } from "sonner";
 import { getExpirationStatus, isExpired } from "@/lib/expiration";
 import {
+  adjustmentProductLabel,
+  type AdjustmentProductOption,
+  type AdjustmentRow,
+  createAdjustmentRow,
+  adjustmentRequiresLot,
+  getAdjustmentProduct,
+  getAdjustmentStock,
+  isAdjustmentRowTouched,
   filterProducts as applyProductFilters,
-  generateInternalBarcode as createInternalBarcode,
+  isAdjustmentRowComplete,
+  validateAdjustmentRow,
 } from "@/lib/productRules";
 import {
   getProducts,
-  createProduct,
   updateProduct,
   deleteProduct,
   setProductStatus,
@@ -113,43 +121,6 @@ const adjustmentReasons = [
   "Outro",
 ];
 
-type AdjustmentStockOption = {
-  id: number;
-  nome: string;
-  stock: number;
-  requiresExpiration: boolean;
-};
-
-type AdjustmentProductOption = {
-  id: number;
-  name: string;
-  barcode: string;
-  unit: string;
-  stocks: AdjustmentStockOption[];
-};
-
-type AdjustmentRow = {
-  id: string;
-  productId: string;
-  productQuery: string;
-  stockId: string;
-  lotId: string;
-  quantityFinal: string;
-  reason: string;
-};
-
-function createAdjustmentRow(): AdjustmentRow {
-  return {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    productId: "",
-    productQuery: "",
-    stockId: "",
-    lotId: "",
-    quantityFinal: "",
-    reason: "",
-  };
-}
-
 function formatDate(value?: string | null) {
   if (!value) return "";
   const [year, month, day] = value.split("-");
@@ -159,60 +130,6 @@ function formatDate(value?: string | null) {
 
 function money(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function adjustmentProductLabel(product: AdjustmentProductOption) {
-  return `${product.name} - ${product.barcode}`;
-}
-
-function isAdjustmentRowTouched(row: AdjustmentRow) {
-  return !!(
-    row.productQuery.trim() ||
-    row.productId ||
-    row.stockId ||
-    row.lotId ||
-    row.quantityFinal.trim() ||
-    row.reason
-  );
-}
-
-function getAdjustmentProduct(catalog: AdjustmentProductOption[], row: AdjustmentRow) {
-  return catalog.find((product) => String(product.id) === row.productId) ?? null;
-}
-
-function getAdjustmentStock(catalog: AdjustmentProductOption[], row: AdjustmentRow) {
-  return getAdjustmentProduct(catalog, row)?.stocks.find((stock) => String(stock.id) === row.stockId) ?? null;
-}
-
-function adjustmentRequiresLot(
-  row: AdjustmentRow,
-  catalog: AdjustmentProductOption[],
-  lots: ProductLot[],
-) {
-  const stock = getAdjustmentStock(catalog, row);
-  return !!stock?.requiresExpiration || lots.length > 1;
-}
-
-function validateAdjustmentRow(
-  row: AdjustmentRow,
-  catalog: AdjustmentProductOption[],
-  lots: ProductLot[],
-) {
-  if (!row.productId) return "Selecione o produto";
-  if (!row.stockId) return "Selecione o estoque";
-  if (adjustmentRequiresLot(row, catalog, lots) && !row.lotId) return "Selecione o lote";
-  if (!row.reason) return "Selecione o motivo do ajuste";
-  const quantity = Number(row.quantityFinal);
-  if (!Number.isFinite(quantity) || quantity < 0) return "Informe uma quantidade final valida";
-  return null;
-}
-
-function isAdjustmentRowComplete(
-  row: AdjustmentRow,
-  catalog: AdjustmentProductOption[],
-  lots: ProductLot[],
-) {
-  return isAdjustmentRowTouched(row) && !validateAdjustmentRow(row, catalog, lots);
 }
 
 function expirationStatusBadge(status: LotStatus) {
@@ -849,7 +766,7 @@ function ProdutosPage() {
                     </TableCell>
                     <TableCell className="text-sm">
                       <div className="space-y-1.5">
-                        <div>{p.categoryName ?? "—"}</div>
+                        <div>{p.categoryName ?? "â€”"}</div>
                       </div>
                     </TableCell>
                     <TableCell className="text-center text-sm">
@@ -888,7 +805,7 @@ function ProdutosPage() {
                             ? "Vencido"
                             : p.active
                               ? "Sim"
-                              : "Nao"}
+                              : "Não"}
                         </span>
                       </div>
                     </TableCell>
@@ -965,8 +882,8 @@ function ProdutosPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir produto?</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acao remove o produto "{productToDelete?.name}" do cadastro. Ela so e permitida
-              quando o produto ainda nao possui movimentacoes registradas.
+              Esta ação remove o produto "{productToDelete?.name}" do cadastro. Ela só é permitida
+              quando o produto ainda não possui movimentações registradas.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1019,8 +936,8 @@ function AdjustmentPanel({
   return (
     <div className="space-y-4 bg-muted/15 p-4">
       <div className="rounded-lg border bg-background p-4 text-sm text-muted-foreground">
-        A quantidade informada sera o saldo final do lote ou produto selecionado. Cada linha salva
-        uma movimentacao de ajuste com usuario, motivo, estoque antes e estoque depois.
+        A quantidade informada será o saldo final do lote ou produto selecionado. Cada linha salva
+        uma movimentação de ajuste com usuário, motivo, estoque antes e estoque depois.
       </div>
 
       <div className="overflow-x-auto rounded-lg border bg-background">
@@ -1048,7 +965,7 @@ function AdjustmentPanel({
                       list={`adjustment-products-${row.id}`}
                       value={row.productQuery}
                       onChange={(event) => onProductChange(row, event.target.value)}
-                      placeholder="Digite nome ou codigo"
+                      placeholder="Digite nome ou código"
                     />
                     <datalist id={`adjustment-products-${row.id}`}>
                       {productOptions.map((option) => (
@@ -1200,7 +1117,7 @@ function ProductLotsDialog({
                     <TableCell>{lot.estoqueNome}</TableCell>
                     <TableCell className="font-mono text-xs">{lot.lot}</TableCell>
                     <TableCell>{lot.quantity}</TableCell>
-                    <TableCell>{lot.expirationDate ? formatDate(lot.expirationDate) : "—"}</TableCell>
+                    <TableCell>{lot.expirationDate ? formatDate(lot.expirationDate) : "â€”"}</TableCell>
                     <TableCell>{statusBadge(lot)}</TableCell>
                   </TableRow>
                 ))}
@@ -1500,7 +1417,7 @@ function EditProductDialog({
     e.preventDefault();
 
     if (!barcode.trim() || !name.trim() || !categoryId || !price) {
-      toast.error("Preencha codigo, nome, categoria e preco");
+      toast.error("Preencha código, nome, categoria e preço");
       return;
     }
 
@@ -1543,7 +1460,7 @@ function EditProductDialog({
       return;
     }
     if (!Number.isFinite(quantity) || quantity < 0) {
-      toast.error("Quantidade do lote invalida");
+      toast.error("Quantidade do lote inválida");
       return;
     }
 
@@ -1703,197 +1620,3 @@ function EditProductDialog({
   );
 }
 
-function NewProductDialog({
-  estoques,
-  selectedEstoqueId,
-  onCreated,
-}: {
-  estoques: Estoque[];
-  selectedEstoqueId: string;
-  onCreated: () => void;
-}) {
-  const [barcode, setBarcode] = useState("");
-  const [name, setName] = useState("");
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [categoryId, setCategoryId] = useState<string>("");
-  const [unit, setUnit] = useState("un");
-  const [price, setPrice] = useState("");
-  const [stock, setStock] = useState("");
-  const [lot, setLot] = useState("");
-  const [minStock, setMinStock] = useState("");
-  const [estoqueId, setEstoqueId] = useState("");
-  const [expirationDate, setExpirationDate] = useState("");
-  const [loading, setLoading] = useState(false);
-  const selectedCategory = categories.find((category) => String(category.id) === categoryId);
-  const requiresExpiration = !!selectedCategory?.exigeValidade;
-
-  useEffect(() => {
-    getCategories()
-      .then((cs) => {
-        setCategories(cs);
-        if (cs.length && !categoryId) setCategoryId(String(cs[0].id));
-      })
-      .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (selectedEstoqueId !== "all") {
-      setEstoqueId(selectedEstoqueId);
-      return;
-    }
-
-    const firstActive = estoques.find((estoque) => estoque.ativo) ?? estoques[0];
-    if (firstActive) setEstoqueId(String(firstActive.id));
-  }, [estoques, selectedEstoqueId]);
-
-  const generateBarcode = () => {
-    const code = createInternalBarcode();
-    setBarcode(code);
-    toast.success("Codigo de barras gerado");
-  };
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!barcode || !name || !price || !categoryId || !estoqueId) {
-      toast.error("Preencha código, nome, categoria, preço e estoque");
-      return;
-    }
-    if (requiresExpiration && !lot.trim()) {
-      toast.error("Informe o lote");
-      return;
-    }
-    if (requiresExpiration && !expirationDate) {
-      toast.error("Informe a data de validade");
-      return;
-    }
-    setLoading(true);
-    try {
-      await createProduct({
-        codigo_barras: barcode,
-        nome: name,
-        categoria_id: parseInt(categoryId),
-        unidade: unit,
-        preco_venda: parseFloat(price) || 0,
-        estoque_id: parseInt(estoqueId),
-        estoque_atual: parseInt(stock) || 0,
-        estoque_minimo: parseInt(minStock) || 0,
-        data_validade: requiresExpiration ? expirationDate : null,
-        lote: lot.trim(),
-        ativo: true,
-      });
-      toast.success("Produto cadastrado");
-      onCreated();
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro ao cadastrar produto");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <DialogContent className="max-w-lg">
-      <DialogHeader>
-        <DialogTitle>Cadastrar novo produto</DialogTitle>
-      </DialogHeader>
-      <form onSubmit={submit} className="space-y-4">
-        <BarcodeInput
-          value={barcode}
-          onChange={setBarcode}
-          action={
-            <Button
-              type="button"
-              variant="outline"
-              className="shrink-0 gap-2"
-              onClick={generateBarcode}
-              title="Gerar codigo de barras interno"
-            >
-              <RefreshCw className="h-4 w-4" />
-              Gerar
-            </Button>
-          }
-        />
-        <div className="space-y-2">
-          <Label>Nome do produto</Label>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Ex: Pipoca grande salgada"
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-2">
-            <Label>Categoria</Label>
-            <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger>
-                <SelectValue placeholder={categories.length ? "Selecione" : "Sem categorias"} />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Unidade</Label>
-            <Input value={unit} onChange={(e) => setUnit(e.target.value)} />
-          </div>
-          {requiresExpiration && (
-            <div className="space-y-2 col-span-2">
-              <Label>Data de validade</Label>
-              <Input
-                type="date"
-                value={expirationDate}
-                onChange={(e) => setExpirationDate(e.target.value)}
-              />
-            </div>
-          )}
-          <div className="space-y-2 col-span-2">
-            <Label>Estoque</Label>
-            <Select value={estoqueId} onValueChange={setEstoqueId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione o estoque inicial" />
-              </SelectTrigger>
-              <SelectContent>
-                {estoques.map((estoque) => (
-                  <SelectItem key={estoque.id} value={String(estoque.id)}>
-                    {estoque.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label>Preço (R$)</Label>
-            <Input
-              type="number"
-              step="0.01"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Estoque inicial</Label>
-            <Input type="number" value={stock} onChange={(e) => setStock(e.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>{requiresExpiration ? "Lote inicial" : "Lote inicial (opcional)"}</Label>
-            <Input value={lot} onChange={(e) => setLot(e.target.value)} />
-          </div>
-          <div className="space-y-2 col-span-2">
-            <Label>Estoque mínimo</Label>
-            <Input type="number" value={minStock} onChange={(e) => setMinStock(e.target.value)} />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button type="submit" disabled={loading} className="w-full sm:w-auto">
-            Cadastrar Produto
-          </Button>
-        </DialogFooter>
-      </form>
-    </DialogContent>
-  );
-}

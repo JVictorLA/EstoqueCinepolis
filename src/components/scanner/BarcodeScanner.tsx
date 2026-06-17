@@ -14,6 +14,26 @@ interface BarcodeScannerProps {
 
 const REGION_ID = "barcode-scanner-region";
 
+type TorchScanner = Html5Qrcode & {
+  applyVideoConstraints?: (
+    constraints: MediaTrackConstraints & {
+      advanced?: Array<MediaTrackConstraintSet & { torch?: boolean }>;
+    }
+  ) => Promise<void>;
+};
+
+type TorchCapabilities = MediaTrackCapabilities & {
+  torch?: boolean;
+};
+
+type TorchCapabilitiesReader = {
+  getRunningTrackCapabilities?: () => TorchCapabilities;
+};
+
+function getTorchCapabilities(scanner: Html5Qrcode) {
+  return (scanner as unknown as TorchCapabilitiesReader).getRunningTrackCapabilities?.();
+}
+
 export function BarcodeScanner({
   open,
   onClose,
@@ -42,10 +62,11 @@ export function BarcodeScanner({
       if (!scanner) return false;
 
       try {
-        const capabilities = (scanner as any).getRunningTrackCapabilities?.();
+        const torchScanner = scanner as TorchScanner;
+        const capabilities = getTorchCapabilities(scanner);
         if (!capabilities?.torch) return false;
 
-        await (scanner as any).applyVideoConstraints({
+        await torchScanner.applyVideoConstraints?.({
           advanced: [{ torch: enabled }],
         });
 
@@ -67,24 +88,30 @@ export function BarcodeScanner({
       if (!scanner) return;
 
       try {
-        await (scanner as any).applyVideoConstraints?.({
+        await (scanner as TorchScanner).applyVideoConstraints?.({
           advanced: [{ torch: false }],
         });
-      } catch {}
+      } catch {
+        void 0;
+      }
 
       try {
         await scanner.stop();
-      } catch {}
+      } catch {
+        void 0;
+      }
 
       try {
         await scanner.clear();
-      } catch {}
+      } catch {
+        void 0;
+      }
     };
 
     const start = async () => {
       try {
         if (!navigator.mediaDevices?.getUserMedia) {
-          setError("Seu navegador nao liberou acesso a camera neste site.");
+          setError("Seu navegador não liberou acesso à câmera neste site.");
           return;
         }
 
@@ -108,7 +135,7 @@ export function BarcodeScanner({
         const cameras = await Html5Qrcode.getCameras();
 
         if (!cameras || cameras.length === 0) {
-          if (mountedRef.current) setError("Nenhuma camera encontrada.");
+          if (mountedRef.current) setError("Nenhuma câmera encontrada.");
           return;
         }
 
@@ -143,8 +170,10 @@ export function BarcodeScanner({
             if (mountedRef.current) setSuccess(true);
 
             try {
-              (navigator as any).vibrate?.(120);
-            } catch {}
+              navigator.vibrate?.(120);
+            } catch {
+              void 0;
+            }
 
             await stopScanner();
             onDetected(decodedText.trim());
@@ -153,30 +182,33 @@ export function BarcodeScanner({
               if (mountedRef.current) onClose();
             }, 250);
           },
-          () => {}
+          () => {
+            void 0;
+          }
         );
 
-        const capabilities = (html5 as any).getRunningTrackCapabilities?.();
+        const capabilities = getTorchCapabilities(html5);
         if (capabilities?.torch && mountedRef.current) {
           setTorchAvailable(true);
           setTimeout(() => {
             if (mountedRef.current) void applyTorch(true);
           }, 300);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.error(e);
         if (!mountedRef.current) return;
 
+        const error = e instanceof Error ? e : null;
         if (
-          e?.message?.includes("Permission") ||
-          e?.name === "NotAllowedError"
+          error?.message?.includes("Permission") ||
+          error?.name === "NotAllowedError"
         ) {
           setError(
-            "Permissao da camera negada. Autorize o acesso nas configuracoes do navegador."
+            "Permissão da câmera negada. Autorize o acesso nas configurações do navegador."
           );
         } else {
           setError(
-            "Nao foi possivel iniciar a camera. Verifique as permissoes e tente novamente."
+            "Não foi possível iniciar a câmera. Verifique as permissões e tente novamente."
           );
         }
       }
@@ -199,7 +231,7 @@ export function BarcodeScanner({
         <div className="flex items-center gap-2">
           <ScanLine className="h-5 w-5" />
           <span className="font-medium">
-            Escanear codigo de barras
+            Escanear código de barras
           </span>
         </div>
 
@@ -220,7 +252,7 @@ export function BarcodeScanner({
 
         {success && (
           <div className="mx-auto mt-3 max-w-md rounded-lg bg-success/20 p-3 text-center text-sm text-white">
-            Codigo detectado
+            Código detectado
           </div>
         )}
 
@@ -234,7 +266,7 @@ export function BarcodeScanner({
 
       <div className="p-4 flex flex-col items-center gap-3 text-white">
         <p className="text-sm text-white/70 text-center">
-          Aponte a camera para o codigo de barras
+          Aponte a câmera para o código de barras
         </p>
 
         {torchAvailable && (
@@ -245,7 +277,7 @@ export function BarcodeScanner({
               const scanner = scannerRef.current;
               if (!scanner) return;
               try {
-                await (scanner as any).applyVideoConstraints({
+                await (scanner as TorchScanner).applyVideoConstraints?.({
                   advanced: [{ torch: !torchOn }],
                 });
                 setTorchOn((current) => !current);

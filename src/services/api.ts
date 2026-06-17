@@ -796,19 +796,6 @@ export async function createInitialSetup(payload: InitialSetupPayload): Promise<
   });
 }
 
-export async function createMasterUser(payload: {
-  nome: string;
-  matricula: string;
-  email?: string;
-  senha: string;
-}): Promise<SystemUser> {
-  const r = await request<RawUser>("/setup/master", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-  return mapUser(r);
-}
-
 /* ----------------- CATEGORIAS ----------------- */
 
 interface RawCategory {
@@ -1179,15 +1166,6 @@ export interface CreateProductPayload {
   lote?: string;
   ativo: boolean;
 }
-export async function createProduct(payload: CreateProductPayload): Promise<Product> {
-  const r = await request<RawProduct>("/produtos", {
-    method: "POST",
-    auth: true,
-    body: JSON.stringify(payload),
-  });
-  return mapProduct(r);
-}
-
 export async function createProductsBatch(payload: {
   produtos: CreateProductPayload[];
 }): Promise<Product[]> {

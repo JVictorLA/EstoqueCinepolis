@@ -233,7 +233,7 @@ function EditUserDialog({
           </Select>
           {isMaster && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Usuario master nao pode ter o tipo alterado pelo CRUD comum.
+              Usu?rio master n?o pode ter o tipo alterado pelo CRUD comum.
             </p>
           )}
         </div>
@@ -259,13 +259,13 @@ function EditUserDialog({
         </div>
         {resetPassword && (
           <div className="text-sm text-yellow-600 bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
-             A senha será redefinida para: uma senha temporaria
+             A senha será redefinida para: uma senha temporária
             <br />O usuário será obrigado a criar uma nova senha no próximo acesso.
           </div>
         )}
         {isMaster && (
           <div className="text-sm text-muted-foreground bg-muted/40 border p-3 rounded-lg">
-            Usuario master nao pode ser desativado, resetado ou transformado pelo CRUD comum.
+            Usu?rio master n?o pode ser desativado, resetado ou transformado pelo CRUD comum.
           </div>
         )}
         {changePassword && (
@@ -319,13 +319,13 @@ function NewUserDialog({ onClose, onSuccess }: { onClose: () => void; onSuccess:
         email: "",
       });
 
-      toast.success("Usuario criado com senha temporaria. A troca sera obrigatoria no proximo acesso.");
+      toast.success("Usuário criado com senha temporária. A troca será obrigatória no próximo acesso.");
 
       onSuccess();
       onClose();
       resetForm();
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro ao criar usuario");
+      toast.error(err instanceof Error ? err.message : "Erro ao criar usuário");
     }
   };
 
@@ -356,7 +356,7 @@ function NewUserDialog({ onClose, onSuccess }: { onClose: () => void; onSuccess:
 
         {/*  AVISO VISUAL */}
         <div className="text-sm text-yellow-600 bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
-          O usuario sera criado com uma senha temporaria e devera troca-la no proximo acesso.
+          O usu?rio ser? criado com uma senha tempor?ria e dever? troc?-la no pr?ximo acesso.
         </div>
 
         <DialogFooter>

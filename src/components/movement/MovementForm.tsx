@@ -56,7 +56,7 @@ import {
   ApiError,
 } from "@/services/api";
 
-import type { Estoque, Product, ProductLot, FefoWarning } from "@/types";
+import type { AuthUser, Estoque, Product, ProductLot, FefoWarning } from "@/types";
 import { isExpired, isNearExpiration } from "@/lib/expiration";
 import { validateMovement } from "@/lib/movementRules";
 import { passwordChallengeMessage, resolvePasswordStatus } from "@/lib/passwordChallenge";
@@ -66,6 +66,10 @@ interface MovementFormProps {
   requireAuth?: boolean;
   useStoredStock?: boolean;
   useLoggedUser?: boolean;
+}
+
+function hasFefoWarning(data: unknown): data is { fefo: FefoWarning } {
+  return !!data && typeof data === "object" && "fefo" in data;
 }
 
 function formatDate(value?: string | null) {
@@ -131,7 +135,7 @@ export function MovementForm({
     useState(false);
 
   const [user, setUser] =
-    useState<any>(null);
+    useState<AuthUser | null>(null);
 
   const [loadingUser, setLoadingUser] =
     useState(false);
@@ -326,7 +330,7 @@ export function MovementForm({
 
       toast.success(
         operation === "transferencia"
-          ? "Transferencia registrada"
+          ? "Transferência registrada"
           : type === "entrada"
           ? "Entrada registrada"
           : "Retirada registrada"
@@ -349,7 +353,7 @@ export function MovementForm({
       setConfirmOpen(false);
       setReviewOpen(false);
 
-    } catch (e: any) {
+    } catch (e: unknown) {
       const challenge = getPasswordChallenge(e);
       if (challenge) {
         setUserId(challenge.usuario.id);
@@ -380,8 +384,8 @@ export function MovementForm({
           // segue para o tratamento original
         }
       }
-      if (e instanceof ApiError && (e.data as any)?.fefo) {
-        setFefoWarning((e.data as { fefo: FefoWarning }).fefo);
+      if (e instanceof ApiError && hasFefoWarning(e.data)) {
+        setFefoWarning(e.data.fefo);
         setFefoJustification("");
         setReviewOpen(true);
         toast.warning("Ha um alerta FEFO para este lote");
@@ -403,7 +407,7 @@ export function MovementForm({
       }
 
       toast.error(
-        e?.message ||
+        (e instanceof Error ? e.message : "") ||
           "Falha ao registrar movimentação"
       );
 
@@ -456,9 +460,9 @@ export function MovementForm({
       setNewPassword("");
       setConfirmPassword("");
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       toast.error(
-        err?.message ||
+        (err instanceof Error ? err.message : "") ||
           "Erro ao alterar senha"
       );
     }
@@ -479,7 +483,7 @@ export function MovementForm({
 
   const movementLabel =
     operation === "transferencia"
-      ? "transferencia de estoque"
+      ? "transferência de estoque"
       : type === "entrada" ? "entrada de produto" : "retirada de produto";
 
   const movementVerb =
@@ -720,7 +724,7 @@ export function MovementForm({
           )}
 
           {operation === "transferencia"
-            ? "Confirmar Transferencia"
+            ? "Confirmar Transferência"
             : type === "entrada"
             ? "Confirmar Entrada"
             : "Confirmar Retirada"}
@@ -952,7 +956,7 @@ export function MovementForm({
                 }`}
               >
                 {operation === "transferencia"
-                  ? "Transferencia"
+                  ? "Transferência"
                   : type === "entrada" ? "Entrada" : "Retirada"}
               </span>
             </div>
@@ -998,13 +1002,13 @@ export function MovementForm({
                 <div className="mt-1 text-muted-foreground">{fefoWarning.mensagem}</div>
                 {!canIgnoreFefo && (
                   <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-destructive">
-                    Este produto nao pode ser retirado porque existe outro lote que vence
-                    primeiro. Retire primeiro o lote com vencimento mais proximo.
+                    Este produto não pode ser retirado porque existe outro lote que vence
+                    primeiro. Retire primeiro o lote com vencimento mais próximo.
                   </div>
                 )}
                 {canIgnoreFefo && requiresFefoJustification && (
                   <div className="mt-3 space-y-2">
-                    <Label>Justificativa obrigatoria</Label>
+                    <Label>Justificativa obrigatória</Label>
                     <Textarea
                       value={fefoJustification}
                       onChange={(e) => setFefoJustification(e.target.value)}
@@ -1014,14 +1018,14 @@ export function MovementForm({
                 )}
                 {canIgnoreFefo && !requiresFefoJustification && (
                   <div className="mt-3 rounded-md border border-warning/30 bg-background/70 p-3 text-muted-foreground">
-                    Voce esta retirando um produto que vence depois de outro lote disponivel.
+                    Você está retirando um produto que vence depois de outro lote disponível.
                   </div>
                 )}
               </div>
             )}
 
             <div className="flex items-center justify-between gap-4">
-              <span className="text-muted-foreground">Funcionario</span>
+              <span className="text-muted-foreground">Funcionário</span>
               <span className="font-medium text-right">
                 {user?.nome ?? matricula}
               </span>
@@ -1037,7 +1041,7 @@ export function MovementForm({
               onClick={(event) => {
                 if (fefoWarning && !canIgnoreFefo) {
                   event.preventDefault();
-                  toast.error("Nao e permitido ignorar a ordem FEFO");
+                  toast.error("Não é permitido ignorar a ordem FEFO");
                   return;
                 }
                 if (requiresFefoJustification && !fefoJustification.trim()) {
@@ -1144,14 +1148,14 @@ export function MovementForm({
             </AlertDialogTitle>
             <AlertDialogDescription>
               {expiredBlockMessage ||
-                "A retirada foi bloqueada porque o lote selecionado esta vencido."}
+                "A retirada foi bloqueada porque o lote selecionado está vencido."}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
           <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-foreground">
             {expiredWasAutoWaste
-              ? "A baixa de saida nao foi registrada. O lote vencido foi removido do estoque como desperdicio automaticamente. Deixe o produto na area de produtos improprios para consumo."
-              : "Nenhuma baixa foi registrada no estoque. Este produto deve ser registrado como desperdicio. Deixe-o na area de produtos improprios para consumo."}
+              ? "A baixa de saída não foi registrada. O lote vencido foi removido do estoque como desperdício automaticamente. Deixe o produto na área de produtos impróprios para consumo."
+              : "Nenhuma baixa foi registrada no estoque. Este produto deve ser registrado como desperdício. Deixe-o na área de produtos impróprios para consumo."}
           </div>
 
           <AlertDialogFooter>

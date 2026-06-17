@@ -16,7 +16,7 @@ export interface MovementValidationInput {
 }
 
 export function validateMovement(input: MovementValidationInput): string | null {
-  if (!input.barcode.trim()) return "Informe o codigo de barras";
+  if (!input.barcode.trim()) return "Informe o código de barras";
   if (!input.selectedEstoqueId) return "Selecione o estoque";
   if (input.operation === "transferencia") {
     if (!input.targetEstoqueId) return "Selecione o estoque de destino";
@@ -29,6 +29,6 @@ export function validateMovement(input: MovementValidationInput): string | null 
   if (input.type === "entrada" && input.product?.requiresExpiration && !input.expirationDate) {
     return "Informe a validade do lote";
   }
-  if (!input.matricula.trim()) return "Informe a matricula";
+  if (!input.matricula.trim()) return "Informe a matrícula";
   return null;
 }

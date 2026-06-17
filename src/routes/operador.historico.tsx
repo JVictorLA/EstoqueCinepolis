@@ -37,7 +37,7 @@ function movementConfig(type: MovementType): {
 
   if (type === "saida") {
     return {
-      label: "Saida",
+      label: "Saída",
       sign: "-",
       icon: ArrowUpFromLine,
       iconClass: "bg-destructive/10 text-destructive",
@@ -90,7 +90,7 @@ function HistoricoPage() {
           <EmptyState
             icon={HistoryIcon}
             title="Sem movimentacoes ainda"
-            description="Suas entradas, retiradas, desperdicios e ajustes aparecerao aqui."
+            description="Suas entradas, retiradas, desperdícios e ajustes aparecerão aqui."
           />
         ) : (
           <ul className="divide-y">

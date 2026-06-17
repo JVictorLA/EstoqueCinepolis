@@ -192,14 +192,14 @@ function normalizeDateOnly(data_validade) {
 
   const value = String(data_validade).trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw Object.assign(new Error("data_validade invalida"), {
+    throw Object.assign(new Error("data_validade inválida"), {
       status: 400,
     });
   }
 
   const date = new Date(`${value}T00:00:00Z`);
   if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
-    throw Object.assign(new Error("data_validade invalida"), {
+    throw Object.assign(new Error("data_validade inválida"), {
       status: 400,
     });
   }
@@ -214,7 +214,7 @@ async function getCategoryRequirement(categoria_id, conn = pool) {
   );
 
   if (!rows.length) {
-    throw Object.assign(new Error("Categoria nao encontrada"), {
+    throw Object.assign(new Error("Categoria não encontrada"), {
       status: 404,
     });
   }
@@ -227,7 +227,7 @@ async function resolveValidity(categoria_id, data_validade, conn = pool) {
   const normalizedDate = normalizeDateOnly(data_validade);
 
   if (exigeValidade && !normalizedDate) {
-    throw Object.assign(new Error("Data de validade obrigatoria para esta categoria"), {
+    throw Object.assign(new Error("Data de validade obrigatória para esta categoria"), {
       status: 400,
     });
   }
@@ -359,7 +359,7 @@ async function createMany(items) {
 async function update(id, data) {
   const existing = await findById(id, "all");
   if (!existing) {
-    throw Object.assign(new Error("Produto nao encontrado"), {
+    throw Object.assign(new Error("Produto não encontrado"), {
       status: 404,
     });
   }
@@ -376,7 +376,7 @@ async function update(id, data) {
   } = data;
 
   if (codigo_barras && (await existsByBarcodeExceptId(codigo_barras, id))) {
-    throw Object.assign(new Error("Codigo de barras ja cadastrado"), {
+    throw Object.assign(new Error("Código de barras já cadastrado"), {
       status: 409,
     });
   }
@@ -414,7 +414,7 @@ async function update(id, data) {
   if (shouldUpdateValidity) {
     const targetEstoqueId = Number(estoque_id);
     if (!targetEstoqueId) {
-      throw Object.assign(new Error("estoque_id e obrigatorio para atualizar validade"), {
+      throw Object.assign(new Error("estoque_id é obrigatório para atualizar validade"), {
         status: 400,
       });
     }
@@ -439,7 +439,7 @@ async function update(id, data) {
     );
 
     if (!result.affectedRows) {
-      throw Object.assign(new Error("Produto nao vinculado a este estoque"), {
+      throw Object.assign(new Error("Produto não vinculado a este estoque"), {
         status: 404,
       });
     }
@@ -479,7 +479,7 @@ async function updateLote(produtoId, loteId, data) {
     );
 
     if (!rows.length) {
-      throw Object.assign(new Error("Lote nao encontrado para este produto"), { status: 404 });
+      throw Object.assign(new Error("Lote não encontrado para este produto"), { status: 404 });
     }
 
     const current = rows[0];
@@ -495,12 +495,12 @@ async function updateLote(produtoId, loteId, data) {
       data.quantidade !== undefined ? Number(data.quantidade) : Number(current.quantidade || 0);
 
     if (current.exige_validade && !dataValidade) {
-      throw Object.assign(new Error("Data de validade obrigatoria para esta categoria"), {
+      throw Object.assign(new Error("Data de validade obrigatória para esta categoria"), {
         status: 400,
       });
     }
     if (!Number.isFinite(quantidade) || quantidade < 0) {
-      throw Object.assign(new Error("quantidade invalida"), { status: 400 });
+      throw Object.assign(new Error("quantidade inválida"), { status: 400 });
     }
 
     const [duplicated] = await conn.query(
@@ -542,7 +542,7 @@ async function setStatus(id, ativo) {
   );
 
   if (!result.affectedRows) {
-    throw Object.assign(new Error("Produto nao encontrado"), {
+    throw Object.assign(new Error("Produto não encontrado"), {
       status: 404,
     });
   }
@@ -557,7 +557,7 @@ async function remove(id) {
   );
 
   if (movements.length) {
-    throw Object.assign(new Error("Produto com movimentacoes nao pode ser excluido"), {
+    throw Object.assign(new Error("Produto com movimentações não pode ser excluído"), {
       status: 409,
     });
   }
@@ -572,7 +572,7 @@ async function remove(id) {
     const [result] = await conn.query("DELETE FROM produtos WHERE id = ?", [id]);
 
     if (!result.affectedRows) {
-      throw Object.assign(new Error("Produto nao encontrado"), {
+      throw Object.assign(new Error("Produto não encontrado"), {
         status: 404,
       });
     }

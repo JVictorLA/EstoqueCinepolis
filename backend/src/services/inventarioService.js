@@ -96,12 +96,12 @@ async function getEstoqueAtual(estoqueId = "all") {
   if (!isAllStocks(estoqueId)) {
     const id = Number(estoqueId);
     if (!id) {
-      throw Object.assign(new Error("Estoque invalido"), { status: 400 });
+      throw Object.assign(new Error("Estoque inválido"), { status: 400 });
     }
 
     const estoque = await estoqueService.findById(id);
     if (!estoque) {
-      throw Object.assign(new Error("Estoque nao encontrado"), { status: 404 });
+      throw Object.assign(new Error("Estoque não encontrado"), { status: 404 });
     }
 
     const [rows] = await pool.query(

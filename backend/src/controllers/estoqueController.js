@@ -35,7 +35,7 @@ async function criar(req, res) {
   const nomeNormalizado = nome ? String(nome).trim() : "";
 
   if (!nomeNormalizado) {
-    return fail(res, 400, "nome e obrigatorio");
+    return fail(res, 400, "nome é obrigatório");
   }
 
   if (await estoqueService.existsByName(nomeNormalizado)) {
@@ -52,13 +52,13 @@ async function criar(req, res) {
 
 async function alterarStatus(req, res) {
   const id = Number(req.params.id);
-  if (!id) return fail(res, 400, "id invalido");
+  if (!id) return fail(res, 400, "id inválido");
 
   const { ativo } = req.body || {};
   if (ativo === undefined) return fail(res, 400, "Informe 'ativo' (true/false)");
 
   const existing = await estoqueService.findById(id);
-  if (!existing) return fail(res, 404, "Estoque nao encontrado");
+  if (!existing) return fail(res, 404, "Estoque não encontrado");
 
   const atualizado = await estoqueService.setStatus(id, !!ativo);
   return ok(res, atualizado, "Status atualizado");

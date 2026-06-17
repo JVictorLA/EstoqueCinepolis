@@ -10,7 +10,6 @@ import {
   Pencil,
   Plus,
   RotateCw,
-  Search,
   UserCheck,
 } from "lucide-react";
 import { PageHeader, EmptyState } from "@/components/layout/PageHeader";
@@ -501,7 +500,7 @@ function KitFormDialog({
     try {
       const template = await getKit(Number(templateId));
       if (!template.items?.length) {
-        toast.error("Esse kit nao possui produtos para copiar.");
+        toast.error("Esse kit não possui produtos para copiar.");
         return;
       }
       setItems(
