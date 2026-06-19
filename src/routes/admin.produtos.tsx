@@ -46,6 +46,13 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -437,7 +444,7 @@ function ProdutosPage() {
         subtitle={`${products.length} ${products.length === 1 ? "item cadastrado" : "itens cadastrados"}`}
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:mb-6 sm:gap-4 lg:grid-cols-4">
         <StatCard label="Total de produtos" value={products.length} icon={Package} />
         <StatCard label="Estoque baixo" value={lowStock} icon={AlertTriangle} tone="warning" />
         <StatCard label="Sem estoque" value={noStock} icon={XCircle} tone="destructive" />
@@ -446,16 +453,17 @@ function ProdutosPage() {
           value={money(total)}
           icon={DollarSign}
           tone="success"
+          valueClassName="whitespace-nowrap text-[clamp(1rem,4.4vw,1.25rem)] sm:text-2xl"
         />
       </div>
 
-      <div className="rounded-xl bg-card border shadow-[var(--shadow-soft)] overflow-hidden">
-        <div className="p-4 flex flex-wrap items-center gap-2 border-b">
+      <div className="overflow-hidden rounded-lg border bg-card shadow-[var(--shadow-soft)] sm:rounded-xl">
+        <div className="flex flex-wrap items-center gap-2 border-b p-3 sm:p-4">
           {adjustmentMode ? (
             <>
               <div className="min-w-[220px] flex-1">
                 <div className="font-semibold">Ajuste de estoque</div>
-                <div className="text-sm text-muted-foreground">
+                <div className="hidden text-sm text-muted-foreground sm:block">
                   Informe o saldo final por produto, estoque e lote.
                 </div>
               </div>
@@ -506,12 +514,15 @@ function ProdutosPage() {
             </SelectContent>
           </Select>
           <Button variant="outline" size="sm" className="gap-2" onClick={enterAdjustmentMode}>
-            <RefreshCw className="h-4 w-4" /> Ajuste de estoque
+            <RefreshCw className="h-4 w-4" />
+            <span className="hidden sm:inline">Ajuste de estoque</span>
+            <span className="sm:hidden">Ajuste</span>
           </Button>
           <Dialog open={categoryOpen} onOpenChange={setCategoryOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="gap-2">
-                <FolderOpen className="h-4 w-4" /> Categoria
+                <FolderOpen className="h-4 w-4" />
+                <span className="hidden sm:inline">Categoria</span>
               </Button>
             </DialogTrigger>
             <NewCategoryDialog
@@ -527,7 +538,8 @@ function ProdutosPage() {
             className="gap-2"
             onClick={() => navigate({ to: "/admin/produtos/cadastro" })}
           >
-            <Plus className="h-4 w-4" /> Produto
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Produto</span>
           </Button>
           <Dialog
             open={!!editingProduct}
@@ -553,8 +565,8 @@ function ProdutosPage() {
         </div>
 
         {filtersOpen && !adjustmentMode && (
-          <div className="border-b bg-muted/20 p-4">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="border-b bg-muted/20 p-3 sm:p-4">
+            <div className="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-4">
               <div className="space-y-2">
                 <Label>Categoria</Label>
                 <Select
@@ -719,7 +731,71 @@ function ProdutosPage() {
             }
           />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="divide-y md:hidden">
+            {filtered.map((p) => (
+              <div key={p.id} className="p-3" onClick={() => setLotProduct(p)}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+                      {p.imageUrl ? (
+                        <img src={p.imageUrl} alt={p.name} className="h-full w-full object-cover" />
+                      ) : (
+                        <Package className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Star
+                          className={`h-3.5 w-3.5 shrink-0 ${p.favorite ? "fill-warning text-warning" : "text-muted-foreground"}`}
+                        />
+                        <div className="truncate text-sm font-medium">{p.name}</div>
+                      </div>
+                      <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
+                        {p.barcode}
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>{p.categoryName ?? "Sem categoria"}</span>
+                        <span
+                          className={
+                            p.stock === 0
+                              ? "font-semibold text-destructive"
+                              : p.stock <= p.minStock
+                                ? "font-semibold text-warning"
+                                : "font-semibold text-foreground"
+                          }
+                        >
+                          {p.stock} em estoque
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-2" onClick={(event) => event.stopPropagation()}>
+                    <div className="text-sm font-semibold">{money(p.price)}</div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => setWasteProduct(p)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => setEditingProduct(p)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -854,6 +930,7 @@ function ProdutosPage() {
               </TableBody>
             </Table>
           </div>
+          </>
         )}
       </div>
       <ProductLotsDialog
@@ -934,13 +1011,131 @@ function AdjustmentPanel({
   }
 
   return (
-    <div className="space-y-4 bg-muted/15 p-4">
-      <div className="rounded-lg border bg-background p-4 text-sm text-muted-foreground">
+    <div className="space-y-4 bg-muted/15 p-3 sm:p-4">
+      <div className="hidden rounded-lg border bg-background p-4 text-sm text-muted-foreground sm:block">
         A quantidade informada será o saldo final do lote ou produto selecionado. Cada linha salva
         uma movimentação de ajuste com usuário, motivo, estoque antes e estoque depois.
       </div>
 
-      <div className="overflow-x-auto rounded-lg border bg-background">
+      <div className="divide-y overflow-hidden rounded-lg border bg-background md:hidden">
+        {rows.map((row, index) => {
+          const product = getAdjustmentProduct(catalog, row);
+          const stock = getAdjustmentStock(catalog, row);
+          const lots = lotsByRow[row.id] ?? [];
+          const requiresLot = adjustmentRequiresLot(row, catalog, lots);
+
+          return (
+            <div key={row.id} className="space-y-3 p-3">
+              <div>
+                <div className="text-sm font-semibold">Ajuste {index + 1}</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Informe o saldo final do produto selecionado.
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Produto</Label>
+                <MobileAdjustmentProductPicker
+                  row={row}
+                  catalog={catalog}
+                  onProductChange={onProductChange}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Estoque</Label>
+                <Select
+                  value={row.stockId}
+                  onValueChange={(value) => onStockChange(row, value)}
+                  disabled={!product}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={product ? "Selecione" : "Escolha produto"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {product?.stocks.map((item) => (
+                      <SelectItem key={item.id} value={String(item.id)}>
+                        {item.nome} - atual {item.stock}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Lote</Label>
+                <Select
+                  value={row.lotId}
+                  onValueChange={(value) => onRowChange(row.id, { lotId: value })}
+                  disabled={!row.stockId || lots.length === 0}
+                >
+                  <SelectTrigger>
+                    <SelectValue
+                      placeholder={
+                        !row.stockId
+                          ? "Escolha estoque"
+                          : lots.length === 0
+                            ? "Sem lote"
+                            : requiresLot
+                              ? "Selecione lote"
+                              : "Opcional"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {!requiresLot && <SelectItem value="none">Sem lote</SelectItem>}
+                    {lots.map((lot) => (
+                      <SelectItem key={lot.id} value={String(lot.id)}>
+                        {lot.lot} - atual {lot.quantity}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Quantidade final</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={row.quantityFinal}
+                  onChange={(event) =>
+                    onRowChange(row.id, { quantityFinal: event.target.value })
+                  }
+                  placeholder={stock ? String(stock.stock) : "0"}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Motivo</Label>
+                <Select
+                  value={row.reason}
+                  onValueChange={(value) => onRowChange(row.id, { reason: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o motivo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {adjustmentReasons.map((reason) => (
+                      <SelectItem key={reason} value={reason}>
+                        {reason}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {index === rows.length - 1 && !isAdjustmentRowTouched(row) ? (
+                  <div className="text-xs text-muted-foreground">
+                    Deixe este ajuste vazio para finalizar.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-lg border bg-background md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -1062,6 +1257,136 @@ function AdjustmentPanel({
         </Table>
       </div>
     </div>
+  );
+}
+
+function MobileAdjustmentProductPicker({
+  row,
+  catalog,
+  onProductChange,
+}: {
+  row: AdjustmentRow;
+  catalog: AdjustmentProductOption[];
+  onProductChange: (row: AdjustmentRow, value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(row.productQuery);
+  const selectedProduct = getAdjustmentProduct(catalog, row);
+  const displayValue = selectedProduct
+    ? adjustmentProductLabel(selectedProduct)
+    : row.productQuery.trim();
+
+  useEffect(() => {
+    if (open) setQuery(row.productQuery);
+  }, [open, row.productQuery]);
+
+  const filteredProducts = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    if (!normalizedQuery) return catalog.slice(0, 40);
+
+    return catalog
+      .filter((product) => {
+        const label = adjustmentProductLabel(product).toLowerCase();
+        return label.includes(normalizedQuery) || product.barcode.includes(normalizedQuery);
+      })
+      .slice(0, 40);
+  }, [catalog, query]);
+
+  function selectProduct(product: AdjustmentProductOption) {
+    onProductChange(row, adjustmentProductLabel(product));
+    setOpen(false);
+  }
+
+  function clearProduct() {
+    onProductChange(row, "");
+    setQuery("");
+    setOpen(false);
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-auto min-h-10 w-full justify-start whitespace-normal px-3 py-2 text-left"
+        onClick={() => setOpen(true)}
+      >
+        <Package className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1">
+          {displayValue ? (
+            <span className="line-clamp-2 text-sm font-medium leading-snug">{displayValue}</span>
+          ) : (
+            <span className="text-sm text-muted-foreground">Selecionar produto</span>
+          )}
+        </span>
+      </Button>
+
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent
+          side="bottom"
+          className="flex max-h-[86vh] flex-col gap-4 rounded-t-2xl px-4 pb-4 pt-5"
+        >
+          <SheetHeader className="pr-8 text-left">
+            <SheetTitle>Selecionar produto</SheetTitle>
+            <SheetDescription>Busque pelo nome ou pelo código do produto.</SheetDescription>
+          </SheetHeader>
+
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Nome ou código"
+              className="pl-9"
+              autoFocus
+            />
+          </div>
+
+          <ScrollArea className="min-h-0 flex-1 pr-1">
+            <div className="space-y-2">
+              {filteredProducts.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+                  Nenhum produto encontrado.
+                </div>
+              ) : (
+                filteredProducts.map((product) => {
+                  const isSelected = String(product.id) === row.productId;
+                  const totalStock = product.stocks.reduce((total, stock) => total + stock.stock, 0);
+
+                  return (
+                    <button
+                      key={product.id}
+                      type="button"
+                      className="flex w-full items-start gap-3 rounded-lg border bg-background p-3 text-left transition-colors hover:bg-muted/50"
+                      onClick={() => selectProduct(product)}
+                    >
+                      <Package className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1">
+                        <span className="line-clamp-2 text-sm font-medium leading-snug">
+                          {product.name}
+                        </span>
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {product.barcode} | {product.unit} | estoque total {totalStock}
+                        </span>
+                      </span>
+                      {isSelected ? <Check className="h-4 w-4 shrink-0 text-primary" /> : null}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </ScrollArea>
+
+          {displayValue ? (
+            <Button type="button" variant="ghost" className="w-full" onClick={clearProduct}>
+              <X className="h-4 w-4" />
+              Limpar produto
+            </Button>
+          ) : null}
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
 

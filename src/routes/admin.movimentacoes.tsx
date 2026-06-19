@@ -461,22 +461,24 @@ function MovsPage() {
         title="Movimentações"
         subtitle="Histórico completo de entradas, saídas, desperdícios e ajustes"
         actions={
-          <Button variant="outline" className="gap-2" onClick={printReport} disabled={loading}>
-            <Printer className="h-4 w-4" /> Imprimir relatório
+          <Button variant="outline" className="hidden gap-2 md:inline-flex" onClick={printReport} disabled={loading}>
+            <Printer className="h-4 w-4" />
+            <span className="hidden sm:inline">Imprimir relatório</span>
+            <span className="sm:hidden">Imprimir</span>
           </Button>
         }
       />
 
       <section className="overflow-hidden rounded-xl border bg-card shadow-[var(--shadow-soft)]">
-        <div className="flex flex-wrap items-center gap-2 border-b bg-muted/30 p-4">
+        <div className="grid gap-2 border-b bg-muted/30 p-3 sm:flex sm:flex-wrap sm:items-center sm:p-4">
           <Input
             type="date"
-            className="w-auto bg-background"
+            className="w-full bg-background sm:w-auto"
             value={dateFilter}
             onChange={(event) => setDateFilter(event.target.value)}
           />
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-[180px] bg-background">
+            <SelectTrigger className="w-full bg-background sm:w-[180px]">
               <SelectValue placeholder="Categoria" />
             </SelectTrigger>
             <SelectContent>
@@ -492,7 +494,7 @@ function MovsPage() {
             value={typeFilter}
             onValueChange={(value) => setTypeFilter(value as MovementType | "all")}
           >
-            <SelectTrigger className="w-[160px] bg-background">
+            <SelectTrigger className="w-full bg-background sm:w-[160px]">
               <SelectValue placeholder="Tipo" />
             </SelectTrigger>
             <SelectContent>

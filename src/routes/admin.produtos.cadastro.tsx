@@ -201,30 +201,32 @@ function ProductBatchCreatePage() {
         title="Cadastro de produtos"
         subtitle="Cadastre vários produtos em uma única operação. Se uma linha falhar, nada será salvo."
         actions={
-          <div className="flex flex-wrap gap-2">
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
             <Button
               variant="outline"
               className="gap-2"
               onClick={() => navigate({ to: "/admin/produtos" })}
             >
-              <ArrowLeft className="h-4 w-4" /> Voltar
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">Voltar</span>
             </Button>
             <Button className="gap-2" onClick={save} disabled={saving || loading}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Salvar produtos
+              <span className="hidden sm:inline">Salvar produtos</span>
+              <span className="sm:hidden">Salvar</span>
             </Button>
           </div>
         }
       />
 
-      <div className="rounded-xl border bg-card shadow-[var(--shadow-soft)]">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
+      <div className="rounded-lg border bg-card shadow-[var(--shadow-soft)] sm:rounded-xl">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b p-3 sm:p-4">
           <div>
             <div className="flex items-center gap-2">
               <PackagePlus className="h-4 w-4 text-primary" />
               <h2 className="text-sm font-semibold">Produtos do cadastro</h2>
             </div>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p className="mt-1 hidden text-xs text-muted-foreground sm:block">
               Linhas vazias são ignoradas. Ao completar uma linha, uma nova aparece automaticamente.
             </p>
           </div>
@@ -237,7 +239,198 @@ function ProductBatchCreatePage() {
             Carregando cadastro...
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="divide-y md:hidden">
+            {rows.map((row, index) => {
+              const category = getCategory(categories, row);
+              const requiresExpiration = !!category?.exigeValidade;
+              const rowError = isRowTouched(row) ? validateRow(row, categories) : null;
+
+              return (
+                <div key={row.id} className="space-y-3 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold">Produto {index + 1}</div>
+                      {rowError ? (
+                        <div className="mt-1 text-xs text-destructive">{rowError}</div>
+                      ) : (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          Preencha as informações principais.
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      title="Remover linha"
+                      onClick={() => removeRow(row.id)}
+                      disabled={rows.length === 1 && !isRowTouched(row)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <div className="grid gap-3">
+                    <div className="space-y-2">
+                      <Label>Código</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          value={row.codigoBarras}
+                          onChange={(event) =>
+                            updateRow(row.id, "codigoBarras", event.target.value)
+                          }
+                          placeholder="EAN-13"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          title="Gerar código de barras"
+                          onClick={() => generateBarcode(row.id)}
+                        >
+                          <Barcode className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Nome</Label>
+                      <Input
+                        value={row.nome}
+                        onChange={(event) => updateRow(row.id, "nome", event.target.value)}
+                        placeholder="Nome do produto"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Categoria</Label>
+                      <Select
+                        value={row.categoriaId}
+                        onValueChange={(value) => updateRow(row.id, "categoriaId", value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Categoria" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categories.map((categoryItem) => (
+                            <SelectItem key={categoryItem.id} value={String(categoryItem.id)}>
+                              {categoryItem.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label>Unidade</Label>
+                        <Input
+                          value={row.unidade}
+                          onChange={(event) => updateRow(row.id, "unidade", event.target.value)}
+                          placeholder="un"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Preço</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={row.preco}
+                          onChange={(event) => updateRow(row.id, "preco", event.target.value)}
+                          placeholder="0,00"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Estoque</Label>
+                      <Select
+                        value={row.estoqueId}
+                        onValueChange={(value) => updateRow(row.id, "estoqueId", value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Estoque" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {activeStocks.map((stock) => (
+                            <SelectItem key={stock.id} value={String(stock.id)}>
+                              {stock.nome}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label>Inicial</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={row.estoqueAtual}
+                          onChange={(event) =>
+                            updateRow(row.id, "estoqueAtual", event.target.value)
+                          }
+                          placeholder="0"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Mínimo</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          value={row.estoqueMinimo}
+                          onChange={(event) =>
+                            updateRow(row.id, "estoqueMinimo", event.target.value)
+                          }
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label>Lote</Label>
+                        <Input
+                          value={row.lote}
+                          onChange={(event) => updateRow(row.id, "lote", event.target.value)}
+                          placeholder={requiresExpiration ? "Obrigatório" : "Opcional"}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Validade</Label>
+                        <Input
+                          type="date"
+                          value={row.validade}
+                          onChange={(event) => updateRow(row.id, "validade", event.target.value)}
+                          className={requiresExpiration ? "" : "opacity-80"}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-lg border bg-background px-3 py-2">
+                      <Label>Produto ativo</Label>
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={row.ativo}
+                          onCheckedChange={(checked) => updateRow(row.id, "ativo", checked)}
+                        />
+                        {row.ativo ? (
+                          <Check className="h-4 w-4 text-success" />
+                        ) : (
+                          <X className="h-4 w-4 text-muted-foreground" />
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="hidden overflow-x-auto md:block">
             <div className="min-w-[1500px]">
               <div className="grid grid-cols-[170px_40px_240px_190px_90px_120px_180px_120px_120px_150px_150px_90px_52px] gap-2 border-b bg-muted/30 px-4 py-3 text-xs font-medium text-muted-foreground">
                 <div>Código</div>
@@ -388,6 +581,7 @@ function ProductBatchCreatePage() {
               </div>
             </div>
           </div>
+          </>
         )}
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4">

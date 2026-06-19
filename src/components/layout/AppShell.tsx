@@ -18,6 +18,7 @@ import {
   Warehouse,
   Trash2,
   Boxes,
+  ChevronUp,
   type LucideIcon,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -59,7 +60,7 @@ interface AppShellProps {
 function Brand() {
   return (
     <div className="flex items-center gap-3">
-      <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-primary/15 bg-background p-1 shadow-[var(--shadow-elegant)]">
+      <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/15 bg-background p-1 shadow-[var(--shadow-elegant)] sm:h-10 sm:w-10 sm:rounded-2xl">
         <img src={zyntraIcon} alt="" className="h-full w-full object-contain" />
       </div>
       <div className="min-w-0 leading-tight">
@@ -77,6 +78,7 @@ export function AppShell({ variant, children }: AppShellProps) {
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const [operatorStockName, setOperatorStockName] = useState<string | null>(null);
   const [adminName, setAdminName] = useState("Administrador");
 
@@ -108,6 +110,17 @@ export function AppShell({ variant, children }: AppShellProps) {
     setAdminName(user?.nome || "Administrador");
   }, [variant, path]);
 
+  useEffect(() => {
+    const updateScrollTopVisibility = () => {
+      setShowScrollTop(window.scrollY > 420);
+    };
+
+    updateScrollTopVisibility();
+    window.addEventListener("scroll", updateScrollTopVisibility, { passive: true });
+
+    return () => window.removeEventListener("scroll", updateScrollTopVisibility);
+  }, [path]);
+
   const changeOperatorStock = () => {
     localStorage.removeItem("cinepolis.estoque");
     setOperatorStockName(null);
@@ -118,6 +131,10 @@ export function AppShell({ variant, children }: AppShellProps) {
     clearSession();
     localStorage.removeItem("cinepolis.estoque");
     navigate({ to: "/" });
+  };
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const navLinkClass = (active: boolean) =>
@@ -202,15 +219,19 @@ export function AppShell({ variant, children }: AppShellProps) {
       )}
 
       <div className="flex min-h-screen min-w-0 flex-col lg:ml-64">
-        <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-background/85 px-4 backdrop-blur-xl sm:px-6">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/90 px-3 backdrop-blur-xl sm:h-16 sm:gap-3 sm:px-6">
           <button
-            className="-ml-2 rounded-xl p-2 transition hover:bg-muted lg:hidden"
+            className="-ml-1 rounded-xl p-2 transition hover:bg-muted lg:hidden"
             onClick={() => setMobileOpen(true)}
           >
             <Menu className="h-5 w-5" />
           </button>
 
-          <div className="relative max-w-md flex-1">
+          <div className="min-w-0 flex-1 lg:hidden">
+            <Brand />
+          </div>
+
+          <div className="relative hidden max-w-md flex-1 sm:block">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar produtos, códigos..."
@@ -218,7 +239,7 @@ export function AppShell({ variant, children }: AppShellProps) {
             />
           </div>
 
-          <div className="flex-1" />
+          <div className="hidden flex-1 sm:block" />
 
           <Button
             variant="ghost"
@@ -244,14 +265,14 @@ export function AppShell({ variant, children }: AppShellProps) {
             </div>
           )}
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <div className="hidden text-right leading-tight sm:block">
               <div className="text-sm font-medium text-foreground">{userLabel}</div>
               <div className="text-[11px] text-muted-foreground">
                 {variant === "admin" ? "Acesso total" : "Acesso operacional"}
               </div>
             </div>
-            <Avatar className="h-10 w-10 border border-primary/15 bg-card">
+            <Avatar className="h-9 w-9 border border-primary/15 bg-card sm:h-10 sm:w-10">
               <AvatarFallback className="zyntra-gradient text-xs font-semibold text-white">
                 {initials}
               </AvatarFallback>
@@ -259,8 +280,21 @@ export function AppShell({ variant, children }: AppShellProps) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-x-hidden p-4 sm:p-6 lg:p-8">{children}</main>
+        <main className="flex-1 overflow-x-hidden p-3 sm:p-6 lg:p-8">{children}</main>
       </div>
+
+      <button
+        type="button"
+        aria-label="Voltar ao topo"
+        onClick={scrollToTop}
+        className={`fixed bottom-5 left-1/2 z-30 flex h-12 w-12 -translate-x-1/2 items-center justify-center rounded-full border border-primary/20 bg-primary text-primary-foreground shadow-lg shadow-primary/20 transition-all duration-300 md:hidden ${
+          showScrollTop && !mobileOpen
+            ? "scale-100 translate-y-0 opacity-100"
+            : "pointer-events-none scale-90 translate-y-6 opacity-0"
+        }`}
+      >
+        <ChevronUp className="h-5 w-5" />
+      </button>
     </div>
   );
 }

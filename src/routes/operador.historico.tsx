@@ -85,7 +85,7 @@ function HistoricoPage() {
         title="Historico"
         subtitle="Movimentacoes recentes registradas pelos operadores"
       />
-      <div className="rounded-xl bg-card border shadow-[var(--shadow-soft)]">
+      <div className="overflow-hidden rounded-lg border bg-card shadow-[var(--shadow-soft)] sm:rounded-xl">
         {movs.length === 0 ? (
           <EmptyState
             icon={HistoryIcon}
@@ -99,7 +99,7 @@ function HistoricoPage() {
               const Icon = config.icon;
 
               return (
-                <li key={movement.id} className="p-4 flex items-center gap-4">
+                <li key={movement.id} className="flex items-center gap-3 p-3 sm:gap-4 sm:p-4">
                   <div
                     className={`h-10 w-10 rounded-lg flex items-center justify-center ${config.iconClass}`}
                   >

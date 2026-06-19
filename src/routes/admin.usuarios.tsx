@@ -82,10 +82,54 @@ function UsuariosPage() {
         }
       />
 
-      <div className="rounded-xl bg-card border shadow-[var(--shadow-soft)] overflow-hidden">
+      <div className="overflow-hidden rounded-lg border bg-card shadow-[var(--shadow-soft)] sm:rounded-xl">
         {users.length === 0 ? (
           <EmptyState icon={Users} title="Nenhum usuário cadastrado" />
         ) : (
+          <>
+          <div className="divide-y md:hidden">
+            {users.map((u) => (
+              <div key={u.id} className="p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{u.name}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{u.matricula}</div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <Badge
+                        variant={
+                          u.role === "master"
+                            ? "destructive"
+                            : u.role === "admin"
+                              ? "default"
+                              : "secondary"
+                        }
+                      >
+                        {u.role === "master"
+                          ? "Master"
+                          : u.role === "admin"
+                            ? "Admin"
+                            : "Operador"}
+                      </Badge>
+                      {u.role === "master" && (
+                        <span className="text-xs text-muted-foreground">Protegido</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <Switch
+                      checked={u.active}
+                      disabled={u.role === "master"}
+                      onCheckedChange={(checked) => toggleUserStatus(u.id, checked)}
+                    />
+                    <Button variant="ghost" size="sm" onClick={() => setEditUser(u)}>
+                      Editar
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -141,6 +185,8 @@ function UsuariosPage() {
               ))}
             </TableBody>
           </Table>
+          </div>
+          </>
         )}
       </div>
 
@@ -356,7 +402,7 @@ function NewUserDialog({ onClose, onSuccess }: { onClose: () => void; onSuccess:
 
         {/*  AVISO VISUAL */}
         <div className="text-sm text-yellow-600 bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
-          O usu?rio ser? criado com uma senha tempor?ria e dever? troc?-la no pr?ximo acesso.
+          O usuário será criado com uma senha temporária e deverá trocá-la no próximo acesso.
         </div>
 
         <DialogFooter>

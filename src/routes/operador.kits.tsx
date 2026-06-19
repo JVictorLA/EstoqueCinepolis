@@ -157,12 +157,12 @@ function OperatorKitsPage() {
         actions={
           <Button variant="outline" className="gap-2" onClick={() => estoque && loadKits(estoque)} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
-            Atualizar
+            <span className="hidden sm:inline">Atualizar</span>
           </Button>
         }
       />
 
-      <div className="mb-4 grid gap-3 md:grid-cols-3">
+      <div className="mb-4 grid grid-cols-3 gap-2 sm:gap-3">
         <StatusSummaryCard
           icon={CheckCircle2}
           label="Prontos para retirada"
@@ -183,7 +183,7 @@ function OperatorKitsPage() {
         />
       </div>
 
-      <div className="rounded-2xl border bg-card/80 p-3 shadow-[var(--shadow-soft)]">
+      <div className="rounded-lg border bg-card/80 p-3 shadow-[var(--shadow-soft)] sm:rounded-2xl">
         {loading ? (
           <div className="flex min-h-56 items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -228,13 +228,13 @@ function StatusSummaryCard({
   className: string;
 }) {
   return (
-    <div className={`rounded-xl border p-4 shadow-[var(--shadow-soft)] ${className}`}>
+    <div className={`rounded-lg border p-3 shadow-[var(--shadow-soft)] sm:rounded-xl sm:p-4 ${className}`}>
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-2xl font-bold leading-none">{value}</div>
-          <div className="mt-1 text-sm font-medium text-foreground">{label}</div>
+          <div className="mt-1 line-clamp-1 text-xs font-medium text-foreground sm:text-sm">{label}</div>
         </div>
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-background/80">
+        <div className="hidden h-10 w-10 items-center justify-center rounded-lg bg-background/80 sm:flex">
           <Icon className="h-5 w-5" />
         </div>
       </div>
@@ -249,7 +249,7 @@ function KitOperationCard({ kit, onAction }: { kit: Kit; onAction: (kit: Kit, ty
   const isInUse = kit.status === "em_uso" || kit.status === "aguardando_recebimento";
 
   return (
-    <article className={`flex min-h-52 flex-col rounded-xl border border-l-4 ${style.border} bg-background p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-soft)]`}>
+    <article className={`flex min-h-44 flex-col rounded-lg border border-l-4 ${style.border} bg-background p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-soft)] sm:min-h-52 sm:rounded-xl sm:p-4`}>
       <div className="flex items-start justify-between gap-3">
         <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${style.icon}`}>
           <Icon className="h-5 w-5" />

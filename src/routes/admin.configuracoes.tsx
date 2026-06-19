@@ -224,7 +224,7 @@ function ConfigPage() {
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 lg:gap-6">
         <Section title="Aparência" description="Escolha o tema visual da sua conta administrativa.">
           <RadioGroup
             value={settings.temaPreferido}
@@ -344,10 +344,10 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-4 rounded-xl border bg-card p-6 shadow-[var(--shadow-soft)]">
+    <div className="space-y-4 rounded-lg border bg-card p-4 shadow-[var(--shadow-soft)] sm:rounded-xl sm:p-6">
       <div>
         <h3 className="font-semibold">{title}</h3>
-        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+        {description && <p className="mt-1 hidden text-sm text-muted-foreground sm:block">{description}</p>}
       </div>
       {children}
     </div>
@@ -369,12 +369,12 @@ function ThemeOption({
     <Label
       htmlFor={`theme-${value}`}
       onClick={onSelect}
-      className="flex cursor-pointer items-start gap-3 rounded-xl border bg-background p-4 transition hover:border-primary/35 hover:bg-muted/60"
+      className="flex cursor-pointer items-start gap-3 rounded-lg border bg-background p-3 transition hover:border-primary/35 hover:bg-muted/60 sm:rounded-xl sm:p-4"
     >
       <RadioGroupItem id={`theme-${value}`} value={value} className="mt-1" />
       <span>
         <span className="block text-sm font-medium">{title}</span>
-        <span className="mt-1 block text-xs leading-5 text-muted-foreground">{description}</span>
+        <span className="mt-1 hidden text-xs leading-5 text-muted-foreground sm:block">{description}</span>
       </span>
     </Label>
   );
@@ -401,10 +401,10 @@ function ToggleRow({
   onCheckedChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b py-2 last:border-0">
-      <div>
+    <div className="flex items-start justify-between gap-4 border-b py-3 last:border-0 sm:py-2">
+      <div className="min-w-0">
         <div className="text-sm font-medium">{label}</div>
-        {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
+        {hint && <div className="hidden text-xs text-muted-foreground sm:block">{hint}</div>}
       </div>
       <Switch checked={checked} onCheckedChange={onCheckedChange} />
     </div>

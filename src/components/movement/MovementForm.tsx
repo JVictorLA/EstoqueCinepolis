@@ -516,10 +516,10 @@ export function MovementForm({
     );
 
   return (
-    <div className="grid lg:grid-cols-3 gap-6">
+    <div className="grid gap-4 lg:grid-cols-3 lg:gap-6">
 
       {/* FORM */}
-      <div className="lg:col-span-2 space-y-4 rounded-xl bg-card border p-6 shadow-[var(--shadow-soft)]">
+      <div className="space-y-4 rounded-lg border bg-card p-4 shadow-[var(--shadow-soft)] sm:rounded-xl sm:p-6 lg:col-span-2">
 
         {type === "saida" && (
           <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted p-1">
@@ -545,7 +545,8 @@ export function MovementForm({
                   : ""
               }
             >
-              Transferir estoque
+              <span className="hidden sm:inline">Transferir estoque</span>
+              <span className="sm:hidden">Transferir</span>
             </Button>
           </div>
         )}
@@ -556,7 +557,7 @@ export function MovementForm({
           autoFocus
         />
 
-        <div className="grid sm:grid-cols-2 gap-4">
+        <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
           {useStoredStock ? (
             <div className="space-y-2 sm:col-span-2">
               <Label>Estoque</Label>
@@ -733,13 +734,13 @@ export function MovementForm({
       </div>
 
       {/* PRODUTO */}
-      <div className="rounded-xl bg-card border p-6 shadow-[var(--shadow-soft)]">
+      <div className="rounded-lg border bg-card p-4 shadow-[var(--shadow-soft)] sm:rounded-xl sm:p-6">
 
         <h3 className="font-semibold mb-1">
           Produto
         </h3>
 
-        <p className="text-xs text-muted-foreground mb-4">
+        <p className="mb-4 hidden text-xs text-muted-foreground sm:block">
           Identificação automática pelo código
         </p>
 
@@ -758,7 +759,7 @@ export function MovementForm({
                 <Package className="h-6 w-6 text-muted-foreground" />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <div className="font-medium">
                   {product.name}
                 </div>

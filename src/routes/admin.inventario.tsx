@@ -73,6 +73,7 @@ import {
   getConferences,
   getEstoques,
   getInventoryCurrent,
+  getProductLots,
   saveConferenceItem,
   searchConferenceProduct,
   updateConference,
@@ -85,6 +86,7 @@ import type {
   Estoque,
   InventoryCurrentItem,
   InventoryStatus,
+  ProductLot,
 } from "@/types";
 import { getConferenceTotals, getInventorySummary } from "@/lib/inventoryRules";
 
@@ -392,6 +394,9 @@ function InventarioPage() {
   const [productPreview, setProductPreview] = useState<ConferenceProductOption | null>(null);
   const [stockOptions, setStockOptions] = useState<ConferenceProductOption[]>([]);
   const [pendingBarcode, setPendingBarcode] = useState("");
+  const [selectedInventoryItem, setSelectedInventoryItem] = useState<InventoryCurrentItem | null>(null);
+  const [selectedInventoryLots, setSelectedInventoryLots] = useState<ProductLot[]>([]);
+  const [loadingInventoryLots, setLoadingInventoryLots] = useState(false);
   const [conferenceToDelete, setConferenceToDelete] = useState<ConferenceHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -717,6 +722,21 @@ function InventarioPage() {
     }
   };
 
+  const openInventoryLots = async (item: InventoryCurrentItem) => {
+    setSelectedInventoryItem(item);
+    setSelectedInventoryLots([]);
+    setLoadingInventoryLots(true);
+    try {
+      const stockId = inventoryStock === "all" ? undefined : (item.estoqueId ?? inventoryStock);
+      const lots = await getProductLots(item.productId, stockId);
+      setSelectedInventoryLots(lots);
+    } catch {
+      toast.error("Erro ao carregar lotes do produto");
+    } finally {
+      setLoadingInventoryLots(false);
+    }
+  };
+
   const printInventory = () => openPrintWindow("Relatório de Inventário", inventoryPrintHtml(inventoryItems, inventoryStockName));
   const printConference = async (conference?: Conference | ConferenceHistory) => {
     const full = "items" in (conference ?? {}) ? (conference as Conference) : conference ? await getConference(conference.id) : activeConference;
@@ -737,24 +757,27 @@ function InventarioPage() {
         actions={
           <>
             <Button variant="outline" className="gap-2" onClick={loadAll} disabled={loading}>
-              <RefreshCw className="h-4 w-4" /> Atualizar
+              <RefreshCw className="h-4 w-4" />
+              <span className="hidden sm:inline">Atualizar</span>
             </Button>
             <Button className="gap-2" onClick={() => setNewConferenceOpen(true)}>
-              <Plus className="h-4 w-4" /> Criar nova conferência
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">Criar nova conferência</span>
+              <span className="sm:hidden">Nova</span>
             </Button>
           </>
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <StatCard label="Produtos no filtro" value={inventorySummary.products} icon={PackageCheck} />
         <StatCard label="Unidades virtuais" value={inventorySummary.units} icon={ClipboardList} tone="success" />
         <StatCard label="Estoque baixo" value={inventorySummary.low} icon={AlertTriangle} tone="warning" />
         <StatCard label="Críticos" value={inventorySummary.critical} icon={XCircle} tone="destructive" />
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6 space-y-4">
-        <TabsList>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4 space-y-4 sm:mt-6">
+        <TabsList className="w-full overflow-x-auto sm:w-auto">
           <TabsTrigger value="estoque">Estoque Atual</TabsTrigger>
           <TabsTrigger value="conferencia">Conferência</TabsTrigger>
           <TabsTrigger value="historico">Histórico</TabsTrigger>
@@ -765,7 +788,7 @@ function InventarioPage() {
             <CardHeader className="gap-4 md:flex-row md:items-end md:justify-between">
               <div>
                 <CardTitle>Estoque atual</CardTitle>
-                <p className="mt-1 text-sm text-muted-foreground">
+                <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
                   Posição virtual consolidada por estoque e validade.
                 </p>
               </div>
@@ -786,11 +809,14 @@ function InventarioPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button variant="outline" className="gap-2" onClick={printInventory}>
-                  <Printer className="h-4 w-4" /> Imprimir
+                <Button variant="outline" className="hidden gap-2 md:inline-flex" onClick={printInventory}>
+                  <Printer className="h-4 w-4" />
+                  <span className="hidden sm:inline">Imprimir</span>
                 </Button>
                 <Button variant="outline" className="gap-2" onClick={() => exportInventoryPdf(inventoryItems, inventoryStockName)}>
-                  <Download className="h-4 w-4" /> Exportar PDF
+                  <Download className="h-4 w-4" />
+                  <span className="hidden sm:inline">Exportar PDF</span>
+                  <span className="sm:hidden">PDF</span>
                 </Button>
               </div>
             </CardHeader>
@@ -798,7 +824,61 @@ function InventarioPage() {
               {inventoryItems.length === 0 ? (
                 <EmptyState icon={ClipboardList} title="Nenhum produto encontrado" />
               ) : (
-                <div className="overflow-x-auto rounded-md border">
+                <>
+                <div className="space-y-3 lg:hidden">
+                  {inventoryItems.map((item) => (
+                    <button
+                      type="button"
+                      key={`${item.productId}-${item.estoqueId ?? "all"}`}
+                      className="w-full rounded-lg border bg-background p-3 text-left shadow-sm transition-colors active:bg-muted/60"
+                      onClick={() => openInventoryLots(item)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="line-clamp-2 text-sm font-semibold leading-snug">
+                            {item.productName}
+                          </div>
+                          <div className="mt-1 truncate text-xs text-muted-foreground">
+                            {item.categoryName ?? "Sem categoria"}
+                          </div>
+                          <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
+                            {item.barcode}
+                          </div>
+                        </div>
+                        <div className="shrink-0">{inventoryStatusBadge(item.status)}</div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                        <div className="rounded-md bg-muted/50 p-2">
+                          <div className="text-muted-foreground">Atual</div>
+                          <div className="mt-1 text-lg font-bold leading-none text-foreground">
+                            {item.stock}
+                          </div>
+                        </div>
+                        <div className="rounded-md bg-muted/50 p-2">
+                          <div className="text-muted-foreground">Minimo</div>
+                          <div className="mt-1 font-semibold text-foreground">{item.minStock}</div>
+                        </div>
+                        <div className="rounded-md bg-muted/50 p-2">
+                          <div className="text-muted-foreground">Validade</div>
+                          <div className="mt-1 truncate font-semibold text-foreground">
+                            {formatDate(item.expirationDate)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {inventoryStock === "all" ? (
+                        <div className="mt-3 line-clamp-2 rounded-md bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                          {item.estoques.map((stock) => `${stock.estoqueNome} (${stock.stock})`).join(", ")}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-3 text-xs font-medium text-primary">Ver lotes disponiveis</div>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="hidden overflow-x-auto rounded-md border lg:block">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -835,6 +915,7 @@ function InventarioPage() {
                     </TableBody>
                   </Table>
                 </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -852,22 +933,30 @@ function InventarioPage() {
                       : "Crie ou edite uma conferência para começar a contagem física."}
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" className="gap-2" onClick={() => setNewConferenceOpen(true)}>
+                <div className={activeConference ? "grid grid-cols-3 gap-2 sm:flex sm:flex-wrap" : "flex flex-wrap gap-2"}>
+                  <Button
+                    variant="outline"
+                    className={activeConference ? "justify-center gap-2" : "gap-2"}
+                    onClick={() => setNewConferenceOpen(true)}
+                  >
                     <Plus className="h-4 w-4" /> Nova
                   </Button>
-                  <Button variant="outline" className="gap-2" onClick={saveConferenceMeta} disabled={!activeConference || activeConference.status === "finalizada" || saving}>
-                    <Save className="h-4 w-4" /> Salvar
-                  </Button>
-                  <Button variant="outline" className="gap-2" onClick={() => printConference()} disabled={!activeConference}>
-                    <Printer className="h-4 w-4" /> Imprimir
-                  </Button>
-                  <Button variant="outline" className="gap-2" onClick={() => exportConference()} disabled={!activeConference}>
-                    <Download className="h-4 w-4" /> PDF
-                  </Button>
-                  <Button className="gap-2" onClick={() => finishConference()} disabled={!activeConference || activeConference.status === "finalizada" || saving}>
-                    <ClipboardCheck className="h-4 w-4" /> Finalizar
-                  </Button>
+                  {activeConference && (
+                    <>
+                      <Button variant="outline" className="justify-center gap-2" onClick={saveConferenceMeta} disabled={activeConference.status === "finalizada" || saving}>
+                        <Save className="h-4 w-4" /> Salvar
+                      </Button>
+                      <Button variant="outline" className="hidden gap-2 md:inline-flex" onClick={() => printConference()}>
+                        <Printer className="h-4 w-4" /> Imprimir
+                      </Button>
+                      <Button variant="outline" className="justify-center gap-2" onClick={() => exportConference()}>
+                        <Download className="h-4 w-4" /> PDF
+                      </Button>
+                      <Button className="col-span-3 w-full gap-2 sm:w-auto" onClick={() => finishConference()} disabled={activeConference.status === "finalizada" || saving}>
+                        <ClipboardCheck className="h-4 w-4" /> Finalizar
+                      </Button>
+                    </>
+                  )}
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -945,13 +1034,92 @@ function InventarioPage() {
                     <div className="space-y-2">
                       <Label>Observação</Label>
                       <Textarea
+                        className="min-h-20 md:min-h-24"
                         value={note}
                         onChange={(event) => setNote(event.target.value)}
                         disabled={activeConference.status === "finalizada"}
                         placeholder="Notas internas da conferência"
                       />
                     </div>
-                    <div className="overflow-x-auto rounded-md border">
+                    <div className="space-y-2 md:hidden">
+                      {activeConference.items.length === 0 ? (
+                        <div className="rounded-lg border border-dashed p-4 text-center">
+                          <ClipboardList className="mx-auto h-8 w-8 text-muted-foreground" />
+                          <div className="mt-2 text-sm font-semibold">Nenhum item conferido</div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            Bipe um produto e informe a quantidade fisica contada.
+                          </div>
+                        </div>
+                      ) : (
+                        activeConference.items.map((item) => (
+                          <div key={item.id} className="rounded-lg border bg-background p-3 shadow-sm">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="line-clamp-2 text-sm font-semibold">{item.productName}</div>
+                                <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
+                                  {item.barcode}
+                                </div>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 shrink-0 text-destructive"
+                                disabled={activeConference.status === "finalizada" || saving}
+                                onClick={() => removeConferenceItem(item.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+
+                            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              <span className="max-w-full truncate rounded-full bg-muted px-2 py-1">
+                                {item.estoqueNome ?? "-"}
+                              </span>
+                              {conferenceStatusBadge(item.status)}
+                            </div>
+
+                            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                              <div className="rounded-md border bg-muted/30 px-2 py-2">
+                                <div className="text-[11px] text-muted-foreground">Sistema</div>
+                                <div className="text-sm font-bold">{item.systemQuantity}</div>
+                              </div>
+                              <div className="rounded-md border bg-muted/30 px-2 py-2">
+                                <div className="text-[11px] text-muted-foreground">Contado</div>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  className="mt-1 h-8 text-center text-sm font-bold"
+                                  value={item.countedQuantity}
+                                  disabled={activeConference.status === "finalizada" || saving}
+                                  onChange={(event) => {
+                                    updateLocalItemCount(item.id, Math.max(0, Number(event.target.value) || 0));
+                                  }}
+                                  onBlur={(event) =>
+                                    saveConferenceItem(activeConference.id, {
+                                      codigo_barras: item.barcode,
+                                      quantidade_contada: Number(event.target.value),
+                                      estoque_id: item.estoqueId,
+                                    })
+                                      .then((updated) => {
+                                        setActiveConference(updated);
+                                        refreshHistory();
+                                      })
+                                      .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Erro ao atualizar contagem"))
+                                  }
+                                />
+                              </div>
+                              <div className="rounded-md border bg-muted/30 px-2 py-2">
+                                <div className="text-[11px] text-muted-foreground">Diferença</div>
+                                <div className={`mt-2 text-sm font-bold ${item.difference === 0 ? "" : item.difference > 0 ? "text-warning" : "text-destructive"}`}>
+                                  {item.difference > 0 ? `+${item.difference}` : item.difference}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    <div className="hidden overflow-x-auto rounded-md border md:block">
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -1037,7 +1205,7 @@ function InventarioPage() {
               </CardContent>
             </Card>
 
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+            <div className="hidden gap-4 md:grid md:grid-cols-2 xl:grid-cols-1">
               <StatCard label="Itens conferidos" value={conferenceTotals.items} icon={ClipboardList} />
               <StatCard label="Unidades contadas" value={conferenceTotals.countedUnits} icon={PackageCheck} tone="success" />
               <StatCard label="Divergências" value={conferenceTotals.divergences} icon={AlertTriangle} tone="warning" />
@@ -1055,7 +1223,77 @@ function InventarioPage() {
               {history.length === 0 ? (
                 <EmptyState icon={FileText} title="Sem conferências salvas" />
               ) : (
-                <div className="overflow-x-auto rounded-md border">
+                <>
+                <div className="space-y-3 lg:hidden">
+                  {history.map((row) => (
+                    <div key={row.id} className="rounded-lg border bg-background p-3 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <div className="font-semibold">#{row.id}</div>
+                            <Badge variant={row.status === "finalizada" ? "secondary" : "default"}>
+                              {row.status}
+                            </Badge>
+                          </div>
+                          <div className="mt-1 line-clamp-1 text-sm text-muted-foreground">
+                            {row.estoqueNome ?? "Todos os estoques"}
+                          </div>
+                        </div>
+                        <Button variant="outline" size="sm" className="shrink-0 gap-2" onClick={() => loadConference(row.id)}>
+                          {row.status === "finalizada" ? <Eye className="h-4 w-4" /> : <Edit3 className="h-4 w-4" />}
+                          Abrir
+                        </Button>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded-md bg-muted/40 p-2">
+                          <div className="text-muted-foreground">Responsavel</div>
+                          <div className="mt-1 truncate font-medium">{row.userName ?? "-"}</div>
+                        </div>
+                        <div className="rounded-md bg-muted/40 p-2">
+                          <div className="text-muted-foreground">Criada em</div>
+                          <div className="mt-1 truncate font-medium">{formatDateTime(row.createdAt)}</div>
+                        </div>
+                        <div className="rounded-md bg-muted/40 p-2">
+                          <div className="text-muted-foreground">Itens</div>
+                          <div className="mt-1 font-semibold">{row.itemsCount}</div>
+                        </div>
+                        <div className="rounded-md bg-muted/40 p-2">
+                          <div className="text-muted-foreground">Divergencias</div>
+                          <div className="mt-1 font-semibold">{row.divergencesCount}</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button variant="outline" size="sm" className="flex-1 gap-2" onClick={() => exportConference(row)}>
+                          <Download className="h-4 w-4" /> PDF
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 gap-2"
+                          disabled={row.status === "finalizada" || saving}
+                          onClick={() => finishConference(row.id)}
+                        >
+                          <ClipboardCheck className="h-4 w-4" /> Finalizar
+                        </Button>
+                        {row.status === "aberta" && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 gap-2 text-destructive hover:text-destructive"
+                            disabled={saving}
+                            onClick={() => setConferenceToDelete(row)}
+                          >
+                            <Trash2 className="h-4 w-4" /> Excluir
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="hidden overflow-x-auto rounded-md border lg:block">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1090,7 +1328,7 @@ function InventarioPage() {
                               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => loadConference(row.id)}>
                                 {row.status === "finalizada" ? <Eye className="h-4 w-4" /> : <Edit3 className="h-4 w-4" />}
                               </Button>
-                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => printConference(row)}>
+                              <Button variant="ghost" size="icon" className="hidden h-8 w-8 md:inline-flex" onClick={() => printConference(row)}>
                                 <Printer className="h-4 w-4" />
                               </Button>
                               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => exportConference(row)}>
@@ -1123,11 +1361,65 @@ function InventarioPage() {
                     </TableBody>
                   </Table>
                 </div>
+                </>
               )}
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      <Dialog
+        open={!!selectedInventoryItem}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedInventoryItem(null);
+            setSelectedInventoryLots([]);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Lotes disponiveis</DialogTitle>
+            <DialogDescription>{selectedInventoryItem?.productName}</DialogDescription>
+          </DialogHeader>
+
+          {loadingInventoryLots ? (
+            <div className="py-8 text-sm text-muted-foreground">Carregando lotes...</div>
+          ) : selectedInventoryLots.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+              Nenhum lote disponivel para este produto.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {selectedInventoryLots.map((lot) => (
+                <div key={lot.id} className="rounded-lg border bg-muted/20 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold">{lot.lot}</div>
+                      <div className="mt-1 truncate text-xs text-muted-foreground">
+                        {lot.estoqueNome}
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="shrink-0">
+                      {lot.quantity}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-md bg-background p-2">
+                      <div className="text-muted-foreground">Validade</div>
+                      <div className="mt-1 font-medium">{formatDate(lot.expirationDate)}</div>
+                    </div>
+                    <div className="rounded-md bg-background p-2">
+                      <div className="text-muted-foreground">Status</div>
+                      <div className="mt-1 font-medium">{lot.status.replaceAll("_", " ")}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={newConferenceOpen} onOpenChange={setNewConferenceOpen}>
         <DialogContent>

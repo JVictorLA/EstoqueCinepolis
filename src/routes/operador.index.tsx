@@ -17,12 +17,12 @@ export const Route = createFileRoute("/operador/")({
 function OperatorBrandLogo() {
   return (
     <div className="flex items-center gap-3">
-      <img src={zytrexIcon} alt="" className="h-20 w-20 object-contain sm:h-24 sm:w-24" />
+      <img src={zytrexIcon} alt="" className="h-12 w-12 object-contain sm:h-24 sm:w-24" />
       <div className="leading-none">
-        <div className="text-4xl font-bold tracking-normal text-foreground sm:text-5xl">
+        <div className="text-2xl font-bold tracking-normal text-foreground sm:text-5xl">
           Zytrex
         </div>
-        <div className="mt-2 text-sm font-semibold uppercase tracking-[0.32em] text-primary">
+        <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-primary sm:mt-2 sm:text-sm sm:tracking-[0.32em]">
           Inventory
         </div>
       </div>
@@ -70,32 +70,32 @@ function OperadorIndex() {
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.14),transparent_32%),linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted)/0.45))] text-foreground">
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-6">
+      <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-4 sm:px-5 sm:py-6">
         <OperatorBrandLogo />
         <Button variant="ghost" size="sm" className="gap-2" onClick={signOut}>
           <LogOut className="h-4 w-4" />
-          Sair
+          <span className="hidden sm:inline">Sair</span>
         </Button>
       </header>
 
-      <section className="mx-auto grid min-h-[calc(100vh-96px)] w-full max-w-6xl items-center gap-10 px-5 pb-12 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="space-y-6">
+      <section className="mx-auto grid min-h-[calc(100vh-80px)] w-full max-w-6xl items-center gap-5 px-4 pb-8 sm:gap-10 sm:px-5 sm:pb-12 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="space-y-4 sm:space-y-6">
           <div className="inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">
             <Warehouse className="h-3.5 w-3.5 text-primary" />
             Modo operacional
           </div>
 
           <div className="space-y-3">
-            <h1 className="max-w-xl text-4xl font-semibold tracking-normal text-foreground sm:text-5xl">
+            <h1 className="max-w-xl text-2xl font-semibold tracking-normal text-foreground sm:text-5xl">
               Selecione o estoque de trabalho
             </h1>
-            <p className="max-w-lg text-base leading-7 text-muted-foreground">
+            <p className="hidden max-w-lg text-base leading-7 text-muted-foreground sm:block">
               Escolha o estoque antes de iniciar as retiradas. Depois disso, o menu operacional
               sera liberado somente para o estoque selecionado.
             </p>
           </div>
 
-          <div className="grid max-w-xs gap-3 text-sm">
+          <div className="hidden max-w-xs gap-3 text-sm sm:grid">
             <div className="rounded-lg border bg-card p-3">
               <div className="text-2xl font-semibold">{estoques.length}</div>
               <div className="text-xs text-muted-foreground">estoques ativos</div>
@@ -103,11 +103,11 @@ function OperadorIndex() {
           </div>
         </div>
 
-        <div className="rounded-xl border bg-card/95 p-5 shadow-[var(--shadow-soft)] backdrop-blur">
+        <div className="rounded-lg border bg-card/95 p-4 shadow-[var(--shadow-soft)] backdrop-blur sm:rounded-xl sm:p-5">
           <div className="mb-5 flex items-start justify-between gap-4">
             <div>
               <h2 className="text-lg font-semibold">Estoques disponiveis</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
                 Toque no estoque que sera usado neste terminal.
               </p>
             </div>
@@ -132,7 +132,7 @@ function OperadorIndex() {
             />
           ) : (
             <>
-              <div className="grid max-h-[48vh] gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+              <div className="grid max-h-[52vh] gap-2 overflow-y-auto pr-1 sm:max-h-[48vh] sm:grid-cols-2 sm:gap-3">
                 {estoques.map((estoque) => {
                   const selected = String(estoque.id) === selectedEstoqueId;
                   return (
@@ -140,7 +140,7 @@ function OperadorIndex() {
                       key={estoque.id}
                       type="button"
                       onClick={() => setSelectedEstoqueId(String(estoque.id))}
-                      className={`group flex min-h-28 items-start gap-3 rounded-lg border p-4 text-left transition ${
+                      className={`group flex min-h-20 items-start gap-3 rounded-lg border p-3 text-left transition sm:min-h-28 sm:p-4 ${
                         selected
                           ? "border-primary bg-primary/10 shadow-[var(--shadow-soft)]"
                           : "bg-background hover:border-primary/45 hover:bg-muted/40"
@@ -159,7 +159,7 @@ function OperadorIndex() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium">{estoque.nome}</div>
-                        <div className="mt-1 text-xs text-muted-foreground">
+                        <div className="mt-1 hidden text-xs text-muted-foreground sm:block">
                           Operacoes serao registradas neste estoque.
                         </div>
                       </div>
@@ -168,8 +168,8 @@ function OperadorIndex() {
                 })}
               </div>
 
-              <div className="mt-5 flex flex-col gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-sm text-muted-foreground">
+              <div className="mt-4 flex flex-col gap-3 border-t pt-4 sm:mt-5 sm:flex-row sm:items-center sm:justify-between sm:pt-5">
+                <div className="line-clamp-1 text-xs text-muted-foreground sm:text-sm">
                   {selectedEstoque
                     ? `Estoque selecionado: ${selectedEstoque.nome}`
                     : "Selecione um estoque para continuar."}

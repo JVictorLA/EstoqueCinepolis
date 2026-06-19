@@ -72,7 +72,7 @@ function EstoquesPage() {
         }
       />
 
-      <div className="rounded-xl bg-card border shadow-[var(--shadow-soft)] overflow-hidden">
+      <div className="overflow-hidden rounded-lg border bg-card shadow-[var(--shadow-soft)] sm:rounded-xl">
         {estoques.length === 0 ? (
           <EmptyState
             icon={Warehouse}
@@ -85,7 +85,36 @@ function EstoquesPage() {
             }
           />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <div className="divide-y md:hidden">
+            {estoques.map((estoque) => (
+              <div key={estoque.id} className="p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted">
+                      <Warehouse className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">{estoque.nome}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {formatDate(estoque.criadoEm)}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <Badge variant={estoque.ativo ? "default" : "secondary"}>
+                      {estoque.ativo ? "Ativo" : "Inativo"}
+                    </Badge>
+                    <Switch
+                      checked={estoque.ativo}
+                      onCheckedChange={(checked) => toggleStatus(estoque.id, checked)}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -130,6 +159,7 @@ function EstoquesPage() {
               </TableBody>
             </Table>
           </div>
+          </>
         )}
       </div>
     </>

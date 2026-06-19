@@ -39,7 +39,7 @@ function OperadorDesperdicioPage() {
         }
       />
 
-      <div className="rounded-xl bg-card border shadow-[var(--shadow-soft)]">
+      <div className="rounded-lg border bg-card shadow-[var(--shadow-soft)] sm:rounded-xl">
         <EmptyState
           icon={PackageX}
           title="Desperdicio no estoque atual"

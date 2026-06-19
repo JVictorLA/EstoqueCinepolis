@@ -54,13 +54,13 @@ function BrandLogo({ size = "sm" }: { size?: "sm" | "lg" }) {
       <img
         src={zyntraIcon}
         alt=""
-        className={large ? "h-20 w-20 object-contain sm:h-24 sm:w-24" : "h-9 w-9 object-contain"}
+        className={large ? "h-14 w-14 object-contain sm:h-24 sm:w-24" : "h-9 w-9 object-contain"}
       />
       <div className="leading-none">
         <div
           className={
             large
-              ? "text-4xl font-bold tracking-normal text-foreground sm:text-5xl"
+              ? "text-3xl font-bold tracking-normal text-foreground sm:text-5xl"
               : "text-xl font-bold tracking-normal text-foreground"
           }
         >
@@ -69,7 +69,7 @@ function BrandLogo({ size = "sm" }: { size?: "sm" | "lg" }) {
         <div
           className={
             large
-              ? "mt-2 text-sm font-semibold uppercase tracking-[0.32em] text-primary"
+              ? "mt-1 text-xs font-semibold uppercase tracking-[0.24em] text-primary sm:mt-2 sm:text-sm sm:tracking-[0.32em]"
               : "mt-1 text-[10px] font-semibold uppercase tracking-[0.28em] text-primary"
           }
         >
@@ -117,7 +117,7 @@ function ThemeSegmentedControl() {
             aria-pressed={active}
           >
             <Icon className="h-4 w-4" />
-            {option.label}
+            <span className="hidden sm:inline">{option.label}</span>
             {active && <span className="h-2 w-2 rounded-full bg-primary" />}
           </button>
         );
@@ -148,16 +148,16 @@ function AccessCard({
     <button
       type="button"
       onClick={action}
-      className="group flex w-full items-center gap-4 rounded-2xl border border-border bg-card p-4 text-left shadow-[var(--shadow-soft)] transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[var(--shadow-card)]"
+      className="group flex w-full items-center gap-3 rounded-xl border border-border bg-card p-3 text-left shadow-[var(--shadow-soft)] transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[var(--shadow-card)] sm:gap-4 sm:rounded-2xl sm:p-4"
     >
       <span
-        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1 ${toneClass}`}
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 sm:h-12 sm:w-12 sm:rounded-2xl ${toneClass}`}
       >
         <Icon className="h-5 w-5" />
       </span>
       <span className="min-w-0 flex-1">
         <span className="block font-semibold text-foreground">{title}</span>
-        <span className="mt-1 block text-sm leading-6 text-muted-foreground">{description}</span>
+        <span className="mt-1 hidden text-sm leading-6 text-muted-foreground sm:block">{description}</span>
       </span>
       <ChevronRight className="h-5 w-5 shrink-0 text-primary transition group-hover:translate-x-0.5" />
     </button>
@@ -286,19 +286,19 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <main className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6">
+    <main className="min-h-screen bg-background px-3 py-4 text-foreground sm:px-6 sm:py-6">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
         <header className="flex items-center justify-between gap-4">
           <BrandLogo />
           <ThemeSegmentedControl />
         </header>
 
-        <section className="rounded-3xl border bg-card p-5 shadow-[var(--shadow-card)] sm:p-7">
-          <div className="mb-6 grid gap-2 sm:grid-cols-5">
+        <section className="rounded-xl border bg-card p-4 shadow-[var(--shadow-card)] sm:rounded-3xl sm:p-7">
+          <div className="mb-5 grid grid-cols-2 gap-2 sm:mb-6 sm:grid-cols-5">
             {steps.map((label, index) => (
               <div
                 key={label}
-                className={`rounded-xl border px-3 py-2 text-xs font-medium ${
+                className={`rounded-lg border px-2 py-2 text-xs font-medium sm:rounded-xl sm:px-3 ${
                   index === step
                     ? "border-primary bg-primary/10 text-primary"
                     : index < step
@@ -309,7 +309,7 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
                 <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[10px]">
                   {index < step ? <Check className="h-3 w-3" /> : index + 1}
                 </span>
-                {label}
+                <span className="hidden sm:inline">{label}</span>
               </div>
             ))}
           </div>
@@ -318,8 +318,8 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
             <div className="grid gap-8 py-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
               <BrandLogo size="lg" />
               <div className="space-y-4">
-                <h1 className="text-3xl font-bold">Vamos configurar o Zytrex Inventory para sua empresa.</h1>
-                <p className="text-muted-foreground">
+                <h1 className="text-2xl font-bold sm:text-3xl">Vamos configurar o Zytrex Inventory para sua empresa.</h1>
+                <p className="text-sm text-muted-foreground sm:text-base">
                   Este assistente cria os dados iniciais, estoques e o
                   usuario master para o primeiro acesso.
                 </p>
@@ -618,27 +618,90 @@ function LoginPage() {
     return <SetupWizard onDone={() => { setNeedsSetup(false); setMode("admin"); }} />;
   }
 
+  const renderAdminLoginForm = (showBack: boolean) => (
+    <form onSubmit={submit} className="space-y-5">
+      {showBack && (
+        <button
+          type="button"
+          onClick={() => setMode("choose")}
+          className="hidden items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground sm:inline-flex"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Voltar
+        </button>
+      )}
+
+      <div className="flex items-start gap-4">
+        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/15">
+          <LockKeyhole className="h-5 w-5" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Acesso Administrativo</h1>
+          <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
+            Use suas credenciais para entrar no painel Zytrex Inventory.
+          </p>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="user">Matrícula</Label>
+        <Input
+          id="user"
+          value={matricula}
+          onChange={(e) => setMatricula(e.target.value)}
+          placeholder="Sua matrícula"
+          autoFocus
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="pass">Senha</Label>
+        <Input
+          id="pass"
+          type="password"
+          value={pass}
+          onChange={(e) => setPass(e.target.value)}
+          placeholder="••••••••"
+        />
+      </div>
+
+      <Button
+        type="submit"
+        className="zyntra-gradient w-full border-0"
+        disabled={loading}
+      >
+        {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        Entrar
+      </Button>
+    </form>
+  );
+
   return (
     <>
       <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_0%,rgba(34,211,238,0.11),transparent_28rem),radial-gradient(circle_at_88%_12%,rgba(139,92,246,0.1),transparent_28rem)] dark:bg-[radial-gradient(circle_at_10%_0%,rgba(34,211,238,0.08),transparent_28rem),radial-gradient(circle_at_88%_12%,rgba(139,92,246,0.08),transparent_28rem)]" />
 
-        <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-5 py-7 sm:px-8">
+        <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-8 sm:py-7">
           <BrandLogo />
           <ThemeSegmentedControl />
         </header>
 
-        <div className="relative z-10 mx-auto grid min-h-[calc(100vh-6.5rem)] w-full max-w-6xl items-center gap-10 px-5 pb-10 sm:px-8 lg:grid-cols-[0.95fr_1.05fr]">
-          <section className="mx-auto w-full max-w-lg space-y-8 lg:mx-0">
+        <div className="relative z-10 mx-auto grid min-h-[calc(100vh-5rem)] w-full max-w-6xl items-center gap-5 px-4 pb-8 sm:gap-10 sm:px-8 lg:grid-cols-[0.95fr_1.05fr]">
+          <section className="mx-auto hidden w-full max-w-lg space-y-4 sm:block sm:space-y-8 lg:mx-0">
             <BrandLogo size="lg" />
-            <p className="max-w-md text-base leading-7 text-muted-foreground">
+            <p className="hidden max-w-md text-base leading-7 text-muted-foreground sm:block">
               Plataforma inteligente para controle de estoque, lotes, validade e movimentações.
             </p>
-            <div className="h-0.5 w-16 rounded-full bg-[linear-gradient(135deg,#22D3EE_0%,#4F7CFF_45%,#8B5CF6_100%)]" />
+            <div className="hidden h-0.5 w-16 rounded-full bg-[linear-gradient(135deg,#22D3EE_0%,#4F7CFF_45%,#8B5CF6_100%)] sm:block" />
           </section>
 
           <section className="border-border/80 lg:border-l lg:pl-12">
-            <div className="rounded-3xl border bg-card/95 p-5 shadow-[var(--shadow-card)] backdrop-blur sm:p-7">
+            <div className="rounded-xl border bg-card/95 p-4 shadow-[var(--shadow-card)] backdrop-blur sm:rounded-3xl sm:p-7">
+              <div className="sm:hidden">
+                {renderAdminLoginForm(false)}
+              </div>
+
+              <div className="hidden sm:block">
               {mode === "choose" ? (
                 <div className="space-y-6">
                   <div className="flex items-start gap-4">
@@ -647,7 +710,7 @@ function LoginPage() {
                     </div>
                     <div>
                       <h1 className="text-xl font-bold text-foreground">Escolha o acesso</h1>
-                      <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+                      <p className="mt-1 hidden max-w-md text-sm leading-6 text-muted-foreground sm:block">
                         Entre no painel administrativo ou acesse o modo operacional para registros
                         rápidos.
                       </p>
@@ -671,7 +734,7 @@ function LoginPage() {
                     />
                   </div>
 
-                  <p className="flex items-center justify-center gap-2 pt-2 text-center text-xs text-muted-foreground">
+                  <p className="hidden items-center justify-center gap-2 pt-2 text-center text-xs text-muted-foreground sm:flex">
                     <Lock className="h-3.5 w-3.5" />
                     Sessão segura e trilha de movimentações.
                   </p>
@@ -693,7 +756,7 @@ function LoginPage() {
                     </div>
                     <div>
                       <h1 className="text-2xl font-bold text-foreground">Acesso Administrativo</h1>
-                      <p className="mt-1 text-sm text-muted-foreground">
+                      <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
                         Use suas credenciais para entrar no painel Zytrex Inventory.
                       </p>
                     </div>
@@ -731,6 +794,7 @@ function LoginPage() {
                   </Button>
                 </form>
               )}
+              </div>
             </div>
           </section>
         </div>

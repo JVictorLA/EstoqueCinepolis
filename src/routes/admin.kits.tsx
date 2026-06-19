@@ -26,6 +26,14 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -54,6 +62,7 @@ import {
   type SaveKitPayload,
 } from "@/services/api";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
 import type { Estoque, Kit, KitItem, KitMovementHistory, KitMovementType, KitProductOption, KitStatus } from "@/types";
 
@@ -234,13 +243,14 @@ function KitsPage() {
             }}
           >
             <Plus className="h-4 w-4" />
-            Criar Kit Caixa
+            <span className="hidden sm:inline">Criar Kit Caixa</span>
+            <span className="sm:hidden">Criar</span>
           </Button>
         }
       />
 
-      <div className="mb-6 grid gap-3 md:grid-cols-[260px_repeat(4,minmax(0,1fr))]">
-        <div className="rounded-xl border bg-card p-4 shadow-[var(--shadow-soft)]">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:mb-6 md:grid-cols-[260px_repeat(4,minmax(0,1fr))]">
+        <div className="col-span-2 rounded-lg border bg-card p-3 shadow-[var(--shadow-soft)] sm:rounded-xl sm:p-4 md:col-span-1">
           <Label>Estoque</Label>
           <Select value={selectedEstoqueId} onValueChange={setSelectedEstoqueId}>
             <SelectTrigger className="mt-2">
@@ -256,7 +266,7 @@ function KitsPage() {
             </SelectContent>
           </Select>
           {!hasSpecificStock && (
-            <p className="mt-2 text-xs text-muted-foreground">
+            <p className="mt-2 hidden text-xs text-muted-foreground sm:block">
               Em "Todos", a página fica apenas para visualização.
             </p>
           )}
@@ -268,7 +278,7 @@ function KitsPage() {
       </div>
 
       <Tabs defaultValue="kits" className="space-y-4">
-        <TabsList>
+        <TabsList className="w-full sm:w-auto">
           <TabsTrigger value="kits" className="gap-2">
             <Boxes className="h-4 w-4" />
             Kits
@@ -296,7 +306,7 @@ function KitsPage() {
                 const displayStatus = visualStatus(kit);
                 const canAct = hasSpecificStock;
                 return (
-                  <article key={kit.id} className="rounded-xl border bg-card p-4 shadow-[var(--shadow-soft)]">
+                  <article key={kit.id} className="rounded-lg border bg-card p-3 shadow-[var(--shadow-soft)] sm:rounded-xl sm:p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <h2 className="truncate text-base font-semibold text-foreground">{kit.name}</h2>
@@ -709,6 +719,7 @@ function KitActionDialog({
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const isMobile = useIsMobile();
   const open = !!kit && !!type;
 
   useEffect(() => {
@@ -851,6 +862,21 @@ function KitActionDialog({
         : type === "retirar"
           ? "Retirar Kit"
           : "Receber Kit";
+
+  if (isMobile && (type === "montar" || type === "repor")) {
+    return (
+      <MobileKitSupplyDrawer
+        open={open}
+        kit={kit}
+        type={type}
+        note={note}
+        loading={loading}
+        onNoteChange={setNote}
+        onClose={onClose}
+        onSubmit={submit}
+      />
+    );
+  }
 
   return (
     <>
@@ -1003,6 +1029,148 @@ function KitActionDialog({
       </DialogContent>
     </Dialog>
     </>
+  );
+}
+
+function MobileKitSupplyDrawer({
+  open,
+  kit,
+  type,
+  note,
+  loading,
+  onNoteChange,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean;
+  kit: Kit | null;
+  type: "montar" | "repor";
+  note: string;
+  loading: boolean;
+  onNoteChange: (value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const items = kit?.items ?? [];
+  const missingItems = items.filter((item) => missingQuantity(item) > 0);
+  const displayStatus = kit ? visualStatus(kit) : "kit_incompleto";
+  const isMount = type === "montar";
+  const title = isMount ? "Montar Kit" : "Repor Kit";
+  const itemsLabel = isMount ? "Itens para montar" : "Itens para repor";
+  const confirmLabel = isMount ? "Confirmar montagem" : "Confirmar reposicao";
+
+  return (
+    <Drawer open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <DrawerContent className="max-h-[92vh]">
+        <DrawerHeader className="text-left">
+          <DrawerTitle>{title}</DrawerTitle>
+          <DrawerDescription>{kit?.name ?? "Kit selecionado"}</DrawerDescription>
+        </DrawerHeader>
+
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-2">
+          <div className="rounded-lg border bg-muted/20 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold">{kit?.name ?? "Kit"}</div>
+                <div className="mt-1 truncate text-xs text-muted-foreground">
+                  {kit?.estoqueNome ?? "Estoque selecionado"}
+                </div>
+              </div>
+              <Badge variant="outline" className={cn("shrink-0 rounded-full", statusClass(displayStatus))}>
+                {statusLabels[displayStatus]}
+              </Badge>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <Label>{itemsLabel}</Label>
+              {items.length > 0 ? (
+                <span className="text-xs text-muted-foreground">
+                  {missingItems.length} com falta
+                </span>
+              ) : null}
+            </div>
+
+            {!items.length ? (
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                Itens carregados ao abrir a acao.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {items.map((item) => {
+                  const missing = missingQuantity(item);
+                  const hasMissing = missing > 0;
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={cn(
+                        "rounded-lg border bg-background p-3",
+                        hasMissing && "border-primary/30 bg-primary/5",
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <div className="line-clamp-2 text-sm font-medium leading-snug">
+                          {item.productName}
+                        </div>
+                        <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
+                          {item.barcode}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                        <div className="rounded-md bg-muted/50 p-2">
+                          <div className="text-muted-foreground">Padrao</div>
+                          <div className="mt-1 font-semibold text-foreground">
+                            {item.defaultQuantity}
+                          </div>
+                        </div>
+                        <div className="rounded-md bg-muted/50 p-2">
+                          <div className="text-muted-foreground">Atual</div>
+                          <div className="mt-1 font-semibold text-foreground">
+                            {item.currentQuantity}
+                          </div>
+                        </div>
+                        <div
+                          className={cn(
+                            "rounded-md p-2",
+                            hasMissing ? "bg-primary text-primary-foreground" : "bg-muted/50",
+                          )}
+                        >
+                          <div className={hasMissing ? "text-primary-foreground/80" : "text-muted-foreground"}>
+                            Falta
+                          </div>
+                          <div className="mt-1 font-semibold">{missing}</div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Observacao</Label>
+            <Textarea
+              value={note}
+              onChange={(event) => onNoteChange(event.target.value)}
+              placeholder="Opcional"
+            />
+          </div>
+        </div>
+
+        <DrawerFooter className="border-t bg-background">
+          <Button onClick={onSubmit} disabled={loading}>
+            {loading ? "Processando..." : confirmLabel}
+          </Button>
+          <Button variant="outline" onClick={onClose} disabled={loading}>
+            Cancelar
+          </Button>
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
   );
 }
 

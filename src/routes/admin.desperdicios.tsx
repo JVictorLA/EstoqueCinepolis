@@ -459,22 +459,61 @@ function DesperdiciosPage() {
           <>
             <Button
               variant="outline"
-              className="gap-2"
+              className="hidden gap-2 md:inline-flex"
               onClick={processExpired}
               disabled={processing}
             >
               <RefreshCw className={`h-4 w-4 ${processing ? "animate-spin" : ""}`} />
-              Processar vencidos
+              <span className="hidden sm:inline">Processar vencidos</span>
+              <span className="sm:hidden">Vencidos</span>
             </Button>
-            <Button className="gap-2" onClick={() => setDialogOpen(true)}>
+            <Button className="w-full gap-2 sm:w-auto" onClick={() => setDialogOpen(true)}>
               <Trash2 className="h-4 w-4" />
-              Criar desperdício
+              <span className="hidden sm:inline">Criar desperdício</span>
+              <span className="sm:hidden">Novo</span>
             </Button>
           </>
         }
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="mb-4 overflow-hidden rounded-lg border bg-card shadow-[var(--shadow-soft)] md:hidden">
+        <div className="border-b px-3 py-3">
+          <div className="font-semibold">Historico recente</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            Ultimos desperdicios registrados.
+          </div>
+        </div>
+        {wastes.length === 0 ? (
+          <EmptyState
+            icon={PackageX}
+            title="Sem desperdicios"
+            description="Os registros recentes aparecerao aqui."
+          />
+        ) : (
+          <div className="divide-y">
+            {wastes.slice(0, 12).map((waste) => (
+              <div key={waste.id} className="p-3">
+                <div className="line-clamp-2 text-sm font-medium leading-snug">
+                  {waste.productName}
+                </div>
+                <div className="mt-2 grid gap-1 text-xs text-muted-foreground">
+                  <div className="flex min-w-0 items-center justify-between gap-3">
+                    <span>Funcionario</span>
+                    <span className="truncate font-medium text-foreground">{waste.userName}</span>
+                  </div>
+                  <div className="flex min-w-0 items-center justify-between gap-3">
+                    <span>Motivo</span>
+                    <span className="truncate font-medium text-foreground">{waste.motivoNome}</span>
+                  </div>
+                  <div>{formatDateTime(waste.createdAt)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mb-4 hidden grid-cols-2 gap-3 sm:mb-6 sm:gap-4 md:grid lg:grid-cols-4">
         <StatCard
           label="Valor perdido"
           value={money(summary.totais.valor_total)}
@@ -490,8 +529,8 @@ function DesperdiciosPage() {
         <StatCard label="Motivo recorrente" value={topReason} icon={CalendarDays} tone="warning" />
       </div>
 
-      <div className="rounded-xl bg-card border shadow-[var(--shadow-soft)] overflow-hidden mb-6">
-        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="mb-4 hidden overflow-hidden rounded-lg border bg-card shadow-[var(--shadow-soft)] sm:mb-6 sm:rounded-xl md:block">
+        <div className="flex flex-col gap-3 border-b p-3 sm:p-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center justify-center gap-2">
             <Button
               type="button"
@@ -501,9 +540,9 @@ function DesperdiciosPage() {
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <div className="min-w-72 text-center">
+            <div className="min-w-0 flex-1 text-center sm:min-w-72">
               <div className="text-xs uppercase text-muted-foreground">Dia exibido</div>
-              <div className="font-semibold capitalize">{formatDateLabel(selectedDay)}</div>
+              <div className="line-clamp-1 font-semibold capitalize">{formatDateLabel(selectedDay)}</div>
             </div>
             <Button
               type="button"
@@ -514,30 +553,34 @@ function DesperdiciosPage() {
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
-          <div className="flex flex-wrap justify-center gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-center">
             <Button type="button" className="gap-2" onClick={applyFilters}>
               <RefreshCw className="h-4 w-4" />
-              Aplicar filtros
+              <span className="hidden sm:inline">Aplicar filtros</span>
+              <span className="sm:hidden">Aplicar</span>
             </Button>
             <Button type="button" variant="outline" className="gap-2" onClick={clearFilters}>
               <Eraser className="h-4 w-4" />
-              Limpar filtros
+              <span className="hidden sm:inline">Limpar filtros</span>
+              <span className="sm:hidden">Limpar</span>
             </Button>
             <Button type="button" variant="outline" className="gap-2" onClick={showAllPeriods}>
               <CalendarDays className="h-4 w-4" />
-              Todos os períodos
+              <span className="hidden sm:inline">Todos os períodos</span>
+              <span className="sm:hidden">Tudo</span>
             </Button>
             <Button type="button" variant="outline" className="gap-2" onClick={printReport}>
               <Printer className="h-4 w-4" />
-              Imprimir
+              <span className="hidden sm:inline">Imprimir</span>
             </Button>
             <Button type="button" variant="outline" className="gap-2" onClick={downloadPdf}>
               <Download className="h-4 w-4" />
-              Baixar PDF
+              <span className="hidden sm:inline">Baixar PDF</span>
+              <span className="sm:hidden">PDF</span>
             </Button>
           </div>
         </div>
-        <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-6">
+        <div className="grid gap-3 p-3 sm:gap-4 sm:p-4 md:grid-cols-2 xl:grid-cols-6">
           <div className="space-y-2">
             <Label>Estoque</Label>
             <Select
@@ -649,14 +692,14 @@ function DesperdiciosPage() {
         </div>
       </div>
 
-      <div className="rounded-xl bg-card border shadow-[var(--shadow-soft)] overflow-hidden mb-6">
+      <div className="mb-4 hidden overflow-hidden rounded-lg border bg-card shadow-[var(--shadow-soft)] sm:mb-6 sm:rounded-xl md:block">
         <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2 font-semibold">
               <BarChart3 className="h-4 w-4" />
               Gráfico de desperdícios
             </div>
-            <div className="mt-1 text-sm text-muted-foreground">
+            <div className="mt-1 hidden text-sm text-muted-foreground sm:block">
               Valor perdido por dia conforme data e filtros selecionados.
               {appliedFilters.produto_id !== "all" ? ` Produto: ${filterNames.produto}.` : ""}
             </div>
@@ -692,7 +735,7 @@ function DesperdiciosPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-2 mb-6">
+      <div className="mb-4 hidden gap-4 sm:mb-6 md:grid lg:grid-cols-2">
         <SummaryList title="Por dia" rows={summary.por_dia} labelKey="dia" />
         <SummaryList title="Por produto" rows={summary.por_produto} labelKey="produto_nome" />
         <SummaryList
@@ -703,7 +746,7 @@ function DesperdiciosPage() {
         <SummaryList title="Por motivo" rows={summary.por_motivo} labelKey="motivo_nome" />
       </div>
 
-      <div className="rounded-xl bg-card border shadow-[var(--shadow-soft)] overflow-hidden">
+      <div className="hidden overflow-hidden rounded-lg border bg-card shadow-[var(--shadow-soft)] sm:rounded-xl md:block">
         {wastes.length === 0 ? (
           <EmptyState
             icon={PackageX}
@@ -711,6 +754,29 @@ function DesperdiciosPage() {
             description="Os registros aparecerão aqui."
           />
         ) : (
+          <>
+          <div className="divide-y md:hidden">
+            {wastes.map((waste) => (
+              <div key={waste.id} className="p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{waste.productName}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {waste.estoqueNome} · {waste.motivoNome}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {formatDateTime(waste.createdAt)}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-semibold text-destructive">{money(waste.totalValue)}</div>
+                    <div className="text-xs text-muted-foreground">{waste.quantity} un.</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -737,11 +803,30 @@ function DesperdiciosPage() {
               ))}
             </TableBody>
           </Table>
+          </div>
+          </>
         )}
       </div>
 
-      <div className="rounded-xl bg-card border shadow-[var(--shadow-soft)] overflow-hidden mt-6">
+      <div className="mt-4 hidden overflow-hidden rounded-lg border bg-card shadow-[var(--shadow-soft)] sm:mt-6 sm:rounded-xl md:block">
         <div className="border-b px-4 py-3 font-semibold">Ranking dos maiores desperdícios</div>
+        <div className="divide-y md:hidden">
+          {summary.ranking.map((item) => (
+            <div key={item.id} className="flex items-start justify-between gap-3 p-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{item.produto_nome}</div>
+                <div className="mt-1 text-xs text-muted-foreground">{item.motivo_nome}</div>
+              </div>
+              <div className="text-right">
+                <div className="font-semibold text-destructive">{money(item.valor_total)}</div>
+                <div className="text-xs text-muted-foreground">
+                  {Number(item.quantidade).toFixed(2)} un.
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden md:block">
         <Table>
           <TableHeader>
             <TableRow>
@@ -764,6 +849,7 @@ function DesperdiciosPage() {
             ))}
           </TableBody>
         </Table>
+        </div>
       </div>
 
       <WasteDialog
@@ -786,7 +872,7 @@ function SummaryList({
   labelKey: keyof WasteSummaryGroup;
 }) {
   return (
-    <div className="rounded-xl bg-card border shadow-[var(--shadow-soft)] overflow-hidden">
+    <div className="overflow-hidden rounded-lg border bg-card shadow-[var(--shadow-soft)] sm:rounded-xl">
       <div className="border-b px-4 py-3 font-semibold">{title}</div>
       <div className="divide-y">
         {rows.length === 0 ? (
