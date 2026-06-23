@@ -88,7 +88,7 @@ export function WasteDialog({
     return estoques.find((estoque) => String(estoque.id) === selectedEstoqueId)?.nome;
   }, [estoques, fixedEstoqueName, selectedEstoqueId]);
   const filteredEstoques = useMemo(() => {
-    const activeStocks = estoques.filter((estoque) => estoque.ativo);
+    const activeStocks = estoques.filter((estoque) => estoque.ativo && !estoque.arquivado);
     if (!availableStockIds) return activeStocks;
     return activeStocks.filter((estoque) => availableStockIds.includes(estoque.id));
   }, [availableStockIds, estoques]);
@@ -111,7 +111,9 @@ export function WasteDialog({
 
   useEffect(() => {
     if (fixedEstoqueId) return;
-    const firstActive = estoques.find((estoque) => estoque.ativo) ?? estoques[0];
+    const firstActive =
+      estoques.find((estoque) => estoque.ativo && !estoque.arquivado) ??
+      estoques.find((estoque) => !estoque.arquivado);
     if (firstActive && !estoqueId) setEstoqueId(String(firstActive.id));
   }, [estoqueId, estoques, fixedEstoqueId]);
 
@@ -124,7 +126,7 @@ export function WasteDialog({
       return;
     }
 
-    const activeStocks = estoques.filter((estoque) => estoque.ativo);
+    const activeStocks = estoques.filter((estoque) => estoque.ativo && !estoque.arquivado);
     if (!activeStocks.length) {
       setAvailableStockIds([]);
       return;

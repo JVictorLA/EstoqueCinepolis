@@ -50,7 +50,7 @@ async function getKitForUpdate(conn, kitId) {
        e.nome AS estoque_nome,
        u.nome AS responsavel_atual_nome
      FROM kits_caixa k
-     INNER JOIN estoques e ON e.id = k.estoque_id
+     INNER JOIN estoques e ON e.id = k.estoque_id AND COALESCE(e.arquivado, 0) = 0
      LEFT JOIN usuarios u ON u.id = k.responsavel_atual_id
      WHERE k.id = ?
      LIMIT 1
@@ -114,6 +114,14 @@ async function insertKitMovement(conn, { kitId, estoqueId, usuarioId, tipo, obse
 }
 
 async function assertProductsLinkedToStock(conn, estoqueId, items) {
+  const [stocks] = await conn.query(
+    "SELECT id FROM estoques WHERE id = ? AND ativo = 1 AND COALESCE(arquivado, 0) = 0 LIMIT 1",
+    [estoqueId],
+  );
+  if (!stocks.length) {
+    throw Object.assign(new Error("Estoque inativo ou arquivado"), { status: 400 });
+  }
+
   const productIds = [...new Set(items.map((item) => Number(item.produto_id)).filter(Boolean))];
   if (!productIds.length) {
     throw Object.assign(new Error("Adicione pelo menos um produto ao kit"), { status: 400 });
@@ -121,7 +129,8 @@ async function assertProductsLinkedToStock(conn, estoqueId, items) {
 
   const [rows] = await conn.query(
     `SELECT ep.produto_id
-     FROM estoque_produtos ep
+    FROM estoque_produtos ep
+     INNER JOIN estoques e ON e.id = ep.estoque_id AND COALESCE(e.arquivado, 0) = 0
      INNER JOIN produtos p ON p.id = ep.produto_id
      WHERE ep.estoque_id = ?
        AND ep.produto_id IN (${productIds.map(() => "?").join(",")})
@@ -145,6 +154,10 @@ async function consumeStock(conn, produtoId, estoqueId, quantidade) {
       new Error("Este produto não está vinculado ao estoque selecionado."),
       { status: 400 },
     );
+  }
+
+  if (!stockProduct.estoque_ativo || stockProduct.estoque_arquivado) {
+    throw Object.assign(new Error("Estoque inativo ou arquivado"), { status: 400 });
   }
 
   await loteService.ensureDefaultLotFromCache(conn, stockProduct);
@@ -218,7 +231,7 @@ async function listar({ estoque_id } = {}) {
        lm.tipo AS ultima_movimentacao_tipo,
        lm.criado_em AS ultima_movimentacao_em
      FROM kits_caixa k
-     INNER JOIN estoques e ON e.id = k.estoque_id
+     INNER JOIN estoques e ON e.id = k.estoque_id AND COALESCE(e.arquivado, 0) = 0
      LEFT JOIN usuarios u ON u.id = k.responsavel_atual_id
      LEFT JOIN kit_movimentacoes lm ON lm.id = (
        SELECT km.id
@@ -686,6 +699,7 @@ async function produtosDisponiveis(estoque_id) {
        c.nome AS categoria_nome,
        COALESCE(ep.estoque_atual, 0) AS estoque_atual
      FROM estoque_produtos ep
+     INNER JOIN estoques e ON e.id = ep.estoque_id AND e.ativo = 1 AND COALESCE(e.arquivado, 0) = 0
      INNER JOIN produtos p ON p.id = ep.produto_id
      LEFT JOIN categorias c ON c.id = p.categoria_id
      WHERE ep.estoque_id = ?

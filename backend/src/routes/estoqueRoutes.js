@@ -7,6 +7,7 @@ const router = Router();
 
 router.get("/", asyncHandler(estoqueCtrl.listarEstoques));
 router.post("/", auth.authMiddleware, auth.adminOnly, asyncHandler(estoqueCtrl.criar));
+router.patch("/:id/arquivar", auth.authMiddleware, auth.adminOnly, asyncHandler(estoqueCtrl.arquivar));
 router.patch("/:id/status", auth.authMiddleware, auth.adminOnly, asyncHandler(estoqueCtrl.alterarStatus));
 
 module.exports = router;

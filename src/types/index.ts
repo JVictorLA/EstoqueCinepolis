@@ -9,6 +9,9 @@ export interface Estoque {
   id: number;
   nome: string;
   ativo: boolean;
+  tipo: "permanente" | "temporario";
+  arquivado: boolean;
+  arquivadoEm: string | null;
   criadoEm: string;
 }
 
@@ -105,6 +108,35 @@ export interface TransferMovement {
   lotId?: number | null;
   lotCode?: string | null;
   ignoredFefo?: boolean;
+}
+
+export interface TransferStockBatchItem {
+  codigo_barras: string;
+  quantidade: number;
+  lote: string;
+  confirmar_ignorar_fefo?: boolean;
+  justificativa_fefo?: string;
+}
+
+export interface TransferStockBatchPayload {
+  estoque_origem_id: number;
+  estoque_destino_id: number;
+  matricula: string;
+  senha: string;
+  observacao?: string;
+  itens: TransferStockBatchItem[];
+}
+
+export interface TransferStockBatchResult {
+  sourceStockId: number;
+  sourceStockName: string | null;
+  targetStockId: number;
+  targetStockName: string | null;
+  userId: number;
+  userName: string;
+  totalItems: number;
+  totalQuantity: number;
+  items: TransferMovement[];
 }
 
 export type UserRole = "master" | "admin" | "operador";

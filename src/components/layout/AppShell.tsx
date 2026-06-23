@@ -9,7 +9,6 @@ import {
   ClipboardList,
   Users,
   Settings,
-  Search,
   HelpCircle,
   LogOut,
   Menu,
@@ -21,10 +20,14 @@ import {
   ChevronUp,
   type LucideIcon,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { clearSession, getStoredUser } from "@/services/api";
+import {
+  GlobalSearch,
+  GlobalSearchPage,
+  type GlobalSearchViewState,
+} from "@/components/layout/GlobalSearch";
 
 import zyntraIcon from "@/icones/android-chrome-512x512.png";
 
@@ -34,7 +37,7 @@ const adminNav: NavItem[] = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { to: "/admin/estoques", label: "Estoques", icon: Warehouse },
   { to: "/admin/produtos", label: "Produtos", icon: Package },
-  { to: "/admin/kits", label: "Montagem de Kit", icon: Boxes },
+  { to: "/admin/kits", label: "Kit Caixa", icon: Boxes },
   { to: "/admin/entrada", label: "Entrada de Produtos", icon: ArrowDownToLine },
   { to: "/admin/retirada", label: "Retirada de Produtos", icon: ArrowUpFromLine },
   { to: "/admin/desperdicios", label: "Desperdícios", icon: Trash2 },
@@ -81,6 +84,7 @@ export function AppShell({ variant, children }: AppShellProps) {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [operatorStockName, setOperatorStockName] = useState<string | null>(null);
   const [adminName, setAdminName] = useState("Administrador");
+  const [globalSearchView, setGlobalSearchView] = useState<GlobalSearchViewState | null>(null);
 
   const userLabel = variant === "admin" ? adminName : "Modo Operacional";
   const initials =
@@ -111,6 +115,10 @@ export function AppShell({ variant, children }: AppShellProps) {
   }, [variant, path]);
 
   useEffect(() => {
+    setGlobalSearchView(null);
+  }, [path]);
+
+  useEffect(() => {
     const updateScrollTopVisibility = () => {
       setShowScrollTop(window.scrollY > 420);
     };
@@ -120,6 +128,25 @@ export function AppShell({ variant, children }: AppShellProps) {
 
     return () => window.removeEventListener("scroll", updateScrollTopVisibility);
   }, [path]);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+
+    const { body, documentElement } = document;
+    const previousBodyOverflow = body.style.overflow;
+    const previousDocumentOverflow = documentElement.style.overflow;
+    const previousBodyOverscroll = body.style.overscrollBehavior;
+
+    body.style.overflow = "hidden";
+    documentElement.style.overflow = "hidden";
+    body.style.overscrollBehavior = "contain";
+
+    return () => {
+      body.style.overflow = previousBodyOverflow;
+      documentElement.style.overflow = previousDocumentOverflow;
+      body.style.overscrollBehavior = previousBodyOverscroll;
+    };
+  }, [mobileOpen]);
 
   const changeOperatorStock = () => {
     localStorage.removeItem("cinepolis.estoque");
@@ -176,12 +203,12 @@ export function AppShell({ variant, children }: AppShellProps) {
       </aside>
 
       {mobileOpen && (
-        <div className="fixed inset-0 z-40 flex lg:hidden">
+        <div className="fixed inset-0 z-40 flex overflow-hidden overscroll-none lg:hidden">
           <div
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            className="absolute inset-0 touch-none bg-black/70 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="relative flex w-72 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+          <aside className="relative flex h-dvh w-72 max-w-[82vw] flex-col overflow-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
             <div className="flex h-20 items-center justify-between px-5">
               <Brand />
               <button
@@ -191,7 +218,7 @@ export function AppShell({ variant, children }: AppShellProps) {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <nav className="flex-1 space-y-1 px-3">
+            <nav className="flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 pb-4">
               {nav.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(item.to);
@@ -231,14 +258,12 @@ export function AppShell({ variant, children }: AppShellProps) {
             <Brand />
           </div>
 
-          <div className="relative hidden max-w-md flex-1 sm:block">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Buscar produtos, códigos..."
-              className="bg-card pl-9 text-sm shadow-none"
+          {variant === "admin" && (
+            <GlobalSearch
+              onOpenSearch={setGlobalSearchView}
+              onCloseSearch={() => setGlobalSearchView(null)}
             />
-          </div>
-
+          )}
           <div className="hidden flex-1 sm:block" />
 
           <Button
@@ -280,7 +305,17 @@ export function AppShell({ variant, children }: AppShellProps) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-x-hidden p-3 sm:p-6 lg:p-8">{children}</main>
+        <main className="flex-1 overflow-x-hidden p-3 sm:p-6 lg:p-8">
+          {variant === "admin" && globalSearchView ? (
+            <GlobalSearchPage
+              initialQuery={globalSearchView.query}
+              initialSelection={globalSearchView.selection}
+              onClose={() => setGlobalSearchView(null)}
+            />
+          ) : (
+            children
+          )}
+        </main>
       </div>
 
       <button

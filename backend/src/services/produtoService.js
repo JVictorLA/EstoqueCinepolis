@@ -36,7 +36,7 @@ const SELECT_SPECIFIC_STOCK = `
   FROM produtos p
   LEFT JOIN categorias c ON c.id = p.categoria_id
   INNER JOIN estoque_produtos ep ON ep.produto_id = p.id AND ep.estoque_id = ?
-  INNER JOIN estoques e ON e.id = ep.estoque_id
+  INNER JOIN estoques e ON e.id = ep.estoque_id AND COALESCE(e.arquivado, 0) = 0
   LEFT JOIN (
     SELECT estoque_produto_id,
       COALESCE(SUM(quantidade), 0) AS estoque_atual,
@@ -80,6 +80,7 @@ const SELECT_ALL_STOCKS = `
   FROM produtos p
   LEFT JOIN categorias c ON c.id = p.categoria_id
   INNER JOIN estoque_produtos ep ON ep.produto_id = p.id
+  INNER JOIN estoques e ON e.id = ep.estoque_id AND COALESCE(e.arquivado, 0) = 0
   LEFT JOIN (
     SELECT estoque_produto_id,
       COALESCE(SUM(quantidade), 0) AS estoque_atual,
@@ -249,6 +250,14 @@ async function createWithConnection(conn, data) {
     lote,
     ativo,
   } = data;
+
+  const [stocks] = await conn.query(
+    "SELECT id FROM estoques WHERE id = ? AND ativo = 1 AND COALESCE(arquivado, 0) = 0 LIMIT 1",
+    [estoque_id],
+  );
+  if (!stocks.length) {
+    throw Object.assign(new Error("Estoque inativo ou arquivado"), { status: 400 });
+  }
 
   const [existingProducts] = await conn.query(
     "SELECT id, categoria_id FROM produtos WHERE codigo_barras = ? LIMIT 1",

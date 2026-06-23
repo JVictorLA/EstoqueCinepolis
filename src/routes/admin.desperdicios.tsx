@@ -66,6 +66,7 @@ import type {
   WasteSummary,
   WasteSummaryGroup,
 } from "@/types";
+import { addPdfBrand, escapeHtml, reportBrandHtml, reportBrandStyles } from "@/lib/reportBrand";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/desperdicios")({
@@ -353,13 +354,13 @@ function DesperdiciosPage() {
       .map(
         (waste) => `
           <tr>
-            <td>${waste.productName}</td>
-            <td>${waste.estoqueNome}</td>
-            <td>${waste.motivoNome}</td>
-            <td>${waste.userName}</td>
-            <td>${waste.quantity}</td>
-            <td>${money(waste.totalValue)}</td>
-            <td>${formatDateTime(waste.createdAt)}</td>
+            <td>${escapeHtml(waste.productName)}</td>
+            <td>${escapeHtml(waste.estoqueNome)}</td>
+            <td>${escapeHtml(waste.motivoNome)}</td>
+            <td>${escapeHtml(waste.userName)}</td>
+            <td>${escapeHtml(waste.quantity)}</td>
+            <td>${escapeHtml(money(waste.totalValue))}</td>
+            <td>${escapeHtml(formatDateTime(waste.createdAt))}</td>
           </tr>`,
       )
       .join("");
@@ -376,6 +377,8 @@ function DesperdiciosPage() {
             body { font-family: Arial, sans-serif; color: #111827; margin: 24px; }
             h1 { margin: 0 0 4px; font-size: 22px; }
             p { margin: 4px 0; color: #4b5563; font-size: 12px; }
+            header { border-bottom: 1px solid #e2e8f0; padding-bottom: 14px; margin-bottom: 18px; }
+            ${reportBrandStyles()}
             table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 11px; }
             th, td { border: 1px solid #d1d5db; padding: 7px; text-align: left; }
             th { background: #f3f4f6; }
@@ -383,6 +386,7 @@ function DesperdiciosPage() {
           </style>
         </head>
         <body>
+          ${reportBrandHtml()}
           <h1>Relatório de Desperdícios</h1>
           <p>Gerado em ${formatDateTime(new Date().toISOString())}</p>
           <p>${reportSubtitle}</p>
@@ -406,6 +410,7 @@ function DesperdiciosPage() {
 
   const downloadPdf = () => {
     const doc = new jsPDF({ orientation: "landscape" });
+    addPdfBrand(doc, 220, 8);
     doc.setFontSize(16);
     doc.text("Relatório de Desperdícios", 14, 16);
     doc.setFontSize(9);

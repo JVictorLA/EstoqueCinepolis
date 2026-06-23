@@ -99,6 +99,7 @@ router.post("/produtos/batch", auth.authMiddleware, auth.adminOnly, asyncHandler
 router.post("/produtos", auth.authMiddleware, auth.adminOnly, asyncHandler(produtoCtrl.criar));
 
 // Movimentações
+router.post("/movimentacoes/transferencia/lote", asyncHandler(movCtrl.transferirLote));
 router.post("/movimentacoes/transferencia", asyncHandler(movCtrl.transferir));
 router.post("/movimentacoes/ajuste", auth.authMiddleware, auth.adminOnly, asyncHandler(movCtrl.ajustar));
 router.post("/movimentacoes/entrada", asyncHandler(movCtrl.criarEntrada));

@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getCategories, getMovements } from "@/services/api";
+import { escapeHtml, reportBrandHtml, reportBrandStyles } from "@/lib/reportBrand";
 import { cn } from "@/lib/utils";
 import type { Category, Movement, MovementType } from "@/types";
 import { toast } from "sonner";
@@ -111,15 +112,6 @@ function formatMovementTime(value: string) {
 function displayLot(lotCode?: string | null) {
   if (!lotCode || lotCode === "__SEM_LOTE__") return null;
   return lotCode;
-}
-
-function escapeHtml(value: unknown) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
 }
 
 function MovementCard({
@@ -364,7 +356,7 @@ function MovsPage() {
             }
             h1 { margin: 0 0 6px; font-size: 22px; }
             .muted { color: #64748b; }
-            .brand { font-weight: 700; color: #4f7cff; }
+            ${reportBrandStyles()}
             .filters, .totals {
               display: grid;
               grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -409,7 +401,7 @@ function MovsPage() {
         <body>
           <header>
             <div>
-              <div class="brand">Zytrex Inventory</div>
+              ${reportBrandHtml()}
               <h1>Relatório de Movimentações</h1>
               <div class="muted">Gerado em ${escapeHtml(new Date().toLocaleString("pt-BR"))}</div>
             </div>

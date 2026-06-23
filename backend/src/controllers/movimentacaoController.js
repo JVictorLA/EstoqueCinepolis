@@ -171,6 +171,84 @@ async function transferir(req, res) {
   }
 }
 
+async function transferirLote(req, res) {
+  const {
+    matricula,
+    senha,
+    estoque_origem_id,
+    estoque_destino_id,
+    observacao,
+    itens,
+  } = req.body || {};
+
+  if (!Number(estoque_origem_id)) return fail(res, 400, "estoque_origem_id Ã© obrigatÃ³rio");
+  if (!Number(estoque_destino_id)) return fail(res, 400, "estoque_destino_id Ã© obrigatÃ³rio");
+  if (Number(estoque_origem_id) === Number(estoque_destino_id)) {
+    return fail(res, 400, "Estoque de destino deve ser diferente da origem");
+  }
+  if (!matricula || !senha) return fail(res, 400, "matrÃ­cula e senha sÃ£o obrigatÃ³rias");
+  if (!Array.isArray(itens) || !itens.length) {
+    return fail(res, 400, "itens deve conter pelo menos um produto");
+  }
+
+  const cred = await usuarioService.validateCredentials(matricula, senha);
+  if (!cred) return fail(res, 401, "MatrÃ­cula ou senha invÃ¡lidos");
+  if (cred.error === "inactive") return fail(res, 403, "UsuÃ¡rio inativo");
+  if (cred.password_status) return sendPasswordChallenge(res, cred);
+
+  const itensResolvidos = [];
+  for (const [index, item] of itens.entries()) {
+    if (!item?.codigo_barras) {
+      return fail(res, 400, `codigo_barras Ã© obrigatÃ³rio no item ${index + 1}`);
+    }
+    const qtd = Number(item.quantidade);
+    if (!Number.isFinite(qtd) || qtd <= 0) {
+      return fail(res, 400, `quantidade invÃ¡lida no item ${index + 1}`);
+    }
+
+    const produto = await produtoService.findByBarcode(item.codigo_barras, estoque_origem_id);
+    if (!produto) {
+      return fail(res, 404, `Produto nÃ£o encontrado no estoque de origem: ${item.codigo_barras}`);
+    }
+    if (!produto.ativo) return fail(res, 400, `Produto inativo: ${produto.nome}`);
+    if (produto.exige_validade && !item.lote) {
+      return fail(res, 400, `lote Ã© obrigatÃ³rio para ${produto.nome}`);
+    }
+    if (!produto.estoque_id) {
+      return fail(res, 404, `Produto nÃ£o vinculado ao estoque de origem: ${produto.nome}`);
+    }
+
+    itensResolvidos.push({
+      produto,
+      quantidade: qtd,
+      lote: item.lote,
+      confirmar_ignorar_fefo: !!item.confirmar_ignorar_fefo,
+      justificativa_fefo: item.justificativa_fefo,
+    });
+  }
+
+  try {
+    const transferencia = await movService.transferirEstoqueEmLote({
+      itens: itensResolvidos,
+      estoque_origem_id: Number(estoque_origem_id),
+      estoque_destino_id: Number(estoque_destino_id),
+      usuario: { id: cred.id, nome: cred.nome },
+      observacao,
+    });
+    return created(res, transferencia, "Transferencia em lote registrada");
+  } catch (e) {
+    if (e.fefo) {
+      return res.status(e.status || 409).json({
+        success: false,
+        message: e.message,
+        data: { fefo: e.fefo },
+        error: e.message,
+      });
+    }
+    return fail(res, e.status || 500, e.message || "Erro ao transferir produtos");
+  }
+}
+
 async function ajustar(req, res) {
   const itens = req.body?.itens;
   if (!Array.isArray(itens)) return fail(res, 400, "itens deve ser uma lista");
@@ -200,4 +278,4 @@ async function listar(req, res) {
   return ok(res, rows);
 }
 
-module.exports = { criar, criarEntrada, criarSaida, transferir, ajustar, listar };
+module.exports = { criar, criarEntrada, criarSaida, transferir, transferirLote, ajustar, listar };

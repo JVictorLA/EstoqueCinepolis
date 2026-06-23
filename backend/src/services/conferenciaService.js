@@ -72,6 +72,9 @@ async function validateEstoque(estoqueId) {
   if (!estoque) {
     throw Object.assign(new Error("Estoque não encontrado"), { status: 404 });
   }
+  if (estoque.arquivado) {
+    throw Object.assign(new Error("Estoque arquivado"), { status: 400 });
+  }
 }
 
 async function listar() {
@@ -184,7 +187,7 @@ async function findStockProductByBarcode(codigoBarras, estoqueId) {
        COALESCE(lotes.quantidade_sistema, ep.estoque_atual, 0) AS quantidade_sistema
      FROM produtos p
      INNER JOIN estoque_produtos ep ON ep.produto_id = p.id
-     INNER JOIN estoques e ON e.id = ep.estoque_id
+     INNER JOIN estoques e ON e.id = ep.estoque_id AND COALESCE(e.arquivado, 0) = 0
      LEFT JOIN (
        SELECT estoque_produto_id, COALESCE(SUM(quantidade), 0) AS quantidade_sistema
        FROM produto_lotes

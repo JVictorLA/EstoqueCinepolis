@@ -20,6 +20,12 @@ const BASE_INVENTORY_SELECT = `
   FROM produtos p
   LEFT JOIN categorias c ON c.id = p.categoria_id
   LEFT JOIN estoque_produtos ep ON ep.produto_id = p.id
+    AND EXISTS (
+      SELECT 1
+      FROM estoques active_stock
+      WHERE active_stock.id = ep.estoque_id
+        AND COALESCE(active_stock.arquivado, 0) = 0
+    )
   LEFT JOIN estoques e ON e.id = ep.estoque_id
   LEFT JOIN (
     SELECT estoque_produto_id,
@@ -102,6 +108,9 @@ async function getEstoqueAtual(estoqueId = "all") {
     const estoque = await estoqueService.findById(id);
     if (!estoque) {
       throw Object.assign(new Error("Estoque não encontrado"), { status: 404 });
+    }
+    if (estoque.arquivado) {
+      throw Object.assign(new Error("Estoque arquivado"), { status: 400 });
     }
 
     const [rows] = await pool.query(

@@ -5,6 +5,8 @@ import {
   CheckCircle2,
   Loader2,
   AlertTriangle,
+  Plus,
+  Trash2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -47,7 +49,7 @@ import {
   getProductByBarcode,
   getUserByMatricula,
   registerMovement,
-  transferStock,
+  transferStockBatch,
   changeUserPassword,
   getEstoques,
   getStoredUser,
@@ -58,7 +60,12 @@ import {
 
 import type { AuthUser, Estoque, Product, ProductLot, FefoWarning } from "@/types";
 import { isExpired, isNearExpiration } from "@/lib/expiration";
-import { validateMovement } from "@/lib/movementRules";
+import {
+  clampQuantityToLimit,
+  resolveQuantityLimit,
+  validateMovement,
+  validateTransferCart,
+} from "@/lib/movementRules";
 import { passwordChallengeMessage, resolvePasswordStatus } from "@/lib/passwordChallenge";
 
 interface MovementFormProps {
@@ -66,6 +73,16 @@ interface MovementFormProps {
   requireAuth?: boolean;
   useStoredStock?: boolean;
   useLoggedUser?: boolean;
+}
+
+interface TransferCartItem {
+  id: string;
+  barcode: string;
+  product: Product;
+  quantity: number;
+  lot: string;
+  maxQuantity: number | null;
+  availableLots: Array<Pick<ProductLot, "lot" | "quantity">>;
 }
 
 function hasFefoWarning(data: unknown): data is { fefo: FefoWarning } {
@@ -112,6 +129,7 @@ export function MovementForm({
   const [lot, setLot] = useState("");
   const [expirationDate, setExpirationDate] = useState("");
   const [lots, setLots] = useState<ProductLot[]>([]);
+  const [transferCart, setTransferCart] = useState<TransferCartItem[]>([]);
   const [fefoWarning, setFefoWarning] = useState<FefoWarning | null>(null);
   const [fefoJustification, setFefoJustification] = useState("");
   const [expiredBlockMessage, setExpiredBlockMessage] = useState("");
@@ -158,12 +176,24 @@ export function MovementForm({
     useState<number | null>(null);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const initialBarcode = params.get("codigo");
+    const initialOperation = params.get("operacao");
+
+    if (initialBarcode) setBarcode(initialBarcode);
+    if (type === "saida" && initialOperation === "transferencia") {
+      setOperation("transferencia");
+    }
+  }, [type]);
+
+  useEffect(() => {
     getEstoques().then((data) => {
-      setEstoques(data);
+      const availableStocks = data.filter((estoque) => estoque.ativo && !estoque.arquivado);
+      setEstoques(availableStocks);
       if (useStoredStock) {
         const raw = localStorage.getItem("cinepolis.estoque");
         const stored = raw ? JSON.parse(raw) : null;
-        if (stored?.id) {
+        if (stored?.id && availableStocks.some((estoque) => estoque.id === Number(stored.id))) {
           setSelectedEstoqueId(String(stored.id));
         } else {
           navigate({ to: "/operador" });
@@ -171,7 +201,7 @@ export function MovementForm({
         return;
       }
 
-      const firstActive = data.find((estoque) => estoque.ativo) ?? data[0];
+      const firstActive = availableStocks[0];
       if (firstActive) setSelectedEstoqueId(String(firstActive.id));
     });
   }, [navigate, useStoredStock]);
@@ -180,13 +210,19 @@ export function MovementForm({
     if (type !== "saida" || operation !== "transferencia") return;
 
     const firstTarget = estoques.find(
-      (estoque) => estoque.ativo && String(estoque.id) !== selectedEstoqueId
+      (estoque) => estoque.ativo && !estoque.arquivado && String(estoque.id) !== selectedEstoqueId
     );
 
     if (firstTarget && (!targetEstoqueId || targetEstoqueId === selectedEstoqueId)) {
       setTargetEstoqueId(String(firstTarget.id));
     }
   }, [estoques, operation, selectedEstoqueId, targetEstoqueId, type]);
+
+  useEffect(() => {
+    setTransferCart([]);
+    setFefoWarning(null);
+    setFefoJustification("");
+  }, [selectedEstoqueId, targetEstoqueId, operation]);
 
   useEffect(() => {
     if (!useLoggedUser) return;
@@ -266,7 +302,116 @@ export function MovementForm({
       .catch(() => setLots([]));
   }, [product, selectedEstoqueId, type]);
 
+  const clearCurrentProductFields = () => {
+    setBarcode("");
+    setProduct(null);
+    setQuantity("");
+    setLot("");
+    setExpirationDate("");
+    setLots([]);
+    setFefoWarning(null);
+    setFefoJustification("");
+  };
+
+  const showInsufficientStock = () => {
+    toast.error("Saldo insuficiente neste estoque.");
+  };
+
+  const applyQuantityLimit = (value: string | number, limit: number | null) => {
+    const clamped = clampQuantityToLimit(value, limit);
+    if (clamped.changed) showInsufficientStock();
+    return clamped;
+  };
+
+  const handleAddTransferItem = () => {
+    if (!barcode.trim()) return toast.error("Informe o código de barras");
+    if (!selectedEstoqueId) return toast.error("Selecione o estoque");
+    if (!targetEstoqueId) return toast.error("Selecione o estoque de destino");
+    if (targetEstoqueId === selectedEstoqueId) {
+      return toast.error("O destino precisa ser diferente da origem");
+    }
+    if (!product) return toast.error("Produto não encontrado");
+    const parsedQuantity = parseInt(quantity, 10);
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+      return toast.error("Informe a quantidade");
+    }
+    if (product.requiresExpiration && !lot.trim()) return toast.error("Informe o lote");
+
+    const maxQuantity = resolveQuantityLimit({
+      product,
+      lots,
+      lot,
+      type,
+      operation,
+    });
+    const clampedQuantity = applyQuantityLimit(parsedQuantity, maxQuantity);
+    const quantityToAdd = Number(clampedQuantity.value);
+    if (!Number.isFinite(quantityToAdd) || quantityToAdd <= 0) {
+      return;
+    }
+
+    const duplicatedIndex = transferCart.findIndex(
+      (item) =>
+        item.barcode === barcode.trim() &&
+        item.lot.trim().toLowerCase() === lot.trim().toLowerCase(),
+    );
+
+    if (duplicatedIndex >= 0) {
+      const duplicatedItem = transferCart[duplicatedIndex];
+      const nextQuantity = applyQuantityLimit(
+        duplicatedItem.quantity + quantityToAdd,
+        duplicatedItem.maxQuantity,
+      );
+      setTransferCart((items) =>
+        items.map((item, index) =>
+          index === duplicatedIndex
+            ? { ...item, quantity: Number(nextQuantity.value) }
+            : item,
+        ),
+      );
+    } else {
+      setTransferCart((items) => [
+        ...items,
+        {
+          id: `${product.id}-${lot.trim() || "sem-lote"}-${Date.now()}`,
+          barcode: barcode.trim(),
+          product,
+          quantity: quantityToAdd,
+          lot: lot.trim(),
+          maxQuantity,
+          availableLots: lots.map((item) => ({ lot: item.lot, quantity: item.quantity })),
+        },
+      ]);
+    }
+
+    toast.success("Produto adicionado à lista");
+    clearCurrentProductFields();
+  };
+
   const handleConfirmClick = () => {
+    if (operation === "transferencia") {
+      const validation = validateTransferCart({
+        selectedEstoqueId,
+        targetEstoqueId,
+        matricula,
+        items: transferCart.map((item) => ({
+          quantity: item.quantity,
+          lot: item.lot,
+          maxQuantity: item.maxQuantity,
+          product: item.product,
+        })),
+      });
+      if (validation) return toast.error(validation);
+      setConfirmOpen(true);
+      return;
+    }
+
+    const clamped = applyQuantityLimit(quantity, quantityLimit);
+    if (clamped.changed) {
+      setQuantity(clamped.value);
+      return;
+    }
+
     const validation = validateMovement({
       barcode,
       selectedEstoqueId,
@@ -294,23 +439,30 @@ export function MovementForm({
     setReviewOpen(true);
   };
 
+  const closePasswordDialog = () => {
+    setConfirmOpen(false);
+    setPassword("");
+  };
+
   const doSubmit = async () => {
     setSubmitting(true);
 
     try {
       const ignoreFefo = !!fefoWarning;
       if (operation === "transferencia") {
-        await transferStock({
-          codigo_barras: barcode,
+        await transferStockBatch({
           estoque_origem_id: parseInt(selectedEstoqueId),
           estoque_destino_id: parseInt(targetEstoqueId),
           matricula,
           senha: password,
-          quantidade: parseInt(quantity),
           observacao: note || undefined,
-          lote: lot.trim(),
-          confirmar_ignorar_fefo: ignoreFefo,
-          justificativa_fefo: ignoreFefo ? fefoJustification.trim() : undefined,
+          itens: transferCart.map((item) => ({
+            codigo_barras: item.barcode,
+            quantidade: item.quantity,
+            lote: item.lot,
+            confirmar_ignorar_fefo: ignoreFefo,
+            justificativa_fefo: ignoreFefo ? fefoJustification.trim() : undefined,
+          })),
         });
       } else {
         await registerMovement({
@@ -342,6 +494,7 @@ export function MovementForm({
       setLot("");
       setExpirationDate("");
       setLots([]);
+      setTransferCart([]);
       setFefoWarning(null);
       setFefoJustification("");
       setNote("");
@@ -488,17 +641,25 @@ export function MovementForm({
 
   const movementVerb =
     operation === "transferencia"
-      ? "transferir entre estoques"
+      ? `transferir ${transferCart.length} produto${transferCart.length === 1 ? "" : "s"} entre`
       : type === "entrada" ? "adicionar ao" : "retirar do";
 
   const movementActionLabel =
     operation === "transferencia"
-      ? "Sim, transferir produto"
+      ? "Sim, transferir lista"
       : type === "entrada" ? "Sim, registrar entrada" : "Sim, registrar retirada";
 
   const matchingLots = lot.trim()
     ? lots.filter((item) => item.lot.toLowerCase().endsWith(lot.trim().toLowerCase()))
     : lots;
+
+  const quantityLimit = resolveQuantityLimit({
+    product,
+    lots,
+    lot,
+    type,
+    operation,
+  });
 
   const expiredWasAutoWaste = /registrado automaticamente como desperd/i.test(
     expiredBlockMessage,
@@ -590,7 +751,10 @@ export function MovementForm({
                 </SelectTrigger>
                 <SelectContent>
                   {estoques
-                    .filter((estoque) => estoque.ativo && String(estoque.id) !== selectedEstoqueId)
+                    .filter(
+                      (estoque) =>
+                        estoque.ativo && !estoque.arquivado && String(estoque.id) !== selectedEstoqueId,
+                    )
                     .map((estoque) => (
                       <SelectItem key={estoque.id} value={String(estoque.id)}>
                         {estoque.nome}
@@ -606,11 +770,14 @@ export function MovementForm({
 
             <Input
               type="number"
-              min={1}
+              min={quantityLimit === 0 ? 0 : 1}
+              max={quantityLimit ?? undefined}
               value={quantity}
-              onChange={(e) =>
-                setQuantity(e.target.value)
-              }
+              onChange={(e) => setQuantity(e.target.value)}
+              onBlur={() => {
+                const clamped = applyQuantityLimit(quantity, quantityLimit);
+                if (clamped.changed) setQuantity(clamped.value);
+              }}
               placeholder="0"
             />
           </div>
@@ -622,6 +789,17 @@ export function MovementForm({
               onChange={(e) => {
                 setLot(e.target.value);
                 setFefoWarning(null);
+              }}
+              onBlur={() => {
+                const nextLimit = resolveQuantityLimit({
+                  product,
+                  lots,
+                  lot,
+                  type,
+                  operation,
+                });
+                const clamped = applyQuantityLimit(quantity, nextLimit);
+                if (clamped.changed) setQuantity(clamped.value);
               }}
               placeholder={type === "entrada" ? "Ex: WAFFLE-2026-000123" : "Digite o lote ou final"}
             />
@@ -650,6 +828,8 @@ export function MovementForm({
                     onClick={() => {
                       setLot(item.lot);
                       setFefoWarning(null);
+                      const clamped = applyQuantityLimit(quantity, item.quantity);
+                      if (clamped.changed) setQuantity(clamped.value);
                     }}
                   >
                     <span className="font-medium">{item.lot}</span>
@@ -658,6 +838,137 @@ export function MovementForm({
                     </span>
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {operation === "transferencia" && (
+            <div className="space-y-3 sm:col-span-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleAddTransferItem}
+                className="w-full gap-2"
+                disabled={submitting}
+              >
+                <Plus className="h-4 w-4" />
+                Adicionar produto à lista
+              </Button>
+
+              <div className="rounded-lg border bg-muted/30">
+                <div className="flex items-center justify-between border-b px-3 py-2 text-sm">
+                  <span className="font-medium">Lista de transferência</span>
+                  <span className="text-muted-foreground">
+                    {transferCart.length} item{transferCart.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+
+                {transferCart.length ? (
+                  <div className="divide-y">
+                    {transferCart.map((item) => (
+                      <div
+                        key={item.id}
+                        className="grid gap-3 px-3 py-3 text-sm sm:grid-cols-[1fr_120px_140px_40px] sm:items-center"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{item.product.name}</div>
+                          <div className="font-mono text-xs text-muted-foreground">
+                            {item.barcode}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">Quantidade</Label>
+                          <Input
+                            type="number"
+                            min={item.maxQuantity === 0 ? 0 : 1}
+                            max={item.maxQuantity ?? undefined}
+                            value={item.quantity}
+                            onChange={(event) => {
+                              const nextQuantity = parseInt(event.target.value, 10);
+                              setTransferCart((items) =>
+                                items.map((cartItem) =>
+                                  cartItem.id === item.id
+                                    ? {
+                                        ...cartItem,
+                                        quantity: Number.isFinite(nextQuantity) ? nextQuantity : 0,
+                                      }
+                                    : cartItem,
+                                ),
+                              );
+                            }}
+                            onBlur={() => {
+                              const clamped = applyQuantityLimit(item.quantity, item.maxQuantity);
+                              if (!clamped.changed) return;
+                              setTransferCart((items) =>
+                                items.map((cartItem) =>
+                                  cartItem.id === item.id
+                                    ? { ...cartItem, quantity: Number(clamped.value) }
+                                    : cartItem,
+                                ),
+                              );
+                            }}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">Lote</Label>
+                          <Input
+                            value={item.lot}
+                            onChange={(event) => {
+                              setTransferCart((items) =>
+                                items.map((cartItem) =>
+                                  cartItem.id === item.id
+                                    ? { ...cartItem, lot: event.target.value }
+                                    : cartItem,
+                                ),
+                              );
+                            }}
+                            onBlur={() => {
+                              const nextLimit = resolveQuantityLimit({
+                                product: item.product,
+                                lots: item.availableLots,
+                                lot: item.lot,
+                                type,
+                                operation,
+                              });
+                              const clamped = applyQuantityLimit(item.quantity, nextLimit);
+                              setTransferCart((items) =>
+                                items.map((cartItem) =>
+                                  cartItem.id === item.id
+                                    ? {
+                                        ...cartItem,
+                                        maxQuantity: nextLimit,
+                                        quantity: Number(clamped.value),
+                                      }
+                                    : cartItem,
+                                ),
+                              );
+                            }}
+                          />
+                        </div>
+
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() =>
+                            setTransferCart((items) =>
+                              items.filter((cartItem) => cartItem.id !== item.id),
+                            )
+                          }
+                          aria-label="Remover produto da lista"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-3 py-4 text-sm text-muted-foreground">
+                    Nenhum produto adicionado.
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -817,7 +1128,10 @@ export function MovementForm({
       {/* MODAL CONFIRMAR */}
       <Dialog
         open={confirmOpen}
-        onOpenChange={setConfirmOpen}
+        onOpenChange={(open) => {
+          setConfirmOpen(open);
+          if (!open) setPassword("");
+        }}
       >
         <DialogContent>
 
@@ -895,9 +1209,7 @@ export function MovementForm({
 
             <Button
               variant="outline"
-              onClick={() =>
-                setConfirmOpen(false)
-              }
+              onClick={closePasswordDialog}
             >
               Cancelar
             </Button>
@@ -941,8 +1253,10 @@ export function MovementForm({
             </AlertDialogTitle>
 
             <AlertDialogDescription>
-              Voce esta prestes a {movementVerb} estoque a quantidade abaixo.
-              Confira os dados antes de concluir a operacao.
+              {operation === "transferencia"
+                ? "Voce esta prestes a transferir a lista abaixo entre estoques."
+                : `Voce esta prestes a ${movementVerb} estoque a quantidade abaixo.`}
+              {" "}Confira os dados antes de concluir a operacao.
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -978,24 +1292,54 @@ export function MovementForm({
               </div>
             )}
 
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-muted-foreground">Produto</span>
-              <span className="font-medium text-right">
-                {product?.name ?? barcode}
-              </span>
-            </div>
+            {operation === "transferencia" ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">Produtos</span>
+                  <span className="font-semibold">
+                    {transferCart.reduce((total, item) => total + item.quantity, 0)} unidades
+                  </span>
+                </div>
 
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-muted-foreground">Quantidade</span>
-              <span className="font-semibold">
-                {quantity}
-              </span>
-            </div>
+                <div className="max-h-64 divide-y overflow-auto rounded-md border bg-background">
+                  {transferCart.map((item) => (
+                    <div key={item.id} className="grid gap-1 px-3 py-2 sm:grid-cols-[1fr_auto]">
+                      <div className="min-w-0">
+                        <div className="truncate font-medium">{item.product.name}</div>
+                        <div className="font-mono text-xs text-muted-foreground">
+                          {item.barcode}
+                        </div>
+                      </div>
+                      <div className="text-left sm:text-right">
+                        <div className="font-semibold">{item.quantity}</div>
+                        <div className="text-xs text-muted-foreground">Lote {item.lot || "-"}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">Produto</span>
+                  <span className="font-medium text-right">
+                    {product?.name ?? barcode}
+                  </span>
+                </div>
 
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-muted-foreground">Lote</span>
-              <span className="font-medium text-right">{lot}</span>
-            </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">Quantidade</span>
+                  <span className="font-semibold">
+                    {quantity}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">Lote</span>
+                  <span className="font-medium text-right">{lot}</span>
+                </div>
+              </>
+            )}
 
             {fefoWarning && (
               <div className="rounded-md border border-warning/40 bg-warning/10 p-3 text-sm">
@@ -1034,7 +1378,7 @@ export function MovementForm({
           </div>
 
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={submitting}>
+            <AlertDialogCancel disabled={submitting} onClick={() => setPassword("")}>
               Revisar dados
             </AlertDialogCancel>
 

@@ -105,6 +105,30 @@ async function ensureDatabaseSchema() {
     "ALTER TABLE usuarios ADD COLUMN theme_preference VARCHAR(10) NOT NULL DEFAULT 'light' AFTER senha_atualizada_em",
   );
 
+  await ensureColumn(
+    "estoques",
+    "tipo",
+    "ALTER TABLE estoques ADD COLUMN tipo VARCHAR(20) NOT NULL DEFAULT 'permanente' AFTER ativo",
+  );
+
+  await ensureColumn(
+    "estoques",
+    "arquivado",
+    "ALTER TABLE estoques ADD COLUMN arquivado TINYINT(1) NOT NULL DEFAULT 0 AFTER tipo",
+  );
+
+  await ensureColumn(
+    "estoques",
+    "arquivado_em",
+    "ALTER TABLE estoques ADD COLUMN arquivado_em DATETIME NULL AFTER arquivado",
+  );
+
+  await pool.query(`
+    UPDATE estoques
+    SET tipo = COALESCE(NULLIF(tipo, ''), 'permanente'),
+        arquivado = COALESCE(arquivado, 0)
+  `);
+
   await pool.query(`
     UPDATE usuarios
     SET atualizado_em = COALESCE(atualizado_em, criado_em, NOW()),

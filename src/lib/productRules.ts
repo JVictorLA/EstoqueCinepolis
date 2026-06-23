@@ -1,7 +1,7 @@
-import { isExpired } from "@/lib/expiration";
 import type { Product, ProductLot } from "@/types";
 
 export type ProductFilters = {
+  stockId: string;
   categoryId: string;
   status: string;
   stockStatus: string;
@@ -13,9 +13,10 @@ export type ProductFilters = {
 };
 
 export const emptyProductFilters: ProductFilters = {
+  stockId: "all",
   categoryId: "all",
   status: "all",
-  stockStatus: "all",
+  stockStatus: "available",
   minPrice: "",
   maxPrice: "",
   minStock: "",
@@ -33,9 +34,6 @@ export function filterProducts(products: Product[], query: string, filters: Prod
   const normalizedQuery = query.trim().toLowerCase();
 
   return products.filter((product) => {
-    const expired = product.requiresExpiration && isExpired(product.expirationDate);
-    if (expired && product.stock <= 0) return false;
-
     const matchesQuery =
       !normalizedQuery ||
       product.name.toLowerCase().includes(normalizedQuery) ||

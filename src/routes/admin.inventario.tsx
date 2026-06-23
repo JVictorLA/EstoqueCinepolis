@@ -89,6 +89,7 @@ import type {
   ProductLot,
 } from "@/types";
 import { getConferenceTotals, getInventorySummary } from "@/lib/inventoryRules";
+import { addPdfBrand, reportBrandHtml, reportBrandStyles } from "@/lib/reportBrand";
 
 export const Route = createFileRoute("/admin/inventario")({
   head: () => ({ meta: [{ title: "Inventário · Zytrex Inventory" }] }),
@@ -223,6 +224,8 @@ function openPrintWindow(title: string, html: string) {
           body { font-family: Arial, sans-serif; color: #111827; margin: 24px; }
           h1 { margin: 0 0 4px; font-size: 22px; }
           p { margin: 4px 0; color: #4b5563; font-size: 12px; }
+          .report-header { border-bottom: 1px solid #e2e8f0; padding-bottom: 14px; margin-bottom: 18px; }
+          ${reportBrandStyles()}
           table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 11px; }
           th, td { border: 1px solid #d1d5db; padding: 7px; text-align: left; }
           th { background: #f3f4f6; }
@@ -257,6 +260,9 @@ function inventoryPrintHtml(items: InventoryCurrentItem[], stockName: string) {
     .join("");
 
   return `
+    <div class="report-header">
+      ${reportBrandHtml()}
+    </div>
     <h1>Relatório de Inventário</h1>
     <p>Gerado em ${formatDateTime(new Date().toISOString())}</p>
     <p>Estoque selecionado: ${stockName}</p>
@@ -291,6 +297,9 @@ function conferencePrintHtml(conference: Conference) {
     .join("");
 
   return `
+    <div class="report-header">
+      ${reportBrandHtml()}
+    </div>
     <h1>Relatório de Conferência de Estoque</h1>
     <p>ID da conferência: ${conference.id}</p>
     <p>Estoque: ${conference.estoqueNome ?? "Todos os estoques"}</p>
@@ -314,6 +323,7 @@ function exportInventoryPdf(items: InventoryCurrentItem[], stockName: string) {
   const totalUnits = items.reduce((sum, item) => sum + item.stock, 0);
   const totalValue = items.reduce((sum, item) => sum + item.stock * item.price, 0);
 
+  addPdfBrand(doc, 220, 8);
   doc.setFontSize(16);
   doc.text("Relatório de Inventário", 14, 16);
   doc.setFontSize(10);
@@ -346,6 +356,7 @@ function exportConferencePdf(conference: Conference) {
   const doc = new jsPDF({ orientation: "landscape" });
   const totals = getConferenceTotals(conference.items);
 
+  addPdfBrand(doc, 220, 8);
   doc.setFontSize(16);
   doc.text("Relatório de Conferência de Estoque", 14, 16);
   doc.setFontSize(10);
@@ -401,7 +412,10 @@ function InventarioPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const activeEstoques = useMemo(() => estoques.filter((estoque) => estoque.ativo), [estoques]);
+  const activeEstoques = useMemo(
+    () => estoques.filter((estoque) => estoque.ativo && !estoque.arquivado),
+    [estoques],
+  );
   const inventoryStockName = selectedStockName(estoques, inventoryStock);
   const conferenceTotals = useMemo(
     () => getConferenceTotals(activeConference?.items ?? []),

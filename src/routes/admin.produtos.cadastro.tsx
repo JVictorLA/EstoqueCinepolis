@@ -12,6 +12,7 @@ import { createProductsBatch, getCategories, getEstoques, type CreateProductPayl
 import type { Category, Estoque } from "@/types";
 import { toast } from "sonner";
 import { generateInternalBarcode } from "@/lib/productRules";
+import { BarcodeInput } from "@/components/scanner/BarcodeInput";
 
 export const Route = createFileRoute("/admin/produtos/cadastro")({
   head: () => ({ meta: [{ title: "Cadastro de produtos · Zytrex Inventory" }] }),
@@ -110,7 +111,7 @@ function ProductBatchCreatePage() {
     Promise.all([getCategories(), getEstoques()])
       .then(([loadedCategories, loadedStocks]) => {
         setCategories(loadedCategories);
-        setEstoques(loadedStocks);
+        setEstoques(loadedStocks.filter((estoque) => estoque.ativo && !estoque.arquivado));
       })
       .catch(() => toast.error("Erro ao carregar dados para cadastro"))
       .finally(() => setLoading(false));
@@ -193,7 +194,7 @@ function ProductBatchCreatePage() {
     }
   };
 
-  const activeStocks = estoques.filter((estoque) => estoque.ativo);
+  const activeStocks = estoques.filter((estoque) => estoque.ativo && !estoque.arquivado);
 
   return (
     <>
@@ -272,16 +273,12 @@ function ProductBatchCreatePage() {
                   </div>
 
                   <div className="grid gap-3">
-                    <div className="space-y-2">
-                      <Label>Código</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          value={row.codigoBarras}
-                          onChange={(event) =>
-                            updateRow(row.id, "codigoBarras", event.target.value)
-                          }
-                          placeholder="EAN-13"
-                        />
+                    <BarcodeInput
+                      value={row.codigoBarras}
+                      onChange={(value) => updateRow(row.id, "codigoBarras", value)}
+                      label="Código"
+                      placeholder="EAN-13"
+                      action={
                         <Button
                           type="button"
                           variant="outline"
@@ -291,8 +288,8 @@ function ProductBatchCreatePage() {
                         >
                           <Barcode className="h-4 w-4" />
                         </Button>
-                      </div>
-                    </div>
+                      }
+                    />
 
                     <div className="space-y-2">
                       <Label>Nome</Label>

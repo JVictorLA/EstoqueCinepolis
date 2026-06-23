@@ -15,6 +15,7 @@ import {
   Trash2,
   Check,
   X,
+  Printer,
 } from "lucide-react";
 import { PageHeader, StatCard, EmptyState } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -81,6 +82,7 @@ import {
   isAdjustmentRowComplete,
   validateAdjustmentRow,
 } from "@/lib/productRules";
+import { printProductsTable } from "@/lib/productPrint";
 import {
   getProducts,
   updateProduct,
@@ -98,6 +100,7 @@ import {
 import type { Product, Category, Estoque, ProductLot, LotStatus } from "@/types";
 
 type ProductFilters = {
+  stockId: string;
   categoryId: string;
   status: string;
   stockStatus: string;
@@ -109,9 +112,10 @@ type ProductFilters = {
 };
 
 const emptyFilters: ProductFilters = {
+  stockId: "all",
   categoryId: "all",
   status: "all",
-  stockStatus: "all",
+  stockStatus: "available",
   minPrice: "",
   maxPrice: "",
   minStock: "",
@@ -216,7 +220,6 @@ function ProdutosPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [estoques, setEstoques] = useState<Estoque[]>([]);
-  const [selectedEstoqueId, setSelectedEstoqueId] = useState("all");
   const [query, setQuery] = useState("");
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -233,6 +236,7 @@ function ProdutosPage() {
   const [adjustmentLots, setAdjustmentLots] = useState<Record<string, ProductLot[]>>({});
   const [loadingAdjustmentCatalog, setLoadingAdjustmentCatalog] = useState(false);
   const [savingAdjustments, setSavingAdjustments] = useState(false);
+  const selectedEstoqueId = appliedFilters.stockId;
 
   const loadCategories = () => {
     getCategories().then(setCategories);
@@ -244,7 +248,7 @@ function ProdutosPage() {
 
   useEffect(() => {
     getEstoques().then((data) => {
-      setEstoques(data);
+      setEstoques(data.filter((estoque) => estoque.ativo && !estoque.arquivado));
     });
     loadCategories();
   }, []);
@@ -273,7 +277,7 @@ function ProdutosPage() {
   const loadAdjustmentCatalog = async () => {
     setLoadingAdjustmentCatalog(true);
     try {
-      const activeStocks = estoques.filter((estoque) => estoque.ativo);
+      const activeStocks = estoques.filter((estoque) => estoque.ativo && !estoque.arquivado);
       const productsByStock = await Promise.all(
         activeStocks.map(async (estoque) => ({
           estoque,
@@ -429,6 +433,24 @@ function ProdutosPage() {
     }
   };
 
+  const printProducts = () => {
+    const stockName =
+      selectedEstoqueId === "all"
+        ? "Todos os estoques"
+        : estoques.find((estoque) => String(estoque.id) === selectedEstoqueId)?.nome ??
+          "Estoque selecionado";
+    const result = printProductsTable(filtered, { stockName });
+
+    if (result === "empty") {
+      toast.info("Nao ha produtos para imprimir com os filtros atuais.");
+      return;
+    }
+
+    if (result === "blocked") {
+      toast.error("Nao foi possivel abrir a janela de impressao. Verifique o bloqueador de pop-ups.");
+    }
+  };
+
   const lowStock = products.filter((p) => p.stock > 0 && p.stock <= p.minStock).length;
   const noStock = products.filter((p) => p.stock === 0).length;
   const total = products.reduce((s, p) => s + p.price * p.stock, 0);
@@ -442,6 +464,12 @@ function ProdutosPage() {
       <PageHeader
         title="Produtos"
         subtitle={`${products.length} ${products.length === 1 ? "item cadastrado" : "itens cadastrados"}`}
+        actions={
+          <Button variant="outline" className="hidden gap-2 md:inline-flex" onClick={printProducts}>
+            <Printer className="h-4 w-4" />
+            Imprimir produtos
+          </Button>
+        }
       />
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:mb-6 sm:gap-4 lg:grid-cols-4">
@@ -500,19 +528,6 @@ function ProdutosPage() {
               </span>
             )}
           </Button>
-          <Select value={selectedEstoqueId} onValueChange={setSelectedEstoqueId}>
-            <SelectTrigger className="w-full sm:w-[220px]">
-              <SelectValue placeholder="Selecione o estoque" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos os estoques</SelectItem>
-              {estoques.map((estoque) => (
-                <SelectItem key={estoque.id} value={String(estoque.id)}>
-                  {estoque.nome}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
           <Button variant="outline" size="sm" className="gap-2" onClick={enterAdjustmentMode}>
             <RefreshCw className="h-4 w-4" />
             <span className="hidden sm:inline">Ajuste de estoque</span>
@@ -567,6 +582,28 @@ function ProdutosPage() {
         {filtersOpen && !adjustmentMode && (
           <div className="border-b bg-muted/20 p-3 sm:p-4">
             <div className="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="space-y-2">
+                <Label>Estoque</Label>
+                <Select
+                  value={draftFilters.stockId}
+                  onValueChange={(value) =>
+                    setDraftFilters((filters) => ({ ...filters, stockId: value }))
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o estoque" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os estoques</SelectItem>
+                    {estoques.map((estoque) => (
+                      <SelectItem key={estoque.id} value={String(estoque.id)}>
+                        {estoque.nome}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-2">
                 <Label>Categoria</Label>
                 <Select

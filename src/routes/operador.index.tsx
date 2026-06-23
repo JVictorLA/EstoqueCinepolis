@@ -39,7 +39,7 @@ function OperadorIndex() {
   useEffect(() => {
     getEstoques()
       .then((data) => {
-        const ativos = data.filter((estoque) => estoque.ativo);
+        const ativos = data.filter((estoque) => estoque.ativo && !estoque.arquivado);
         setEstoques(ativos);
         if (ativos[0]) setSelectedEstoqueId(String(ativos[0].id));
       })

@@ -266,6 +266,9 @@ async function registrarMovimentacao({
     if (!atual) {
       throw Object.assign(new Error("Produto não vinculado ao estoque"), { status: 404 });
     }
+    if (!atual.estoque_ativo || atual.estoque_arquivado) {
+      throw Object.assign(new Error("Estoque inativo ou arquivado"), { status: 400 });
+    }
     if (!atual.ativo) {
       throw Object.assign(new Error("Produto inativo"), { status: 400 });
     }
@@ -402,7 +405,9 @@ async function registrarMovimentacao({
   }
 }
 
-async function transferirEstoque({
+async function transferirEstoqueItem({
+  conn,
+  rules,
   produto,
   estoque_origem_id,
   estoque_destino_id,
@@ -419,13 +424,8 @@ async function transferirEstoque({
     });
   }
 
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-    const rules = await getMovementRules(conn);
-
     const [destinoRows] = await conn.query(
-      "SELECT id, nome, ativo FROM estoques WHERE id = ? LIMIT 1",
+      "SELECT id, nome, ativo, COALESCE(arquivado, 0) AS arquivado FROM estoques WHERE id = ? LIMIT 1",
       [estoque_destino_id],
     );
 
@@ -434,8 +434,8 @@ async function transferirEstoque({
         status: 404,
       });
     }
-    if (!destinoRows[0].ativo) {
-      throw Object.assign(new Error("Estoque de destino inativo"), {
+    if (!destinoRows[0].ativo || destinoRows[0].arquivado) {
+      throw Object.assign(new Error("Estoque de destino inativo ou arquivado"), {
         status: 400,
       });
     }
@@ -446,6 +446,9 @@ async function transferirEstoque({
       throw Object.assign(new Error("Produto não vinculado ao estoque de origem"), {
         status: 404,
       });
+    }
+    if (!origem.estoque_ativo || origem.estoque_arquivado) {
+      throw Object.assign(new Error("Estoque de origem inativo ou arquivado"), { status: 400 });
     }
 
     await loteService.ensureDefaultLotFromCache(conn, origem);
@@ -479,7 +482,6 @@ async function transferirEstoque({
       conn,
       destinoProduto.estoque_produto_id,
     );
-    const destinoDepois = destinoAntes + quantidade;
     const destinoNome = destinoRows[0].nome;
 
     await conn.query(
@@ -577,8 +579,6 @@ async function transferirEstoque({
       destinoProduto.estoque_minimo,
     );
 
-    await conn.commit();
-
     return {
       saida_id: saida.insertId,
       entrada_id: entrada.insertId,
@@ -594,6 +594,72 @@ async function transferirEstoque({
       lote_id: loteOrigem.id,
       lote_codigo: loteService.displayLotCode(loteOrigem.lote),
       ignorou_fefo: ignorouFefo,
+    };
+}
+
+async function transferirEstoque(payload) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const rules = await getMovementRules(conn);
+    const result = await transferirEstoqueItem({ conn, rules, ...payload });
+    await conn.commit();
+    return result;
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+}
+
+async function transferirEstoqueEmLote({
+  itens,
+  estoque_origem_id,
+  estoque_destino_id,
+  usuario,
+  observacao,
+}) {
+  if (!Array.isArray(itens) || !itens.length) {
+    throw Object.assign(new Error("Informe pelo menos um item para transferir"), { status: 400 });
+  }
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const rules = await getMovementRules(conn);
+    const resultados = [];
+
+    for (const item of itens) {
+      resultados.push(
+        await transferirEstoqueItem({
+          conn,
+          rules,
+          produto: item.produto,
+          estoque_origem_id,
+          estoque_destino_id,
+          usuario,
+          quantidade: item.quantidade,
+          observacao,
+          lote: item.lote,
+          confirmar_ignorar_fefo: item.confirmar_ignorar_fefo,
+          justificativa_fefo: item.justificativa_fefo,
+        }),
+      );
+    }
+
+    await conn.commit();
+
+    return {
+      estoque_origem_id,
+      estoque_origem_nome: resultados[0]?.estoque_origem_nome ?? null,
+      estoque_destino_id,
+      estoque_destino_nome: resultados[0]?.estoque_destino_nome ?? null,
+      usuario_id: usuario.id,
+      usuario_nome: usuario.nome,
+      total_itens: resultados.length,
+      quantidade_total: resultados.reduce((total, item) => total + Number(item.quantidade || 0), 0),
+      itens: resultados,
     };
   } catch (e) {
     await conn.rollback();
@@ -699,6 +765,9 @@ async function ajustarEstoque({ usuario, itens }) {
         throw Object.assign(new Error("Produto não vinculado ao estoque selecionado"), {
           status: 400,
         });
+      }
+      if (!stockProduct.estoque_ativo || stockProduct.estoque_arquivado) {
+        throw Object.assign(new Error("Estoque inativo ou arquivado"), { status: 400 });
       }
       if (!stockProduct.ativo) {
         throw Object.assign(new Error("Produto inativo"), { status: 400 });
@@ -858,6 +927,7 @@ async function listar(filtros = {}) {
 module.exports = {
   registrarMovimentacao,
   transferirEstoque,
+  transferirEstoqueEmLote,
   ajustarEstoque,
   listar,
   atualizarAlertasEstoque,

@@ -72,7 +72,9 @@ async function getStockProduct(conn, produtoId, estoqueId, lock = false) {
        p.preco_venda,
        p.categoria_id,
        p.ativo,
-       e.nome AS estoque_nome
+       e.nome AS estoque_nome,
+       e.ativo AS estoque_ativo,
+       COALESCE(e.arquivado, 0) AS estoque_arquivado
      FROM estoque_produtos ep
      INNER JOIN produtos p ON p.id = ep.produto_id
      INNER JOIN estoques e ON e.id = ep.estoque_id
@@ -86,6 +88,14 @@ async function getStockProduct(conn, produtoId, estoqueId, lock = false) {
 async function ensureStockProduct(conn, produtoId, estoqueId) {
   let row = await getStockProduct(conn, produtoId, estoqueId, true);
   if (row) return row;
+
+  const [stocks] = await conn.query(
+    "SELECT id FROM estoques WHERE id = ? AND ativo = 1 AND COALESCE(arquivado, 0) = 0 LIMIT 1",
+    [estoqueId],
+  );
+  if (!stocks.length) {
+    throw Object.assign(new Error("Estoque inativo ou arquivado"), { status: 400 });
+  }
 
   await conn.query(
     `INSERT INTO estoque_produtos

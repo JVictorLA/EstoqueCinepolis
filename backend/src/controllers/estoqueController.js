@@ -31,8 +31,9 @@ async function listarEstoques(_req, res) {
 }
 
 async function criar(req, res) {
-  const { nome, ativo } = req.body || {};
+  const { nome, ativo, tipo } = req.body || {};
   const nomeNormalizado = nome ? String(nome).trim() : "";
+  const tipoNormalizado = tipo === "temporario" ? "temporario" : "permanente";
 
   if (!nomeNormalizado) {
     return fail(res, 400, "nome é obrigatório");
@@ -45,6 +46,7 @@ async function criar(req, res) {
   const novo = await estoqueService.create({
     nome: nomeNormalizado,
     ativo: ativo === undefined ? true : !!ativo,
+    tipo: tipoNormalizado,
   });
 
   return created(res, novo, "Estoque criado");
@@ -59,9 +61,22 @@ async function alterarStatus(req, res) {
 
   const existing = await estoqueService.findById(id);
   if (!existing) return fail(res, 404, "Estoque não encontrado");
+  if (existing.arquivado) return fail(res, 400, "Estoque arquivado não pode ser ativado");
 
   const atualizado = await estoqueService.setStatus(id, !!ativo);
   return ok(res, atualizado, "Status atualizado");
 }
 
-module.exports = { listar, listarEstoques, criar, alterarStatus };
+async function arquivar(req, res) {
+  const id = Number(req.params.id);
+  if (!id) return fail(res, 400, "id inválido");
+
+  try {
+    const atualizado = await estoqueService.archive(id);
+    return ok(res, atualizado, "Estoque arquivado");
+  } catch (error) {
+    return fail(res, error.status || 500, error.message || "Erro ao arquivar estoque");
+  }
+}
+
+module.exports = { listar, listarEstoques, criar, alterarStatus, arquivar };

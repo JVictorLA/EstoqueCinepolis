@@ -184,7 +184,9 @@ function KitsPage() {
   };
 
   useEffect(() => {
-    getEstoques().then((rows) => setEstoques(rows.filter((estoque) => estoque.ativo)));
+    getEstoques().then((rows) =>
+      setEstoques(rows.filter((estoque) => estoque.ativo && !estoque.arquivado)),
+    );
   }, []);
 
   useEffect(() => {

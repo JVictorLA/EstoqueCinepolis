@@ -156,14 +156,15 @@ async function registrarManual({ estoque_id, codigo_barras, quantidade, motivo_i
   try {
     await conn.beginTransaction();
 
-    const [estoques] = await conn.query("SELECT id, ativo FROM estoques WHERE id = ? LIMIT 1", [
-      estoque_id,
-    ]);
+    const [estoques] = await conn.query(
+      "SELECT id, ativo, COALESCE(arquivado, 0) AS arquivado FROM estoques WHERE id = ? LIMIT 1",
+      [estoque_id],
+    );
     if (!estoques.length) {
       throw Object.assign(new Error("Estoque não encontrado"), { status: 404 });
     }
-    if (!estoques[0].ativo) {
-      throw Object.assign(new Error("Estoque inativo"), { status: 400 });
+    if (!estoques[0].ativo || estoques[0].arquivado) {
+      throw Object.assign(new Error("Estoque inativo ou arquivado"), { status: 400 });
     }
 
     const [motivos] = await conn.query(

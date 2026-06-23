@@ -28,7 +28,9 @@ function Dashboard() {
   const [selectedEstoqueId, setSelectedEstoqueId] = useState("all");
 
   useEffect(() => {
-    getEstoques().then(setEstoques);
+    getEstoques().then((rows) =>
+      setEstoques(rows.filter((estoque) => estoque.ativo && !estoque.arquivado)),
+    );
   }, []);
 
   useEffect(() => {

@@ -17,6 +17,8 @@ import type {
   UserRole,
   Estoque,
   TransferMovement,
+  TransferStockBatchPayload,
+  TransferStockBatchResult,
   Waste,
   WasteReason,
   WasteSummary,
@@ -311,6 +313,18 @@ interface RawTransferMovement {
   ignorou_fefo?: 0 | 1 | boolean;
 }
 
+interface RawTransferBatch {
+  estoque_origem_id: number;
+  estoque_origem_nome: string | null;
+  estoque_destino_id: number;
+  estoque_destino_nome: string | null;
+  usuario_id: number;
+  usuario_nome: string;
+  total_itens: number;
+  quantidade_total: number;
+  itens: RawTransferMovement[];
+}
+
 function mapTransferMovement(r: RawTransferMovement): TransferMovement {
   return {
     saidaId: r.saida_id,
@@ -327,6 +341,20 @@ function mapTransferMovement(r: RawTransferMovement): TransferMovement {
     lotId: r.lote_id ?? null,
     lotCode: r.lote_codigo ?? null,
     ignoredFefo: !!r.ignorou_fefo,
+  };
+}
+
+function mapTransferBatch(r: RawTransferBatch): TransferStockBatchResult {
+  return {
+    sourceStockId: r.estoque_origem_id,
+    sourceStockName: r.estoque_origem_nome,
+    targetStockId: r.estoque_destino_id,
+    targetStockName: r.estoque_destino_nome,
+    userId: r.usuario_id,
+    userName: r.usuario_nome,
+    totalItems: Number(r.total_itens),
+    totalQuantity: Number(r.quantidade_total),
+    items: (r.itens ?? []).map(mapTransferMovement),
   };
 }
 function mapMovement(r: RawMovement): Movement {
@@ -441,6 +469,9 @@ interface RawEstoque {
   id: number;
   nome: string;
   ativo: 0 | 1 | boolean;
+  tipo?: "permanente" | "temporario" | string | null;
+  arquivado?: 0 | 1 | boolean;
+  arquivado_em?: string | null;
   criado_em: string;
 }
 
@@ -653,6 +684,9 @@ function mapEstoque(r: RawEstoque): Estoque {
     id: r.id,
     nome: r.nome,
     ativo: !!r.ativo,
+    tipo: r.tipo === "temporario" ? "temporario" : "permanente",
+    arquivado: !!r.arquivado,
+    arquivadoEm: r.arquivado_em ?? null,
     criadoEm: r.criado_em,
   };
 }
@@ -857,7 +891,11 @@ export async function getEstoques(): Promise<Estoque[]> {
   return rows.map(mapEstoque);
 }
 
-export async function createEstoque(payload: { nome: string; ativo?: boolean }): Promise<Estoque> {
+export async function createEstoque(payload: {
+  nome: string;
+  ativo?: boolean;
+  tipo?: "permanente" | "temporario";
+}): Promise<Estoque> {
   const r = await request<RawEstoque>("/estoques", {
     method: "POST",
     auth: true,
@@ -871,6 +909,14 @@ export async function setEstoqueStatus(id: number, ativo: boolean): Promise<Esto
     method: "PATCH",
     auth: true,
     body: JSON.stringify({ ativo }),
+  });
+  return mapEstoque(r);
+}
+
+export async function archiveEstoque(id: number): Promise<Estoque> {
+  const r = await request<RawEstoque>(`/estoques/${id}/arquivar`, {
+    method: "PATCH",
+    auth: true,
   });
   return mapEstoque(r);
 }
@@ -1272,6 +1318,16 @@ export async function transferStock(payload: {
     body: JSON.stringify(payload),
   });
   return mapTransferMovement(r);
+}
+
+export async function transferStockBatch(
+  payload: TransferStockBatchPayload,
+): Promise<TransferStockBatchResult> {
+  const r = await request<RawTransferBatch>("/movimentacoes/transferencia/lote", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return mapTransferBatch(r);
 }
 
 export interface MovementFilters {
