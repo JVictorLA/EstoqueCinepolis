@@ -879,7 +879,7 @@ function ProdutosPage() {
                     </TableCell>
                     <TableCell className="text-sm">
                       <div className="space-y-1.5">
-                        <div>{p.categoryName ?? "â€”"}</div>
+                        <div>{p.categoryName ?? "Sem categoria"}</div>
                       </div>
                     </TableCell>
                     <TableCell className="text-center text-sm">
@@ -1479,7 +1479,7 @@ function ProductLotsDialog({
                     <TableCell>{lot.estoqueNome}</TableCell>
                     <TableCell className="font-mono text-xs">{lot.lot}</TableCell>
                     <TableCell>{lot.quantity}</TableCell>
-                    <TableCell>{lot.expirationDate ? formatDate(lot.expirationDate) : "â€”"}</TableCell>
+                    <TableCell>{lot.expirationDate ? formatDate(lot.expirationDate) : "Sem validade"}</TableCell>
                     <TableCell>{statusBadge(lot)}</TableCell>
                   </TableRow>
                 ))}

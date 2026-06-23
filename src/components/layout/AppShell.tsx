@@ -22,6 +22,23 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { clearSession, getStoredUser } from "@/services/api";
 import {
   GlobalSearch,
@@ -32,6 +49,12 @@ import {
 import zyntraIcon from "@/icones/android-chrome-512x512.png";
 
 type NavItem = { to: string; label: string; icon: LucideIcon };
+type HelpTopic = {
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  steps: string[];
+};
 
 const adminNav: NavItem[] = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -53,6 +76,123 @@ const operadorNav: NavItem[] = [
   { to: "/operador/kits", label: "Retirada de Kit", icon: Boxes },
   { to: "/operador/desperdicio", label: "Registrar desperdício", icon: Trash2 },
   { to: "/operador/historico", label: "Histórico", icon: History },
+];
+
+const adminHelpTopics: HelpTopic[] = [
+  {
+    title: "Produtos",
+    description: "Use quando precisar cadastrar um novo item ou ajustar informacoes de um produto.",
+    icon: Package,
+    steps: [
+      "Acesse Produtos no menu lateral.",
+      "Use Novo produto para cadastrar um item ainda inexistente.",
+      "Abra as acoes do produto para editar dados ja cadastrados.",
+      "Revise nome, categoria, unidade e dados de controle antes de salvar.",
+    ],
+  },
+  {
+    title: "Entrada",
+    description:
+      "Registre a chegada de produtos para atualizar a quantidade disponivel no estoque.",
+    icon: ArrowDownToLine,
+    steps: [
+      "Acesse Entrada de Produtos.",
+      "Selecione o produto e o estoque de destino.",
+      "Informe quantidade, validade e demais dados solicitados.",
+      "Confira os dados e confirme a entrada.",
+    ],
+  },
+  {
+    title: "Retirada",
+    description: "Use para registrar saidas do estoque mantendo o historico do responsavel.",
+    icon: ArrowUpFromLine,
+    steps: [
+      "Acesse Retirada de Produtos.",
+      "Escolha o produto e o estoque de origem.",
+      "Informe a quantidade retirada.",
+      "Confirme a operacao para salvar a movimentacao.",
+    ],
+  },
+  {
+    title: "Inventario",
+    description: "Use para conferir quantidades fisicas e comparar com o saldo do sistema.",
+    icon: ClipboardList,
+    steps: [
+      "Acesse Inventario.",
+      "Filtre pelo estoque que sera conferido.",
+      "Compare a quantidade fisica com a quantidade registrada.",
+      "Registre ajustes apenas depois de revisar as divergencias.",
+    ],
+  },
+  {
+    title: "Busca global",
+    description: "Pesquise rapidamente produtos e usuarios sem sair da area administrativa.",
+    icon: ListOrdered,
+    steps: [
+      "Use o campo de busca no header.",
+      "Digite nome, matricula, codigo ou informacao relacionada.",
+      "Selecione um resultado para abrir os detalhes.",
+      "Use a tela de detalhes para consultar ou imprimir informacoes.",
+    ],
+  },
+];
+
+const operadorHelpTopics: HelpTopic[] = [
+  {
+    title: "Escolher estoque",
+    description: "Defina qual estoque sera usado nas operacoes do modo operacional.",
+    icon: Warehouse,
+    steps: [
+      "Na entrada do modo operacional, selecione o estoque correto.",
+      "Confira o nome exibido no header antes de registrar movimentos.",
+      "Use Trocar quando precisar mudar para outro estoque.",
+      "Evite registrar entradas ou saidas se o estoque exibido estiver incorreto.",
+    ],
+  },
+  {
+    title: "Entrada",
+    description: "Registre produtos recebidos no estoque atual com identificacao do responsavel.",
+    icon: ArrowDownToLine,
+    steps: [
+      "Acesse Entrada de Produtos.",
+      "Informe sua matricula e senha quando solicitado.",
+      "Selecione o produto e preencha a quantidade recebida.",
+      "Revise os dados e confirme a entrada.",
+    ],
+  },
+  {
+    title: "Retirada",
+    description: "Use para baixar produtos consumidos ou retirados do estoque atual.",
+    icon: ArrowUpFromLine,
+    steps: [
+      "Acesse Retirada de Produtos.",
+      "Informe sua matricula e senha.",
+      "Selecione o produto e a quantidade retirada.",
+      "Confirme somente depois de revisar a operacao.",
+    ],
+  },
+  {
+    title: "Retirada de Kit",
+    description: "Registre a baixa de kits para movimentar todos os itens vinculados corretamente.",
+    icon: Boxes,
+    steps: [
+      "Acesse Retirada de Kit.",
+      "Escolha o kit que sera retirado.",
+      "Informe a quantidade de kits.",
+      "Confirme a retirada para baixar os itens do kit.",
+    ],
+  },
+  {
+    title: "Historico",
+    description: "Consulte registros ja feitos para acompanhar entradas, saidas e kits.",
+    icon: History,
+    steps: [
+      "Acesse Historico no menu lateral.",
+      "Use os filtros disponiveis para localizar registros.",
+      "Confira data, responsavel, produto e quantidade.",
+      "Use as informacoes para validar operacoes recentes.",
+    ],
+  },
 ];
 
 interface AppShellProps {
@@ -85,7 +225,9 @@ export function AppShell({ variant, children }: AppShellProps) {
   const [operatorStockName, setOperatorStockName] = useState<string | null>(null);
   const [adminName, setAdminName] = useState("Administrador");
   const [globalSearchView, setGlobalSearchView] = useState<GlobalSearchViewState | null>(null);
+  const [selectedHelpTopic, setSelectedHelpTopic] = useState<HelpTopic | null>(null);
 
+  const helpTopics = variant === "admin" ? adminHelpTopics : operadorHelpTopics;
   const userLabel = variant === "admin" ? adminName : "Modo Operacional";
   const initials =
     variant === "admin"
@@ -170,6 +312,7 @@ export function AppShell({ variant, children }: AppShellProps) {
         ? "zyntra-gradient text-white shadow-[var(--shadow-elegant)]"
         : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
     }`;
+  const SelectedHelpIcon = selectedHelpTopic?.icon;
 
   return (
     <div className="min-h-screen w-full bg-background text-foreground">
@@ -266,13 +409,36 @@ export function AppShell({ variant, children }: AppShellProps) {
           )}
           <div className="hidden flex-1 sm:block" />
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="hidden gap-2 text-muted-foreground sm:inline-flex"
-          >
-            <HelpCircle className="h-4 w-4" /> Ajuda
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Abrir ajuda"
+                className="h-9 w-9 px-0 text-muted-foreground sm:w-auto sm:px-3"
+              >
+                <HelpCircle className="h-4 w-4" />
+                <span className="hidden sm:inline">Ajuda</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel>Guias rapidos</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {helpTopics.map((topic) => {
+                const Icon = topic.icon;
+                return (
+                  <DropdownMenuItem
+                    key={topic.title}
+                    className="cursor-pointer"
+                    onSelect={() => setSelectedHelpTopic(topic)}
+                  >
+                    <Icon className="h-4 w-4 text-muted-foreground" />
+                    <span>{topic.title}</span>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {variant === "operador" && operatorStockName && (
             <div className="hidden items-center gap-2 rounded-xl border bg-card px-3 py-2 text-xs md:flex">
@@ -330,6 +496,46 @@ export function AppShell({ variant, children }: AppShellProps) {
       >
         <ChevronUp className="h-5 w-5" />
       </button>
+
+      <Dialog
+        open={!!selectedHelpTopic}
+        onOpenChange={(open) => {
+          if (!open) setSelectedHelpTopic(null);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          {selectedHelpTopic && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  {SelectedHelpIcon && <SelectedHelpIcon className="h-5 w-5 text-primary" />}
+                  {selectedHelpTopic.title}
+                </DialogTitle>
+                <DialogDescription>{selectedHelpTopic.description}</DialogDescription>
+              </DialogHeader>
+
+              <ol className="space-y-3 text-sm text-foreground">
+                {selectedHelpTopic.steps.map((step, index) => (
+                  <li key={step} className="flex gap-3">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">
+                      {index + 1}
+                    </span>
+                    <span className="pt-0.5 leading-relaxed">{step}</span>
+                  </li>
+                ))}
+              </ol>
+
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button type="button" variant="secondary">
+                    Entendi
+                  </Button>
+                </DialogClose>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
