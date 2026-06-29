@@ -124,6 +124,10 @@ export interface TransferStockBatchPayload {
   matricula: string;
   senha: string;
   observacao?: string;
+  autorizacao_admin?: {
+    matricula: string;
+    senha: string;
+  };
   itens: TransferStockBatchItem[];
 }
 
@@ -150,6 +154,7 @@ export interface SystemUser {
   active: boolean;
   createdAt: string;
   themePreference?: "light" | "dark";
+  canDelete?: boolean;
 }
 
 export interface AuthUser {

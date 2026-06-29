@@ -1,9 +1,10 @@
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useState, type HTMLAttributes, type ReactNode } from "react";
 import { ScanLine } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useIsMobileOrTablet } from "@/hooks/use-mobile-or-tablet";
+import { cn } from "@/lib/utils";
 import { BarcodeScanner } from "./BarcodeScanner";
 
 interface BarcodeInputProps {
@@ -14,6 +15,8 @@ interface BarcodeInputProps {
   autoFocus?: boolean;
   onSubmit?: (v: string) => void;
   action?: ReactNode;
+  inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
+  inputClassName?: string;
 }
 
 export function BarcodeInput({
@@ -24,6 +27,8 @@ export function BarcodeInput({
   autoFocus,
   onSubmit,
   action,
+  inputMode = "numeric",
+  inputClassName,
 }: BarcodeInputProps) {
   const isMobile = useIsMobileOrTablet();
   const [open, setOpen] = useState(false);
@@ -52,26 +57,18 @@ export function BarcodeInput({
           }}
           placeholder={placeholder}
           autoFocus={autoFocus}
-          inputMode="numeric"
-          className="min-w-0 flex-1 font-mono"
+          inputMode={inputMode}
+          className={cn("min-w-0 flex-1 font-mono", inputClassName)}
         />
         {isMobile && (
-          <Button
-            type="button"
-            onClick={() => setOpen(true)}
-            className="shrink-0 gap-2"
-          >
+          <Button type="button" onClick={() => setOpen(true)} className="shrink-0 gap-2">
             <ScanLine className="h-4 w-4" />
             Escanear
           </Button>
         )}
         {action}
       </div>
-      <BarcodeScanner
-        open={open}
-        onClose={closeScanner}
-        onDetected={handleDetected}
-      />
+      <BarcodeScanner open={open} onClose={closeScanner} onDetected={handleDetected} />
     </div>
   );
 }

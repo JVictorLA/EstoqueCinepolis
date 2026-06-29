@@ -1,13 +1,16 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, CheckCircle2, Loader2, LogOut, Warehouse } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Loader2, LogOut, Warehouse } from "lucide-react";
 import { EmptyState } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { clearSession, getEstoques } from "@/services/api";
+import { clearSession, getEstoques, getOperationalStatus } from "@/services/api";
 import type { Estoque } from "@/types";
 import { toast } from "sonner";
 
 import zytrexIcon from "@/icones/android-chrome-512x512.png";
+
+const MAINTENANCE_MESSAGE =
+  "Sistema em modo manutenção. Operações do modo operador estão temporariamente bloqueadas.";
 
 export const Route = createFileRoute("/operador/")({
   head: () => ({ meta: [{ title: "Selecionar estoque · Zytrex Inventory" }] }),
@@ -19,9 +22,7 @@ function OperatorBrandLogo() {
     <div className="flex items-center gap-3">
       <img src={zytrexIcon} alt="" className="h-12 w-12 object-contain sm:h-24 sm:w-24" />
       <div className="leading-none">
-        <div className="text-2xl font-bold tracking-normal text-foreground sm:text-5xl">
-          Zytrex
-        </div>
+        <div className="text-2xl font-bold tracking-normal text-foreground sm:text-5xl">Zytrex</div>
         <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.24em] text-primary sm:mt-2 sm:text-sm sm:tracking-[0.32em]">
           Inventory
         </div>
@@ -35,10 +36,15 @@ function OperadorIndex() {
   const [estoques, setEstoques] = useState<Estoque[]>([]);
   const [selectedEstoqueId, setSelectedEstoqueId] = useState("");
   const [loading, setLoading] = useState(true);
+  const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    getEstoques()
-      .then((data) => {
+    Promise.all([getOperationalStatus(), getEstoques()])
+      .then(([status, data]) => {
+        if (status.modo_manutencao) {
+          setMaintenanceMessage(status.mensagem || MAINTENANCE_MESSAGE);
+          return;
+        }
         const ativos = data.filter((estoque) => estoque.ativo && !estoque.arquivado);
         setEstoques(ativos);
         if (ativos[0]) setSelectedEstoqueId(String(ativos[0].id));
@@ -90,8 +96,8 @@ function OperadorIndex() {
               Selecione o estoque de trabalho
             </h1>
             <p className="hidden max-w-lg text-base leading-7 text-muted-foreground sm:block">
-              Escolha o estoque antes de iniciar as retiradas. Depois disso, o menu operacional
-              sera liberado somente para o estoque selecionado.
+              Escolha o estoque antes de iniciar as retiradas. Depois disso, o menu operacional sera
+              liberado somente para o estoque selecionado.
             </p>
           </div>
 
@@ -124,6 +130,17 @@ function OperadorIndex() {
               <Loader2 className="h-4 w-4 animate-spin" />
               Carregando estoques...
             </div>
+          ) : maintenanceMessage ? (
+            <EmptyState
+              icon={AlertTriangle}
+              title="Modo operador bloqueado"
+              description={maintenanceMessage}
+              action={
+                <Button variant="outline" onClick={signOut}>
+                  Voltar para o início
+                </Button>
+              }
+            />
           ) : estoques.length === 0 ? (
             <EmptyState
               icon={Warehouse}

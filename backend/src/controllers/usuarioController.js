@@ -120,8 +120,33 @@ async function alterarSenha(req, res) {
 
   const senhaValida = await bcrypt.compare(senhaAtual, user.senha_hash);
   if (!senhaValida) {
+    const locked = await usuarioService.registerFailedPasswordAttempt(user);
+    if (locked?.error === "locked") {
+      return res.status(403).json({
+        success: false,
+        message: locked.message,
+        data: {
+          usuario_bloqueado_temporariamente: true,
+          retry_after_seconds: locked.retry_after_seconds,
+          aviso_ultimas_tentativas_apos_timer: !!locked.aviso_ultimas_tentativas_apos_timer,
+        },
+        error: locked.message,
+      });
+    }
+    if (locked?.error === "disabled_by_password_attempts") {
+      return res.status(locked.status || 403).json({
+        success: false,
+        message: locked.message,
+        data: {
+          usuario_desabilitado_por_senha: true,
+        },
+        error: locked.message,
+      });
+    }
     return fail(res, 401, "Senha atual incorreta");
   }
+
+  await usuarioService.resetPasswordFailures(id);
 
   const mesmaSenha = await bcrypt.compare(novaSenha, user.senha_hash);
   if (mesmaSenha) {
@@ -183,6 +208,30 @@ async function resetarSenha(req, res) {
   return ok(res, null, "Senha temporária resetada; usuário deve trocá-la no próximo acesso");
 }
 
+async function remover(req, res) {
+  const id = Number(req.params.id);
+  if (!id) return fail(res, 400, "ID invalido");
+
+  const currentUserId = Number(req.user?.id);
+  if (currentUserId === id) {
+    return fail(res, 403, "Voce nao pode excluir sua propria conta");
+  }
+
+  const existing = await usuarioService.findById(id);
+  if (!existing) return fail(res, 404, "Usuario nao encontrado");
+
+  if (existing.tipo === "master") {
+    return fail(res, 403, "Usuario master nao pode ser excluido");
+  }
+
+  if (await usuarioService.hasDeleteBlockers(id)) {
+    return fail(res, 409, "Usuario com historico nao pode ser excluido");
+  }
+
+  await usuarioService.remove(id);
+  return ok(res, null, "Usuario excluido");
+}
+
 module.exports = {
   buscarPorMatricula,
   listar,
@@ -192,4 +241,5 @@ module.exports = {
   alterarSenha,
   atualizarPreferencias,
   resetarSenha,
+  remover,
 };

@@ -39,14 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WasteDialog } from "@/components/waste/WasteDialog";
 import {
   getEstoques,
@@ -170,12 +163,15 @@ function formatDateTime(value?: string | null) {
   }).format(date);
 }
 
-function filtersDescription(filters: WasteFiltersState, names: {
-  estoque: string;
-  produto: string;
-  usuario: string;
-  motivo: string;
-}) {
+function filtersDescription(
+  filters: WasteFiltersState,
+  names: {
+    estoque: string;
+    produto: string;
+    usuario: string;
+    motivo: string;
+  },
+) {
   const period =
     filters.data_inicial || filters.data_final
       ? `${filters.data_inicial || "inicio"} ate ${filters.data_final || "fim"}`
@@ -215,13 +211,17 @@ function DesperdiciosPage() {
   const [chartMetric, setChartMetric] = useState<ChartMetric>("valor");
   const [selectedDay, setSelectedDay] = useState(todayDate());
   const [filters, setFilters] = useState<WasteFiltersState>(() => getDefaultFilters());
-  const [appliedFilters, setAppliedFilters] = useState<WasteFiltersState>(() => getDefaultFilters());
+  const [appliedFilters, setAppliedFilters] = useState<WasteFiltersState>(() =>
+    getDefaultFilters(),
+  );
 
   const apiFilters = useMemo(
     () => ({
       estoque_id: appliedFilters.estoque_id,
-      produto_id: appliedFilters.produto_id === "all" ? undefined : Number(appliedFilters.produto_id),
-      usuario_id: appliedFilters.usuario_id === "all" ? undefined : Number(appliedFilters.usuario_id),
+      produto_id:
+        appliedFilters.produto_id === "all" ? undefined : Number(appliedFilters.produto_id),
+      usuario_id:
+        appliedFilters.usuario_id === "all" ? undefined : Number(appliedFilters.usuario_id),
       motivo_id: appliedFilters.motivo_id === "all" ? undefined : appliedFilters.motivo_id,
       data_inicial: appliedFilters.data_inicial || undefined,
       data_final: appliedFilters.data_final || undefined,
@@ -261,19 +261,23 @@ function DesperdiciosPage() {
       estoque:
         appliedFilters.estoque_id === "all"
           ? "Todos"
-          : estoques.find((estoque) => estoque.id === Number(appliedFilters.estoque_id))?.nome ?? "Selecionado",
+          : (estoques.find((estoque) => estoque.id === Number(appliedFilters.estoque_id))?.nome ??
+            "Selecionado"),
       produto:
         appliedFilters.produto_id === "all"
           ? "Todos"
-          : products.find((product) => product.id === Number(appliedFilters.produto_id))?.name ?? "Selecionado",
+          : (products.find((product) => product.id === Number(appliedFilters.produto_id))?.name ??
+            "Selecionado"),
       usuario:
         appliedFilters.usuario_id === "all"
           ? "Todos"
-          : users.find((user) => user.id === Number(appliedFilters.usuario_id))?.name ?? "Selecionado",
+          : (users.find((user) => user.id === Number(appliedFilters.usuario_id))?.name ??
+            "Selecionado"),
       motivo:
         appliedFilters.motivo_id === "all"
           ? "Todos"
-          : reasons.find((reason) => reason.id === Number(appliedFilters.motivo_id))?.nome ?? "Selecionado",
+          : (reasons.find((reason) => reason.id === Number(appliedFilters.motivo_id))?.nome ??
+            "Selecionado"),
     }),
     [appliedFilters, estoques, products, reasons, users],
   );
@@ -433,13 +437,16 @@ function DesperdiciosPage() {
       headStyles: { fillColor: [35, 48, 70] },
     });
 
-    const finalY = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 38;
+    const finalY =
+      (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 38;
     doc.text(
       `Registros: ${summary.totais.registros} | Quantidade: ${summary.totais.quantidade_total.toFixed(2)} | Valor: ${money(summary.totais.valor_total)}`,
       14,
       finalY + 10,
     );
-    doc.save(`relatorio-desperdicios-${appliedFilters.data_inicial || "inicio"}-${appliedFilters.data_final || "fim"}.pdf`);
+    doc.save(
+      `relatorio-desperdicios-${appliedFilters.data_inicial || "inicio"}-${appliedFilters.data_final || "fim"}.pdf`,
+    );
   };
 
   const processExpired = async () => {
@@ -547,7 +554,9 @@ function DesperdiciosPage() {
             </Button>
             <div className="min-w-0 flex-1 text-center sm:min-w-72">
               <div className="text-xs uppercase text-muted-foreground">Dia exibido</div>
-              <div className="line-clamp-1 font-semibold capitalize">{formatDateLabel(selectedDay)}</div>
+              <div className="line-clamp-1 font-semibold capitalize">
+                {formatDateLabel(selectedDay)}
+              </div>
             </div>
             <Button
               type="button"
@@ -710,7 +719,10 @@ function DesperdiciosPage() {
             </div>
           </div>
           <div className="grid w-full gap-2 sm:w-auto sm:grid-cols-2">
-            <Select value={chartMetric} onValueChange={(value) => setChartMetric(value as ChartMetric)}>
+            <Select
+              value={chartMetric}
+              onValueChange={(value) => setChartMetric(value as ChartMetric)}
+            >
               <SelectTrigger className="sm:w-44">
                 <SelectValue />
               </SelectTrigger>
@@ -740,120 +752,11 @@ function DesperdiciosPage() {
         </div>
       </div>
 
-      <div className="mb-4 hidden gap-4 sm:mb-6 md:grid lg:grid-cols-2">
-        <SummaryList title="Por dia" rows={summary.por_dia} labelKey="dia" />
-        <SummaryList title="Por produto" rows={summary.por_produto} labelKey="produto_nome" />
-        <SummaryList
-          title="Por funcionário"
-          rows={summary.por_funcionario}
-          labelKey="usuario_nome"
-        />
-        <SummaryList title="Por motivo" rows={summary.por_motivo} labelKey="motivo_nome" />
-      </div>
-
-      <div className="hidden overflow-hidden rounded-lg border bg-card shadow-[var(--shadow-soft)] sm:rounded-xl md:block">
-        {wastes.length === 0 ? (
-          <EmptyState
-            icon={PackageX}
-            title="Sem desperdícios"
-            description="Os registros aparecerão aqui."
-          />
-        ) : (
-          <>
-          <div className="divide-y md:hidden">
-            {wastes.map((waste) => (
-              <div key={waste.id} className="p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">{waste.productName}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {waste.estoqueNome} · {waste.motivoNome}
-                    </div>
-                    <div className="mt-1 text-xs text-muted-foreground">
-                      {formatDateTime(waste.createdAt)}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-semibold text-destructive">{money(waste.totalValue)}</div>
-                    <div className="text-xs text-muted-foreground">{waste.quantity} un.</div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="hidden md:block">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Produto</TableHead>
-                <TableHead>Estoque</TableHead>
-                <TableHead>Motivo</TableHead>
-                <TableHead>Funcionário</TableHead>
-                <TableHead>Quantidade</TableHead>
-                <TableHead>Valor</TableHead>
-                <TableHead>Data</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {wastes.map((waste) => (
-                <TableRow key={waste.id}>
-                  <TableCell>{waste.productName}</TableCell>
-                  <TableCell>{waste.estoqueNome}</TableCell>
-                  <TableCell>{waste.motivoNome}</TableCell>
-                  <TableCell>{waste.userName}</TableCell>
-                  <TableCell>{waste.quantity}</TableCell>
-                  <TableCell>{money(waste.totalValue)}</TableCell>
-                  <TableCell>{formatDateTime(waste.createdAt)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          </div>
-          </>
-        )}
-      </div>
-
-      <div className="mt-4 hidden overflow-hidden rounded-lg border bg-card shadow-[var(--shadow-soft)] sm:mt-6 sm:rounded-xl md:block">
-        <div className="border-b px-4 py-3 font-semibold">Ranking dos maiores desperdícios</div>
-        <div className="divide-y md:hidden">
-          {summary.ranking.map((item) => (
-            <div key={item.id} className="flex items-start justify-between gap-3 p-3">
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium">{item.produto_nome}</div>
-                <div className="mt-1 text-xs text-muted-foreground">{item.motivo_nome}</div>
-              </div>
-              <div className="text-right">
-                <div className="font-semibold text-destructive">{money(item.valor_total)}</div>
-                <div className="text-xs text-muted-foreground">
-                  {Number(item.quantidade).toFixed(2)} un.
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div className="hidden md:block">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Produto</TableHead>
-              <TableHead>Motivo</TableHead>
-              <TableHead>Funcionário</TableHead>
-              <TableHead>Quantidade</TableHead>
-              <TableHead>Valor</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {summary.ranking.map((item) => (
-              <TableRow key={item.id}>
-                <TableCell>{item.produto_nome}</TableCell>
-                <TableCell>{item.motivo_nome}</TableCell>
-                <TableCell>{item.usuario_nome}</TableCell>
-                <TableCell>{Number(item.quantidade).toFixed(2)}</TableCell>
-                <TableCell>{money(item.valor_total)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      <div className="hidden space-y-4 sm:space-y-6 md:block">
+        <WasteAnalysisTabs summary={summary} />
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(360px,0.85fr)]">
+          <WasteHistoryPanel wastes={wastes} />
+          <WasteRankingPanel ranking={summary.ranking} />
         </div>
       </div>
 
@@ -867,38 +770,219 @@ function DesperdiciosPage() {
   );
 }
 
-function SummaryList({
-  title,
-  rows,
-  labelKey,
-}: {
-  title: string;
-  rows: WasteSummaryGroup[];
-  labelKey: keyof WasteSummaryGroup;
-}) {
+const analysisGroups = [
+  { value: "dia", label: "Por dia", labelKey: "dia", rowsKey: "por_dia" },
+  { value: "produto", label: "Por produto", labelKey: "produto_nome", rowsKey: "por_produto" },
+  {
+    value: "funcionario",
+    label: "Por funcionário",
+    labelKey: "usuario_nome",
+    rowsKey: "por_funcionario",
+  },
+  { value: "motivo", label: "Por motivo", labelKey: "motivo_nome", rowsKey: "por_motivo" },
+] as const;
+
+function WasteAnalysisTabs({ summary }: { summary: WasteSummary }) {
   return (
     <div className="overflow-hidden rounded-lg border bg-card shadow-[var(--shadow-soft)] sm:rounded-xl">
-      <div className="border-b px-4 py-3 font-semibold">{title}</div>
+      <Tabs defaultValue="dia">
+        <div className="flex flex-col gap-3 border-b p-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="font-semibold">Análise por categoria</div>
+            <div className="mt-1 text-sm text-muted-foreground">
+              Compare valor perdido e quantidade descartada pelos agrupamentos do período.
+            </div>
+          </div>
+          <TabsList className="grid h-auto w-full grid-cols-4 lg:w-auto">
+            {analysisGroups.map((group) => (
+              <TabsTrigger
+                key={group.value}
+                value={group.value}
+                className="px-2 text-xs lg:px-3 lg:text-sm"
+              >
+                {group.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+        {analysisGroups.map((group) => (
+          <TabsContent key={group.value} value={group.value} className="m-0">
+            <AnalysisRows
+              rows={summary[group.rowsKey]}
+              labelKey={group.labelKey}
+              emptyLabel={`Sem dados ${group.label.toLowerCase()} no período.`}
+            />
+          </TabsContent>
+        ))}
+      </Tabs>
+    </div>
+  );
+}
+
+function AnalysisRows({
+  rows,
+  labelKey,
+  emptyLabel,
+}: {
+  rows: WasteSummaryGroup[];
+  labelKey: keyof WasteSummaryGroup;
+  emptyLabel: string;
+}) {
+  const maxValue = Math.max(...rows.map((row) => Number(row.valor_total || 0)), 0);
+  const shouldSplit = rows.length > 5;
+
+  if (rows.length === 0) {
+    return <div className="p-4 text-sm text-muted-foreground">{emptyLabel}</div>;
+  }
+
+  return (
+    <div
+      className={
+        shouldSplit ? "grid divide-y lg:grid-cols-2 lg:divide-x lg:divide-y-0" : "divide-y"
+      }
+    >
       <div className="divide-y">
-        {rows.length === 0 ? (
-          <div className="p-4 text-sm text-muted-foreground">Sem dados no periodo.</div>
-        ) : (
-          rows.slice(0, 8).map((row, index) => (
-            <div
-              key={`${title}-${index}`}
-              className="flex items-center justify-between gap-4 p-4 text-sm"
-            >
+        {rows.slice(0, 5).map((row, index) => (
+          <AnalysisRow
+            key={`analysis-primary-${index}`}
+            row={row}
+            labelKey={labelKey}
+            maxValue={maxValue}
+          />
+        ))}
+      </div>
+      {shouldSplit && (
+        <div className="divide-y">
+          {rows.slice(5, 10).map((row, index) => (
+            <AnalysisRow
+              key={`analysis-secondary-${index}`}
+              row={row}
+              labelKey={labelKey}
+              maxValue={maxValue}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AnalysisRow({
+  row,
+  labelKey,
+  maxValue,
+}: {
+  row: WasteSummaryGroup;
+  labelKey: keyof WasteSummaryGroup;
+  maxValue: number;
+}) {
+  const value = Number(row.valor_total || 0);
+  const percentage = maxValue > 0 ? Math.max(6, Math.round((value / maxValue) * 100)) : 0;
+
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 p-4 text-sm">
+      <div className="min-w-0">
+        <div className="truncate font-medium">{row[labelKey] ?? "-"}</div>
+        <div className="mt-1 text-xs text-muted-foreground">
+          {Number(row.quantidade || 0).toFixed(2)} unidade(s)
+          {row.registros ? ` · ${row.registros} registro(s)` : ""}
+        </div>
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted">
+          <div className="h-full rounded-full bg-destructive" style={{ width: `${percentage}%` }} />
+        </div>
+      </div>
+      <div className="whitespace-nowrap font-semibold text-destructive">{money(value)}</div>
+    </div>
+  );
+}
+
+function WasteHistoryPanel({ wastes }: { wastes: Waste[] }) {
+  return (
+    <div className="flex h-full flex-col overflow-hidden rounded-lg border bg-card shadow-[var(--shadow-soft)] sm:rounded-xl">
+      <div className="shrink-0 flex items-center justify-between gap-3 border-b px-4 py-3">
+        <div>
+          <div className="font-semibold">Histórico de desperdícios</div>
+          <div className="mt-1 text-sm text-muted-foreground">
+            Registros detalhados conforme filtros aplicados.
+          </div>
+        </div>
+        <div className="rounded-md bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+          {wastes.length} registro(s)
+        </div>
+      </div>
+      {wastes.length === 0 ? (
+        <div className="flex min-h-[360px] flex-1 items-center justify-center">
+          <EmptyState
+            icon={PackageX}
+            title="Sem desperdícios"
+            description="Os registros aparecerão aqui."
+          />
+        </div>
+      ) : (
+        <div className="min-h-0 flex-1 divide-y overflow-auto">
+          {wastes.map((waste) => (
+            <div key={waste.id} className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
               <div className="min-w-0">
-                <div className="truncate font-medium">{row[labelKey] ?? "-"}</div>
-                <div className="text-xs text-muted-foreground">
-                  {Number(row.quantidade || 0).toFixed(2)} unidade(s)
+                <div className="truncate text-sm font-semibold">{waste.productName}</div>
+                <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  <span className="rounded-md bg-muted px-2 py-1">{waste.estoqueNome}</span>
+                  <span className="rounded-md bg-muted px-2 py-1">{waste.motivoNome}</span>
+                  <span className="rounded-md bg-muted px-2 py-1">{waste.userName}</span>
                 </div>
               </div>
-              <div className="font-semibold text-destructive">{money(row.valor_total)}</div>
+              <div className="flex items-end justify-between gap-4 lg:block lg:text-right">
+                <div>
+                  <div className="font-semibold text-destructive">{money(waste.totalValue)}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {waste.quantity} unidade(s)
+                  </div>
+                </div>
+                <div className="whitespace-nowrap text-xs text-muted-foreground lg:mt-2">
+                  {formatDateTime(waste.createdAt)}
+                </div>
+              </div>
             </div>
-          ))
-        )}
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WasteRankingPanel({ ranking }: { ranking: WasteSummary["ranking"] }) {
+  return (
+    <div className="overflow-hidden rounded-lg border bg-card shadow-[var(--shadow-soft)] sm:rounded-xl">
+      <div className="border-b px-4 py-3">
+        <div className="font-semibold">Ranking dos maiores desperdícios</div>
+        <div className="mt-1 text-sm text-muted-foreground">
+          Itens com maior impacto financeiro no período.
+        </div>
       </div>
+      {ranking.length === 0 ? (
+        <div className="p-4 text-sm text-muted-foreground">Sem ranking no período.</div>
+      ) : (
+        <div className="divide-y">
+          {ranking.slice(0, 10).map((item, index) => (
+            <div key={item.id} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-3 p-4">
+              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-xs font-semibold text-muted-foreground">
+                {index + 1}
+              </div>
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{item.produto_nome}</div>
+                <div className="mt-1 truncate text-xs text-muted-foreground">
+                  {item.motivo_nome} · {item.usuario_nome}
+                </div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {Number(item.quantidade).toFixed(2)} unidade(s)
+                </div>
+              </div>
+              <div className="whitespace-nowrap text-right text-sm font-semibold text-destructive">
+                {money(item.valor_total)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

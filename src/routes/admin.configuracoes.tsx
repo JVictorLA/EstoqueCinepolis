@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useTheme } from "@/components/theme/ThemeProvider";
+import { APP_VERSION_LABEL } from "@/lib/appVersion";
 import {
   getStoredUser,
   getSystemConfigs,
@@ -31,6 +32,9 @@ type SettingsState = {
   cnpjEmpresa: string;
   temaPreferido: "light" | "dark";
   exigirSenhaMovimentacao: boolean;
+  bloquearMovimentacaoPorHorario: boolean;
+  horarioBloqueioInicio: string;
+  horarioBloqueioFim: string;
   bloquearSaidaProdutoVencido: boolean;
   registrarVencidoAoTentarRetirar: boolean;
   permitirIgnorarFefo: boolean;
@@ -44,6 +48,9 @@ const defaults: SettingsState = {
   cnpjEmpresa: "",
   temaPreferido: "light",
   exigirSenhaMovimentacao: true,
+  bloquearMovimentacaoPorHorario: false,
+  horarioBloqueioInicio: "22:00",
+  horarioBloqueioFim: "06:00",
   bloquearSaidaProdutoVencido: true,
   registrarVencidoAoTentarRetirar: true,
   permitirIgnorarFefo: true,
@@ -86,6 +93,13 @@ function ConfigPage() {
             byKey.get("exigir_senha_movimentacao"),
             defaults.exigirSenhaMovimentacao,
           ),
+          bloquearMovimentacaoPorHorario: boolFromConfig(
+            byKey.get("bloquear_movimentacao_por_horario"),
+            defaults.bloquearMovimentacaoPorHorario,
+          ),
+          horarioBloqueioInicio:
+            byKey.get("horario_bloqueio_inicio") ?? defaults.horarioBloqueioInicio,
+          horarioBloqueioFim: byKey.get("horario_bloqueio_fim") ?? defaults.horarioBloqueioFim,
           bloquearSaidaProdutoVencido: boolFromConfig(
             byKey.get("bloquear_saida_produto_vencido"),
             defaults.bloquearSaidaProdutoVencido,
@@ -127,6 +141,17 @@ function ConfigPage() {
   const save = async () => {
     setSaving(true);
     try {
+      if (settings.bloquearMovimentacaoPorHorario) {
+        if (!settings.horarioBloqueioInicio || !settings.horarioBloqueioFim) {
+          toast.error("Informe inicio e termino do bloqueio");
+          return;
+        }
+        if (settings.horarioBloqueioInicio === settings.horarioBloqueioFim) {
+          toast.error("Inicio e termino do bloqueio precisam ser diferentes");
+          return;
+        }
+      }
+
       await updateMyPreferences({ themePreference: settings.temaPreferido });
       if (user) {
         setStoredUser({ ...user, themePreference: settings.temaPreferido });
@@ -137,6 +162,24 @@ function ConfigPage() {
           chave: "exigir_senha_movimentacao",
           valor: settings.exigirSenhaMovimentacao,
           categoria: "seguranca",
+          nivelAcesso: "admin" as const,
+        },
+        {
+          chave: "bloquear_movimentacao_por_horario",
+          valor: settings.bloquearMovimentacaoPorHorario,
+          categoria: "estoque",
+          nivelAcesso: "admin" as const,
+        },
+        {
+          chave: "horario_bloqueio_inicio",
+          valor: settings.horarioBloqueioInicio,
+          categoria: "estoque",
+          nivelAcesso: "admin" as const,
+        },
+        {
+          chave: "horario_bloqueio_fim",
+          valor: settings.horarioBloqueioFim,
+          categoria: "estoque",
           nivelAcesso: "admin" as const,
         },
       ];
@@ -228,9 +271,7 @@ function ConfigPage() {
         <Section title="Aparência" description="Escolha o tema visual da sua conta administrativa.">
           <RadioGroup
             value={settings.temaPreferido}
-            onValueChange={(value) =>
-              update("temaPreferido", value === "dark" ? "dark" : "light")
-            }
+            onValueChange={(value) => update("temaPreferido", value === "dark" ? "dark" : "light")}
           >
             <ThemeOption
               value="light"
@@ -271,6 +312,30 @@ function ConfigPage() {
         </Section>
 
         <Section title="Estoque">
+          <ToggleRow
+            label="Bloquear movimentacao por horario"
+            hint="Impede entrada, retirada e transferencia no modo operador dentro da janela definida"
+            checked={settings.bloquearMovimentacaoPorHorario}
+            onCheckedChange={(checked) => update("bloquearMovimentacaoPorHorario", checked)}
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Inicio do bloqueio">
+              <Input
+                type="time"
+                value={settings.horarioBloqueioInicio}
+                onChange={(event) => update("horarioBloqueioInicio", event.target.value)}
+                disabled={!settings.bloquearMovimentacaoPorHorario}
+              />
+            </Field>
+            <Field label="Termino do bloqueio">
+              <Input
+                type="time"
+                value={settings.horarioBloqueioFim}
+                onChange={(event) => update("horarioBloqueioFim", event.target.value)}
+                disabled={!settings.bloquearMovimentacaoPorHorario}
+              />
+            </Field>
+          </div>
           <p className="text-sm leading-6 text-muted-foreground">
             Regras básicas de estoque, como bloqueio de retirada sem saldo e alertas de estoque
             baixo, permanecem ativas no sistema e não podem ser desligadas por aqui.
@@ -322,13 +387,17 @@ function ConfigPage() {
               onCheckedChange={(checked) => update("exigirJustificativaFefo", checked)}
             />
             <ToggleRow
-              label="Modo manutencao"
-              hint="Reservado para operacoes assistidas"
+              label="Bloquear modo operador"
+              hint="Impede operadores de registrar entradas, retiradas, transferências, desperdícios e kits durante manutenção. Admins continuam liberados."
               checked={settings.modoManutencao}
               onCheckedChange={(checked) => update("modoManutencao", checked)}
             />
           </Section>
         )}
+      </div>
+
+      <div className="mt-6 border-t pt-4 text-center text-xs text-muted-foreground">
+        {APP_VERSION_LABEL}
       </div>
     </>
   );
@@ -347,7 +416,9 @@ function Section({
     <div className="space-y-4 rounded-lg border bg-card p-4 shadow-[var(--shadow-soft)] sm:rounded-xl sm:p-6">
       <div>
         <h3 className="font-semibold">{title}</h3>
-        {description && <p className="mt-1 hidden text-sm text-muted-foreground sm:block">{description}</p>}
+        {description && (
+          <p className="mt-1 hidden text-sm text-muted-foreground sm:block">{description}</p>
+        )}
       </div>
       {children}
     </div>
@@ -374,7 +445,9 @@ function ThemeOption({
       <RadioGroupItem id={`theme-${value}`} value={value} className="mt-1" />
       <span>
         <span className="block text-sm font-medium">{title}</span>
-        <span className="mt-1 hidden text-xs leading-5 text-muted-foreground sm:block">{description}</span>
+        <span className="mt-1 hidden text-xs leading-5 text-muted-foreground sm:block">
+          {description}
+        </span>
       </span>
     </Label>
   );

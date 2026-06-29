@@ -1,13 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import {
-  Package,
-  CheckCircle2,
-  Loader2,
-  AlertTriangle,
-  Plus,
-  Trash2,
-} from "lucide-react";
+import { Package, CheckCircle2, Loader2, AlertTriangle, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,6 +48,7 @@ import {
   getStoredUser,
   getPasswordChallenge,
   getProductLots,
+  getProducts,
   ApiError,
 } from "@/services/api";
 
@@ -85,8 +79,31 @@ interface TransferCartItem {
   availableLots: Array<Pick<ProductLot, "lot" | "quantity">>;
 }
 
+interface AdminAuthorization {
+  matricula: string;
+  senha: string;
+}
+
 function hasFefoWarning(data: unknown): data is { fefo: FefoWarning } {
   return !!data && typeof data === "object" && "fefo" in data;
+}
+
+function hasStockTimeBlock(data: unknown): data is {
+  estoque_bloqueado_por_horario: boolean;
+  inicio?: string;
+  fim?: string;
+} {
+  return (
+    !!data &&
+    typeof data === "object" &&
+    (data as Record<string, unknown>).estoque_bloqueado_por_horario === true
+  );
+}
+
+function hasMaintenanceBlock(data: unknown) {
+  return (
+    !!data && typeof data === "object" && (data as Record<string, unknown>).modo_manutencao === true
+  );
 }
 
 function formatDate(value?: string | null) {
@@ -105,6 +122,14 @@ function configFlag(value: unknown, fallback: boolean) {
   return fallback;
 }
 
+function normalizeSearch(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
 export function MovementForm({
   type,
   useStoredStock = false,
@@ -118,62 +143,55 @@ export function MovementForm({
   const [targetEstoqueId, setTargetEstoqueId] = useState("");
   const [operation, setOperation] = useState<"saida" | "transferencia">("saida");
 
-  const [product, setProduct] =
-    useState<Product | null>(null);
+  const [product, setProduct] = useState<Product | null>(null);
 
-  const [searching, setSearching] =
-    useState(false);
+  const [searching, setSearching] = useState(false);
 
-  const [quantity, setQuantity] =
-    useState("");
+  const [quantity, setQuantity] = useState("");
   const [lot, setLot] = useState("");
   const [expirationDate, setExpirationDate] = useState("");
   const [lots, setLots] = useState<ProductLot[]>([]);
+  const [stockProducts, setStockProducts] = useState<Product[]>([]);
   const [transferCart, setTransferCart] = useState<TransferCartItem[]>([]);
   const [fefoWarning, setFefoWarning] = useState<FefoWarning | null>(null);
   const [fefoJustification, setFefoJustification] = useState("");
   const [expiredBlockMessage, setExpiredBlockMessage] = useState("");
+  const [stockTimeBlock, setStockTimeBlock] = useState<{
+    message: string;
+    inicio?: string;
+    fim?: string;
+  } | null>(null);
+  const [adminAuthOpen, setAdminAuthOpen] = useState(false);
+  const [adminAuthMatricula, setAdminAuthMatricula] = useState("");
+  const [adminAuthPassword, setAdminAuthPassword] = useState("");
+  const [adminAuthSubmitting, setAdminAuthSubmitting] = useState(false);
 
-  const [note, setNote] =
-    useState("");
+  const [note, setNote] = useState("");
 
-  const [matricula, setMatricula] =
-    useState("");
+  const [matricula, setMatricula] = useState("");
 
-  const [confirmOpen, setConfirmOpen] =
-    useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const [reviewOpen, setReviewOpen] =
-    useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
-  const [password, setPassword] =
-    useState("");
+  const [password, setPassword] = useState("");
 
-  const [submitting, setSubmitting] =
-    useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const [user, setUser] =
-    useState<AuthUser | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
 
-  const [loadingUser, setLoadingUser] =
-    useState(false);
+  const [loadingUser, setLoadingUser] = useState(false);
 
   // PRIMEIRO ACESSO
-  const [showChangePassword, setShowChangePassword] =
-    useState(false);
-  const [passwordStatus, setPasswordStatus] =
-    useState<"first_access" | "expired">("first_access");
-  const [currentPassword, setCurrentPassword] =
-    useState("");
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [passwordStatus, setPasswordStatus] = useState<"first_access" | "expired">("first_access");
+  const [currentPassword, setCurrentPassword] = useState("");
 
-  const [newPassword, setNewPassword] =
-    useState("");
+  const [newPassword, setNewPassword] = useState("");
 
-  const [confirmPassword, setConfirmPassword] =
-    useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
-  const [userId, setUserId] =
-    useState<number | null>(null);
+  const [userId, setUserId] = useState<number | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -210,13 +228,33 @@ export function MovementForm({
     if (type !== "saida" || operation !== "transferencia") return;
 
     const firstTarget = estoques.find(
-      (estoque) => estoque.ativo && !estoque.arquivado && String(estoque.id) !== selectedEstoqueId
+      (estoque) => estoque.ativo && !estoque.arquivado && String(estoque.id) !== selectedEstoqueId,
     );
 
     if (firstTarget && (!targetEstoqueId || targetEstoqueId === selectedEstoqueId)) {
       setTargetEstoqueId(String(firstTarget.id));
     }
   }, [estoques, operation, selectedEstoqueId, targetEstoqueId, type]);
+
+  useEffect(() => {
+    if (type !== "saida" || !selectedEstoqueId) {
+      setStockProducts([]);
+      return;
+    }
+
+    let cancelled = false;
+    getProducts(selectedEstoqueId)
+      .then((items) => {
+        if (!cancelled) setStockProducts(items);
+      })
+      .catch(() => {
+        if (!cancelled) setStockProducts([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEstoqueId, type]);
 
   useEffect(() => {
     setTransferCart([]);
@@ -250,17 +288,14 @@ export function MovementForm({
         const u = await getUserByMatricula(matricula);
 
         setUser(u);
-
       } catch {
         setUser(null);
-
       } finally {
         setLoadingUser(false);
       }
     }, 400);
 
     return () => clearTimeout(t);
-
   }, [matricula, useLoggedUser]);
 
   useEffect(() => {
@@ -277,18 +312,15 @@ export function MovementForm({
 
         setProduct(p);
         setLots([]);
-
       } catch {
         setProduct(null);
         setLots([]);
-
       } finally {
         setSearching(false);
       }
     }, 350);
 
     return () => clearTimeout(t);
-
   }, [barcode, selectedEstoqueId]);
 
   useEffect(() => {
@@ -301,6 +333,31 @@ export function MovementForm({
       .then((items) => setLots(items.filter((item) => item.quantity > 0)))
       .catch(() => setLots([]));
   }, [product, selectedEstoqueId, type]);
+
+  const productSuggestions = useMemo(() => {
+    const query = normalizeSearch(barcode);
+    if (type !== "saida" || !selectedEstoqueId || query.length < 2) return [];
+    if (product && product.barcode.trim() === barcode.trim()) return [];
+
+    return stockProducts
+      .filter((item) => item.active && Number(item.stock) > 0)
+      .filter((item) => {
+        const name = normalizeSearch(item.name);
+        const code = normalizeSearch(item.barcode);
+        return name.includes(query) || code.includes(query);
+      })
+      .slice(0, 8);
+  }, [barcode, product, selectedEstoqueId, stockProducts, type]);
+
+  const handleProductSuggestionSelect = (selectedProduct: Product) => {
+    setBarcode(selectedProduct.barcode);
+    setProduct(selectedProduct);
+    setLot("");
+    setExpirationDate("");
+    setLots([]);
+    setFefoWarning(null);
+    setFefoJustification("");
+  };
 
   const clearCurrentProductFields = () => {
     setBarcode("");
@@ -364,9 +421,7 @@ export function MovementForm({
       );
       setTransferCart((items) =>
         items.map((item, index) =>
-          index === duplicatedIndex
-            ? { ...item, quantity: Number(nextQuantity.value) }
-            : item,
+          index === duplicatedIndex ? { ...item, quantity: Number(nextQuantity.value) } : item,
         ),
       );
     } else {
@@ -444,7 +499,7 @@ export function MovementForm({
     setPassword("");
   };
 
-  const doSubmit = async () => {
+  const doSubmit = async (adminAuthorization?: AdminAuthorization) => {
     setSubmitting(true);
 
     try {
@@ -456,6 +511,7 @@ export function MovementForm({
           matricula,
           senha: password,
           observacao: note || undefined,
+          autorizacao_admin: adminAuthorization,
           itens: transferCart.map((item) => ({
             codigo_barras: item.barcode,
             quantidade: item.quantity,
@@ -477,6 +533,7 @@ export function MovementForm({
           data_validade: type === "entrada" ? expirationDate || null : undefined,
           confirmar_ignorar_fefo: ignoreFefo,
           justificativa_fefo: ignoreFefo ? fefoJustification.trim() : undefined,
+          autorizacao_admin: adminAuthorization,
         });
       }
 
@@ -484,8 +541,8 @@ export function MovementForm({
         operation === "transferencia"
           ? "Transferência registrada"
           : type === "entrada"
-          ? "Entrada registrada"
-          : "Retirada registrada"
+            ? "Entrada registrada"
+            : "Retirada registrada",
       );
 
       setBarcode("");
@@ -503,10 +560,20 @@ export function MovementForm({
         setUser(null);
       }
       setPassword("");
+      setStockTimeBlock(null);
+      setAdminAuthOpen(false);
+      setAdminAuthMatricula("");
+      setAdminAuthPassword("");
       setConfirmOpen(false);
       setReviewOpen(false);
-
     } catch (e: unknown) {
+      if (e instanceof ApiError && e.status === 403 && hasMaintenanceBlock(e.data)) {
+        setConfirmOpen(false);
+        setReviewOpen(false);
+        setAdminAuthOpen(false);
+        toast.warning(e.message);
+        return;
+      }
       const challenge = getPasswordChallenge(e);
       if (challenge) {
         setUserId(challenge.usuario.id);
@@ -544,6 +611,19 @@ export function MovementForm({
         toast.warning("Ha um alerta FEFO para este lote");
         return;
       }
+      if (e instanceof ApiError && e.status === 403 && hasStockTimeBlock(e.data)) {
+        setConfirmOpen(false);
+        setReviewOpen(false);
+        setStockTimeBlock({
+          message: e.message,
+          inicio: e.data.inicio,
+          fim: e.data.fim,
+        });
+        setAdminAuthPassword("");
+        setAdminAuthOpen(true);
+        toast.warning("Movimentacao bloqueada por horario");
+        return;
+      }
       if (
         e instanceof ApiError &&
         e.status === 400 &&
@@ -551,7 +631,11 @@ export function MovementForm({
       ) {
         setReviewOpen(false);
         setExpiredBlockMessage(e.message);
-        if (/registrado automaticamente como desperd/i.test(e.message) && product && selectedEstoqueId) {
+        if (
+          /registrado automaticamente como desperd/i.test(e.message) &&
+          product &&
+          selectedEstoqueId
+        ) {
           getProductLots(product.id, selectedEstoqueId)
             .then((items) => setLots(items.filter((item) => item.quantity > 0)))
             .catch(() => setLots([]));
@@ -559,50 +643,48 @@ export function MovementForm({
         return;
       }
 
-      toast.error(
-        (e instanceof Error ? e.message : "") ||
-          "Falha ao registrar movimentação"
-      );
-
+      toast.error((e instanceof Error ? e.message : "") || "Falha ao registrar movimentação");
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const confirmAdminAuthorization = async () => {
+    if (!adminAuthMatricula.trim() || !adminAuthPassword) {
+      return toast.error("Informe matricula e senha do admin");
+    }
+
+    setAdminAuthSubmitting(true);
+    try {
+      await doSubmit({
+        matricula: adminAuthMatricula.trim(),
+        senha: adminAuthPassword,
+      });
+    } finally {
+      setAdminAuthSubmitting(false);
     }
   };
 
   // ALTERAR SENHA
   const changeFirstPassword = async () => {
     if (!newPassword || !confirmPassword) {
-      return toast.error(
-        "Preencha os campos"
-      );
+      return toast.error("Preencha os campos");
     }
 
     if (newPassword !== confirmPassword) {
-      return toast.error(
-        "As senhas não coincidem"
-      );
+      return toast.error("As senhas não coincidem");
     }
 
     if (!userId) {
-      return toast.error(
-        "Usuário inválido"
-      );
+      return toast.error("Usuário inválido");
     }
 
     try {
-      await changeUserPassword(
-        userId,
-        currentPassword,
-        newPassword
-      );
+      await changeUserPassword(userId, currentPassword, newPassword);
 
-      toast.success(
-        "Senha alterada com sucesso"
-      );
+      toast.success("Senha alterada com sucesso");
 
-      toast.info(
-        "Agora repita a movimentação usando sua nova senha"
-      );
+      toast.info("Agora repita a movimentação usando sua nova senha");
 
       setShowChangePassword(false);
 
@@ -612,42 +694,37 @@ export function MovementForm({
 
       setNewPassword("");
       setConfirmPassword("");
-
     } catch (err: unknown) {
-      toast.error(
-        (err instanceof Error ? err.message : "") ||
-          "Erro ao alterar senha"
-      );
+      toast.error((err instanceof Error ? err.message : "") || "Erro ao alterar senha");
     }
   };
 
-  const accent =
-    type === "entrada" || operation === "transferencia"
-      ? "success"
-      : "destructive";
+  const accent = type === "entrada" || operation === "transferencia" ? "success" : "destructive";
 
-  const selectedEstoque = estoques.find(
-    (estoque) => String(estoque.id) === selectedEstoqueId
-  );
+  const selectedEstoque = estoques.find((estoque) => String(estoque.id) === selectedEstoqueId);
 
-  const targetEstoque = estoques.find(
-    (estoque) => String(estoque.id) === targetEstoqueId
-  );
+  const targetEstoque = estoques.find((estoque) => String(estoque.id) === targetEstoqueId);
 
   const movementLabel =
     operation === "transferencia"
       ? "transferência de estoque"
-      : type === "entrada" ? "entrada de produto" : "retirada de produto";
+      : type === "entrada"
+        ? "entrada de produto"
+        : "retirada de produto";
 
   const movementVerb =
     operation === "transferencia"
       ? `transferir ${transferCart.length} produto${transferCart.length === 1 ? "" : "s"} entre`
-      : type === "entrada" ? "adicionar ao" : "retirar do";
+      : type === "entrada"
+        ? "adicionar ao"
+        : "retirar do";
 
   const movementActionLabel =
     operation === "transferencia"
       ? "Sim, transferir lista"
-      : type === "entrada" ? "Sim, registrar entrada" : "Sim, registrar retirada";
+      : type === "entrada"
+        ? "Sim, registrar entrada"
+        : "Sim, registrar retirada";
 
   const matchingLots = lot.trim()
     ? lots.filter((item) => item.lot.toLowerCase().endsWith(lot.trim().toLowerCase()))
@@ -661,9 +738,7 @@ export function MovementForm({
     operation,
   });
 
-  const expiredWasAutoWaste = /registrado automaticamente como desperd/i.test(
-    expiredBlockMessage,
-  );
+  const expiredWasAutoWaste = /registrado automaticamente como desperd/i.test(expiredBlockMessage);
   const canIgnoreFefo = configFlag(
     fefoWarning?.permitir_ignorar_fefo ?? fefoWarning?.permitirIgnorarFefo,
     true,
@@ -671,17 +746,12 @@ export function MovementForm({
   const requiresFefoJustification =
     !!fefoWarning &&
     canIgnoreFefo &&
-    configFlag(
-      fefoWarning.exigir_justificativa_fefo ?? fefoWarning.exigirJustificativaFefo,
-      true,
-    );
+    configFlag(fefoWarning.exigir_justificativa_fefo ?? fefoWarning.exigirJustificativaFefo, true);
 
   return (
     <div className="grid gap-4 lg:grid-cols-3 lg:gap-6">
-
       {/* FORM */}
       <div className="space-y-4 rounded-lg border bg-card p-4 shadow-[var(--shadow-soft)] sm:rounded-xl sm:p-6 lg:col-span-2">
-
         {type === "saida" && (
           <div className="grid grid-cols-2 gap-2 rounded-lg bg-muted p-1">
             <Button
@@ -716,13 +786,46 @@ export function MovementForm({
           value={barcode}
           onChange={setBarcode}
           autoFocus
+          inputMode={type === "saida" ? "text" : "numeric"}
+          inputClassName={type === "saida" ? "font-sans" : undefined}
+          placeholder={
+            type === "saida"
+              ? "Bipe o código ou digite o nome do produto"
+              : "Digite ou escaneie o código"
+          }
         />
+
+        {type === "saida" && productSuggestions.length > 0 && (
+          <div className="-mt-2 overflow-hidden rounded-lg border bg-card shadow-[var(--shadow-soft)]">
+            <div className="max-h-72 divide-y overflow-auto">
+              {productSuggestions.map((item) => (
+                <button
+                  key={`${item.id}-${item.estoqueId ?? selectedEstoqueId}`}
+                  type="button"
+                  className="flex w-full items-center gap-3 px-3 py-3 text-left text-sm transition hover:bg-muted"
+                  onClick={() => handleProductSuggestionSelect(item)}
+                >
+                  <Package className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{item.name}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {item.barcode} · estoque {item.stock} · {item.categoryName ?? item.unit}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2 sm:gap-4">
           {useStoredStock ? (
             <div className="space-y-2 sm:col-span-2">
               <Label>Estoque</Label>
-              <Input value={selectedEstoque?.nome ?? "Selecione um estoque no modo operador"} disabled />
+              <Input
+                value={selectedEstoque?.nome ?? "Selecione um estoque no modo operador"}
+                disabled
+              />
             </div>
           ) : (
             <div className="space-y-2 sm:col-span-2">
@@ -753,7 +856,9 @@ export function MovementForm({
                   {estoques
                     .filter(
                       (estoque) =>
-                        estoque.ativo && !estoque.arquivado && String(estoque.id) !== selectedEstoqueId,
+                        estoque.ativo &&
+                        !estoque.arquivado &&
+                        String(estoque.id) !== selectedEstoqueId,
                     )
                     .map((estoque) => (
                       <SelectItem key={estoque.id} value={String(estoque.id)}>
@@ -834,7 +939,8 @@ export function MovementForm({
                   >
                     <span className="font-medium">{item.lot}</span>
                     <span className="text-xs text-muted-foreground">
-                      {item.expirationDate ? formatDate(item.expirationDate) : "Sem validade"} - {item.quantity}
+                      {item.expirationDate ? formatDate(item.expirationDate) : "Sem validade"} -{" "}
+                      {item.quantity}
                     </span>
                   </button>
                 ))}
@@ -976,49 +1082,28 @@ export function MovementForm({
           {useLoggedUser ? (
             <div className="space-y-2">
               <Label>Responsavel</Label>
-              <Input
-                value={
-                  user?.nome
-                    ? `${user.nome} (${matricula})`
-                    : matricula
-                }
-                disabled
-              />
+              <Input value={user?.nome ? `${user.nome} (${matricula})` : matricula} disabled />
             </div>
           ) : (
-          <div className="space-y-2">
-            <Label>
-              Usuário do funcionário
-            </Label>
+            <div className="space-y-2">
+              <Label>Usuário do funcionário</Label>
 
-            <Input
-              value={matricula}
-              onChange={(e) =>
-                setMatricula(e.target.value)
-              }
-              placeholder="Ex: 1234"
-            />
-          </div>
+              <Input
+                value={matricula}
+                onChange={(e) => setMatricula(e.target.value)}
+                placeholder="Ex: 1234"
+              />
+            </div>
           )}
-
         </div>
 
         {(type === "entrada" || operation === "transferencia") && (
           <div className="space-y-2">
             <Label>
-              Observação{" "}
-              <span className="text-muted-foreground">
-                (opcional)
-              </span>
+              Observação <span className="text-muted-foreground">(opcional)</span>
             </Label>
 
-            <Textarea
-              value={note}
-              onChange={(e) =>
-                setNote(e.target.value)
-              }
-              rows={3}
-            />
+            <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} />
           </div>
         )}
 
@@ -1031,25 +1116,19 @@ export function MovementForm({
               : "bg-destructive hover:bg-destructive/90"
           } text-${accent}-foreground`}
         >
-          {submitting && (
-            <Loader2 className="h-4 w-4 animate-spin mr-2" />
-          )}
+          {submitting && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
 
           {operation === "transferencia"
             ? "Confirmar Transferência"
             : type === "entrada"
-            ? "Confirmar Entrada"
-            : "Confirmar Retirada"}
+              ? "Confirmar Entrada"
+              : "Confirmar Retirada"}
         </Button>
-
       </div>
 
       {/* PRODUTO */}
       <div className="rounded-lg border bg-card p-4 shadow-[var(--shadow-soft)] sm:rounded-xl sm:p-6">
-
-        <h3 className="font-semibold mb-1">
-          Produto
-        </h3>
+        <h3 className="font-semibold mb-1">Produto</h3>
 
         <p className="mb-4 hidden text-xs text-muted-foreground sm:block">
           Identificação automática pelo código
@@ -1060,31 +1139,27 @@ export function MovementForm({
             <Loader2 className="h-4 w-4 animate-spin" />
             Procurando...
           </div>
-
         ) : product ? (
           <div className="space-y-3">
-
             <div className="flex items-center gap-3">
-
               <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center">
                 <Package className="h-6 w-6 text-muted-foreground" />
               </div>
 
               <div className="min-w-0">
-                <div className="font-medium">
-                  {product.name}
-                </div>
+                <div className="font-medium">{product.name}</div>
 
-                <div className="text-xs text-muted-foreground font-mono">
-                  {product.barcode}
-                </div>
+                <div className="text-xs text-muted-foreground font-mono">{product.barcode}</div>
 
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {isExpired(product.expirationDate) && (
                     <Badge variant="destructive">Vencido</Badge>
                   )}
                   {isNearExpiration(product.expirationDate) && (
-                    <Badge variant="secondary" className="bg-warning/15 text-warning border-warning/30">
+                    <Badge
+                      variant="secondary"
+                      className="bg-warning/15 text-warning border-warning/30"
+                    >
                       Próximo do vencimento
                     </Badge>
                   )}
@@ -1096,28 +1171,18 @@ export function MovementForm({
                   </div>
                 )}
               </div>
-
             </div>
 
             <div className="rounded-lg bg-muted p-3">
+              <div className="text-xs text-muted-foreground">Estoque atual</div>
 
-              <div className="text-xs text-muted-foreground">
-                Estoque atual
-              </div>
-
-              <div className="text-2xl font-bold">
-                {product.stock}
-              </div>
-
+              <div className="text-2xl font-bold">{product.stock}</div>
             </div>
-
           </div>
-
         ) : barcode ? (
           <div className="text-sm text-muted-foreground">
             Nenhum produto encontrado para esse código.
           </div>
-
         ) : (
           <div className="text-sm text-muted-foreground">
             Escaneie ou digite um código de barras para identificar o produto.
@@ -1134,112 +1199,67 @@ export function MovementForm({
         }}
       >
         <DialogContent>
-
           <DialogHeader>
-            <DialogTitle>
-              Confirmar com senha
-            </DialogTitle>
+            <DialogTitle>Confirmar com senha</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
-
             {type === "entrada" && !useLoggedUser && (
               <div className="space-y-2">
-
                 <Label>Matrícula</Label>
 
-                <Input
-                  value={matricula}
-                  onChange={(e) =>
-                    setMatricula(e.target.value)
-                  }
-                />
-
+                <Input value={matricula} onChange={(e) => setMatricula(e.target.value)} />
               </div>
             )}
 
             <div className="rounded-lg bg-muted p-3 text-sm">
-
-              <div className="text-muted-foreground text-xs">
-                Funcionário
-              </div>
+              <div className="text-muted-foreground text-xs">Funcionário</div>
 
               <div className="font-medium">
-
                 {loadingUser && "Buscando..."}
 
-                {!loadingUser &&
-                  user &&
-                  user.nome}
+                {!loadingUser && user && user.nome}
 
-                {!loadingUser &&
-                  matricula &&
-                  !user && (
-                    <span className="text-red-500">
-                      Usuário não encontrado
-                    </span>
-                  )}
+                {!loadingUser && matricula && !user && (
+                  <span className="text-red-500">Usuário não encontrado</span>
+                )}
 
                 {!matricula && "-"}
-
               </div>
-
             </div>
 
             <div className="space-y-2">
-
-              <Label>
-                Senha do funcionário
-              </Label>
+              <Label>Senha do funcionário</Label>
 
               <Input
                 type="password"
                 value={password}
-                onChange={(e) =>
-                  setPassword(e.target.value)
-                }
+                onChange={(e) => setPassword(e.target.value)}
                 autoFocus
               />
-
             </div>
-
           </div>
 
           <DialogFooter>
-
-            <Button
-              variant="outline"
-              onClick={closePasswordDialog}
-            >
+            <Button variant="outline" onClick={closePasswordDialog}>
               Cancelar
             </Button>
 
-            <Button
-              onClick={handlePasswordConfirm}
-              disabled={submitting}
-              className="gap-2"
-            >
+            <Button onClick={handlePasswordConfirm} disabled={submitting} className="gap-2">
               {submitting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <CheckCircle2 className="h-4 w-4" />
               )}
-
               Confirmar
             </Button>
-
           </DialogFooter>
-
         </DialogContent>
       </Dialog>
 
       {/* MODAL TROCAR SENHA */}
-      <AlertDialog
-        open={reviewOpen}
-        onOpenChange={setReviewOpen}
-      >
+      <AlertDialog open={reviewOpen} onOpenChange={setReviewOpen}>
         <AlertDialogContent>
-
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <AlertTriangle
@@ -1255,8 +1275,8 @@ export function MovementForm({
             <AlertDialogDescription>
               {operation === "transferencia"
                 ? "Voce esta prestes a transferir a lista abaixo entre estoques."
-                : `Voce esta prestes a ${movementVerb} estoque a quantidade abaixo.`}
-              {" "}Confira os dados antes de concluir a operacao.
+                : `Voce esta prestes a ${movementVerb} estoque a quantidade abaixo.`}{" "}
+              Confira os dados antes de concluir a operacao.
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -1272,7 +1292,9 @@ export function MovementForm({
               >
                 {operation === "transferencia"
                   ? "Transferência"
-                  : type === "entrada" ? "Entrada" : "Retirada"}
+                  : type === "entrada"
+                    ? "Entrada"
+                    : "Retirada"}
               </span>
             </div>
 
@@ -1322,16 +1344,12 @@ export function MovementForm({
               <>
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-muted-foreground">Produto</span>
-                  <span className="font-medium text-right">
-                    {product?.name ?? barcode}
-                  </span>
+                  <span className="font-medium text-right">{product?.name ?? barcode}</span>
                 </div>
 
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-muted-foreground">Quantidade</span>
-                  <span className="font-semibold">
-                    {quantity}
-                  </span>
+                  <span className="font-semibold">{quantity}</span>
                 </div>
 
                 <div className="flex items-center justify-between gap-4">
@@ -1347,8 +1365,8 @@ export function MovementForm({
                 <div className="mt-1 text-muted-foreground">{fefoWarning.mensagem}</div>
                 {!canIgnoreFefo && (
                   <div className="mt-3 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-destructive">
-                    Este produto não pode ser retirado porque existe outro lote que vence
-                    primeiro. Retire primeiro o lote com vencimento mais próximo.
+                    Este produto não pode ser retirado porque existe outro lote que vence primeiro.
+                    Retire primeiro o lote com vencimento mais próximo.
                   </div>
                 )}
                 {canIgnoreFefo && requiresFefoJustification && (
@@ -1371,9 +1389,7 @@ export function MovementForm({
 
             <div className="flex items-center justify-between gap-4">
               <span className="text-muted-foreground">Funcionário</span>
-              <span className="font-medium text-right">
-                {user?.nome ?? matricula}
-              </span>
+              <span className="font-medium text-right">{user?.nome ?? matricula}</span>
             </div>
           </div>
 
@@ -1403,22 +1419,83 @@ export function MovementForm({
                   : "bg-destructive hover:bg-destructive/90 text-destructive-foreground"
               }`}
             >
-              {submitting && (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              )}
+              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
               {fefoWarning && canIgnoreFefo ? "Ignorar FEFO e continuar" : movementActionLabel}
             </AlertDialogAction>
           </AlertDialogFooter>
-
         </AlertDialogContent>
       </AlertDialog>
 
       <Dialog
-        open={showChangePassword}
-        onOpenChange={setShowChangePassword}
+        open={adminAuthOpen}
+        onOpenChange={(open) => {
+          setAdminAuthOpen(open);
+          if (!open) {
+            setAdminAuthPassword("");
+          }
+        }}
       >
         <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Autorizacao administrativa</DialogTitle>
+          </DialogHeader>
 
+          <div className="space-y-4">
+            <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-foreground">
+              {stockTimeBlock?.message ||
+                "Movimentacoes operacionais estao bloqueadas neste horario."}
+              {stockTimeBlock?.inicio && stockTimeBlock?.fim && (
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Janela configurada: {stockTimeBlock.inicio} ate {stockTimeBlock.fim}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Matricula do admin</Label>
+              <Input
+                value={adminAuthMatricula}
+                onChange={(event) => setAdminAuthMatricula(event.target.value)}
+                placeholder="Ex: 1234"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Senha do admin</Label>
+              <Input
+                type="password"
+                value={adminAuthPassword}
+                onChange={(event) => setAdminAuthPassword(event.target.value)}
+                autoFocus
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAdminAuthOpen(false);
+                setAdminAuthPassword("");
+              }}
+              disabled={adminAuthSubmitting || submitting}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={confirmAdminAuthorization}
+              disabled={adminAuthSubmitting || submitting}
+              className="gap-2"
+            >
+              {(adminAuthSubmitting || submitting) && <Loader2 className="h-4 w-4 animate-spin" />}
+              Autorizar movimentacao
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showChangePassword} onOpenChange={setShowChangePassword}>
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>
               {passwordStatus === "expired" ? "Senha vencida" : "Primeiro acesso"}
@@ -1426,7 +1503,6 @@ export function MovementForm({
           </DialogHeader>
 
           <div className="space-y-4">
-
             <div className="text-sm text-muted-foreground">
               {passwordStatus === "expired"
                 ? "Sua senha venceu após 7 dias. Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. A movimentação não foi executada."
@@ -1434,48 +1510,31 @@ export function MovementForm({
             </div>
 
             <div className="space-y-2">
-
               <Label>Nova senha</Label>
 
               <Input
                 type="password"
                 value={newPassword}
-                onChange={(e) =>
-                  setNewPassword(e.target.value)
-                }
+                onChange={(e) => setNewPassword(e.target.value)}
               />
-
             </div>
 
             <div className="space-y-2">
-
-              <Label>
-                Confirmar senha
-              </Label>
+              <Label>Confirmar senha</Label>
 
               <Input
                 type="password"
                 value={confirmPassword}
-                onChange={(e) =>
-                  setConfirmPassword(e.target.value)
-                }
+                onChange={(e) => setConfirmPassword(e.target.value)}
               />
-
             </div>
-
           </div>
 
           <DialogFooter>
-
-            <Button
-              className="w-full"
-              onClick={changeFirstPassword}
-            >
+            <Button className="w-full" onClick={changeFirstPassword}>
               Salvar nova senha
             </Button>
-
           </DialogFooter>
-
         </DialogContent>
       </Dialog>
 
@@ -1513,7 +1572,6 @@ export function MovementForm({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
     </div>
   );
 }

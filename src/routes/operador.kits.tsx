@@ -1,6 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { AlertTriangle, Boxes, CheckCircle2, Loader2, PackageCheck, RotateCcw, UserCheck } from "lucide-react";
+import {
+  AlertTriangle,
+  Boxes,
+  CheckCircle2,
+  Loader2,
+  PackageCheck,
+  RotateCcw,
+  UserCheck,
+} from "lucide-react";
 import { toast } from "sonner";
 import { PageHeader, EmptyState } from "@/components/layout/PageHeader";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +33,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  ApiError,
   changeUserPassword,
   getOperationalKit,
   getOperationalKits,
@@ -34,6 +43,12 @@ import {
   withdrawKit,
 } from "@/services/api";
 import type { Estoque, Kit, KitStatus } from "@/types";
+
+function hasMaintenanceBlock(data: unknown) {
+  return (
+    !!data && typeof data === "object" && (data as Record<string, unknown>).modo_manutencao === true
+  );
+}
 
 export const Route = createFileRoute("/operador/kits")({
   head: () => ({ meta: [{ title: "Retirada de Kit · Zytrex Inventory" }] }),
@@ -146,7 +161,9 @@ function OperatorKitsPage() {
   };
 
   const readyCount = kits.filter((kit) => kit.status === "pronto_para_retirada").length;
-  const inUseCount = kits.filter((kit) => kit.status === "em_uso" || kit.status === "aguardando_recebimento").length;
+  const inUseCount = kits.filter(
+    (kit) => kit.status === "em_uso" || kit.status === "aguardando_recebimento",
+  ).length;
   const incompleteCount = kits.filter((kit) => kit.status === "kit_incompleto").length;
 
   return (
@@ -155,8 +172,17 @@ function OperatorKitsPage() {
         title="Retirada de Kit"
         subtitle={estoque ? `Kits disponiveis no estoque ${estoque.nome}` : "Estoque selecionado"}
         actions={
-          <Button variant="outline" className="gap-2" onClick={() => estoque && loadKits(estoque)} disabled={loading}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={() => estoque && loadKits(estoque)}
+            disabled={loading}
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RotateCcw className="h-4 w-4" />
+            )}
             <span className="hidden sm:inline">Atualizar</span>
           </Button>
         }
@@ -228,11 +254,15 @@ function StatusSummaryCard({
   className: string;
 }) {
   return (
-    <div className={`rounded-lg border p-3 shadow-[var(--shadow-soft)] sm:rounded-xl sm:p-4 ${className}`}>
+    <div
+      className={`rounded-lg border p-3 shadow-[var(--shadow-soft)] sm:rounded-xl sm:p-4 ${className}`}
+    >
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-2xl font-bold leading-none">{value}</div>
-          <div className="mt-1 line-clamp-1 text-xs font-medium text-foreground sm:text-sm">{label}</div>
+          <div className="mt-1 line-clamp-1 text-xs font-medium text-foreground sm:text-sm">
+            {label}
+          </div>
         </div>
         <div className="hidden h-10 w-10 items-center justify-center rounded-lg bg-background/80 sm:flex">
           <Icon className="h-5 w-5" />
@@ -242,16 +272,26 @@ function StatusSummaryCard({
   );
 }
 
-function KitOperationCard({ kit, onAction }: { kit: Kit; onAction: (kit: Kit, type: ActionType) => void }) {
+function KitOperationCard({
+  kit,
+  onAction,
+}: {
+  kit: Kit;
+  onAction: (kit: Kit, type: ActionType) => void;
+}) {
   const style = statusStyle(kit.status);
   const Icon = statusIcon(kit.status);
   const isReady = kit.status === "pronto_para_retirada";
   const isInUse = kit.status === "em_uso" || kit.status === "aguardando_recebimento";
 
   return (
-    <article className={`flex min-h-44 flex-col rounded-lg border border-l-4 ${style.border} bg-background p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-soft)] sm:min-h-52 sm:rounded-xl sm:p-4`}>
+    <article
+      className={`flex min-h-44 flex-col rounded-lg border border-l-4 ${style.border} bg-background p-3 shadow-sm transition hover:-translate-y-0.5 hover:shadow-[var(--shadow-soft)] sm:min-h-52 sm:rounded-xl sm:p-4`}
+    >
       <div className="flex items-start justify-between gap-3">
-        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${style.icon}`}>
+        <div
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${style.icon}`}
+        >
           <Icon className="h-5 w-5" />
         </div>
         <Badge variant={statusVariant(kit.status)} className={`border ${style.badge}`}>
@@ -262,10 +302,10 @@ function KitOperationCard({ kit, onAction }: { kit: Kit; onAction: (kit: Kit, ty
       <div className="mt-4 min-w-0 flex-1">
         <h3 className="truncate text-lg font-semibold">{kit.name}</h3>
         <div className="mt-2 rounded-lg bg-muted/40 px-3 py-2 text-sm">
-          <div className="text-xs font-medium uppercase text-muted-foreground">Responsavel atual</div>
-          <div className="mt-1 font-medium">
-            {kit.responsibleName ?? "Sem responsavel em uso"}
+          <div className="text-xs font-medium uppercase text-muted-foreground">
+            Responsavel atual
           </div>
+          <div className="mt-1 font-medium">{kit.responsibleName ?? "Sem responsavel em uso"}</div>
         </div>
       </div>
 
@@ -367,6 +407,11 @@ function OperatorKitActionDialog({
       }
       onDone();
     } catch (error) {
+      if (error instanceof ApiError && error.status === 403 && hasMaintenanceBlock(error.data)) {
+        toast.warning(error.message);
+        onClose();
+        return;
+      }
       const challenge = getPasswordChallenge(error);
       if (challenge) {
         setChallengeUserId(challenge.usuario.id);
@@ -444,124 +489,136 @@ function OperatorKitActionDialog({
     <>
       <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
         <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{action === "retirar" ? "Retirar Kit" : "Voltar Kit"}</DialogTitle>
-          <DialogDescription>{kit?.name}</DialogDescription>
-        </DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{action === "retirar" ? "Retirar Kit" : "Voltar Kit"}</DialogTitle>
+            <DialogDescription>{kit?.name}</DialogDescription>
+          </DialogHeader>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-2">
-            <Label>Matrícula</Label>
-            <Input value={matricula} onChange={(event) => setMatricula(event.target.value)} />
-          </div>
-          <div className="space-y-2">
-            <Label>Senha</Label>
-            <Input type="password" value={senha} onChange={(event) => setSenha(event.target.value)} />
-          </div>
-        </div>
-
-        {action === "receber" && (
-          <div className="overflow-x-auto rounded-lg border bg-muted/20">
-            {!kit?.items ? (
-              <div className="flex min-h-32 items-center justify-center">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Produto</TableHead>
-                    <TableHead className="text-right">Quantidade padrao</TableHead>
-                    <TableHead className="text-right">Quantidade inicial do kit</TableHead>
-                    <TableHead className="text-right">Reposicao durante operacao</TableHead>
-                    <TableHead className="text-right">Quantidade que sobrou</TableHead>
-                    <TableHead className="text-right">Consumo calculado</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {kit.items.map((item) => {
-                    const replenishment = Number(operationReplenishment[item.productId] ?? 0);
-                    const leftover = Number(received[item.productId] ?? 0);
-                    const consumption = item.currentQuantity + replenishment - leftover;
-
-                    return (
-                      <TableRow key={item.id}>
-                        <TableCell className="min-w-48">
-                          <div className="font-medium">{item.productName}</div>
-                          <div className="font-mono text-xs text-muted-foreground">{item.barcode}</div>
-                        </TableCell>
-                        <TableCell className="text-right">{item.defaultQuantity}</TableCell>
-                        <TableCell className="text-right">{item.currentQuantity}</TableCell>
-                        <TableCell className="w-40">
-                          <Input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            className="text-right"
-                            value={operationReplenishment[item.productId] ?? ""}
-                            onChange={(event) =>
-                              setOperationReplenishment((current) => ({
-                                ...current,
-                                [item.productId]: event.target.value,
-                              }))
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="w-40">
-                          <Input
-                            type="number"
-                            min={0}
-                            step="0.01"
-                            className="text-right"
-                            value={received[item.productId] ?? ""}
-                            onChange={(event) =>
-                              setReceived((current) => ({
-                                ...current,
-                                [item.productId]: event.target.value,
-                              }))
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="text-right font-semibold">{consumption}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            )}
-          </div>
-        )}
-
-        {action === "retirar" && (
-          <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2 font-medium text-foreground">
-              <PackageCheck className="h-4 w-4 text-primary" />
-              Confirme a retirada do kit com matrícula e senha.
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Matrícula</Label>
+              <Input value={matricula} onChange={(event) => setMatricula(event.target.value)} />
             </div>
-            <p className="mt-1">O kit ficará em uso no nome do funcionário informado.</p>
+            <div className="space-y-2">
+              <Label>Senha</Label>
+              <Input
+                type="password"
+                value={senha}
+                onChange={(event) => setSenha(event.target.value)}
+              />
+            </div>
           </div>
-        )}
 
-        <div className="space-y-2">
-          <Label>Observacao</Label>
-          <Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Opcional" />
-        </div>
+          {action === "receber" && (
+            <div className="overflow-x-auto rounded-lg border bg-muted/20">
+              {!kit?.items ? (
+                <div className="flex min-h-32 items-center justify-center">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Produto</TableHead>
+                      <TableHead className="text-right">Quantidade padrao</TableHead>
+                      <TableHead className="text-right">Quantidade inicial do kit</TableHead>
+                      <TableHead className="text-right">Reposicao durante operacao</TableHead>
+                      <TableHead className="text-right">Quantidade que sobrou</TableHead>
+                      <TableHead className="text-right">Consumo calculado</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {kit.items.map((item) => {
+                      const replenishment = Number(operationReplenishment[item.productId] ?? 0);
+                      const leftover = Number(received[item.productId] ?? 0);
+                      const consumption = item.currentQuantity + replenishment - leftover;
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={loading}>
-            Cancelar
-          </Button>
-          <Button onClick={submit} disabled={loading || (action === "receber" && !kit?.items)}>
-            {loading ? "Processando..." : "Confirmar"}
-          </Button>
-        </DialogFooter>
+                      return (
+                        <TableRow key={item.id}>
+                          <TableCell className="min-w-48">
+                            <div className="font-medium">{item.productName}</div>
+                            <div className="font-mono text-xs text-muted-foreground">
+                              {item.barcode}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">{item.defaultQuantity}</TableCell>
+                          <TableCell className="text-right">{item.currentQuantity}</TableCell>
+                          <TableCell className="w-40">
+                            <Input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              className="text-right"
+                              value={operationReplenishment[item.productId] ?? ""}
+                              onChange={(event) =>
+                                setOperationReplenishment((current) => ({
+                                  ...current,
+                                  [item.productId]: event.target.value,
+                                }))
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="w-40">
+                            <Input
+                              type="number"
+                              min={0}
+                              step="0.01"
+                              className="text-right"
+                              value={received[item.productId] ?? ""}
+                              onChange={(event) =>
+                                setReceived((current) => ({
+                                  ...current,
+                                  [item.productId]: event.target.value,
+                                }))
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">{consumption}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          )}
+
+          {action === "retirar" && (
+            <div className="rounded-lg border bg-muted/20 p-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2 font-medium text-foreground">
+                <PackageCheck className="h-4 w-4 text-primary" />
+                Confirme a retirada do kit com matrícula e senha.
+              </div>
+              <p className="mt-1">O kit ficará em uso no nome do funcionário informado.</p>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label>Observacao</Label>
+            <Textarea
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder="Opcional"
+            />
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose} disabled={loading}>
+              Cancelar
+            </Button>
+            <Button onClick={submit} disabled={loading || (action === "receber" && !kit?.items)}>
+              {loading ? "Processando..." : "Confirmar"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       <Dialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{passwordStatus === "expired" ? "Senha vencida" : "Primeiro acesso"}</DialogTitle>
+            <DialogTitle>
+              {passwordStatus === "expired" ? "Senha vencida" : "Primeiro acesso"}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -573,7 +630,11 @@ function OperatorKitActionDialog({
 
             <div className="space-y-2">
               <Label>Nova senha</Label>
-              <Input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+              />
             </div>
 
             <div className="space-y-2">

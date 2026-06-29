@@ -1,5 +1,5 @@
 import JsBarcode from "jsbarcode";
-import type { InventoryCurrentItem, Movement, ProductLot, SystemUser, Waste } from "@/types";
+import type { Estoque, InventoryCurrentItem, Movement, ProductLot, SystemUser, Waste } from "@/types";
 import { escapeHtml, reportBrandHtml, reportBrandStyles } from "@/lib/reportBrand";
 
 export type GlobalSearchPrintResult = "blocked" | "printed";
@@ -15,6 +15,20 @@ type UserPrintData = {
   movements: Movement[];
   wastes: Waste[];
   totalWasteValue: number;
+};
+
+export type StockPrintProduct = {
+  productId: number;
+  productName: string;
+  barcode: string;
+  categoryName: string | null;
+  stock: number;
+  status: string;
+};
+
+type StockPrintData = {
+  stock: Estoque;
+  products: StockPrintProduct[];
 };
 
 function formatDate(value?: string | null) {
@@ -109,7 +123,7 @@ function baseStyles() {
     .value { font-weight: 700; word-break: break-word; }
     section {
       margin-bottom: 12px;
-      break-inside: avoid;
+      break-inside: auto;
     }
     table {
       width: 100%;
@@ -125,6 +139,11 @@ function baseStyles() {
       word-break: break-word;
     }
     thead { display: table-header-group; }
+    tbody { page-break-inside: auto; }
+    tr {
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
     th {
       background: #f8fafc;
       color: #475569;
@@ -166,7 +185,8 @@ function baseStyles() {
         height: auto !important;
         overflow: visible !important;
       }
-      header, .summary, section { break-inside: avoid; }
+      header, .summary, .barcode-box { break-inside: avoid; }
+      section { break-inside: auto; }
     }
   `;
 }
@@ -446,4 +466,87 @@ export function printGlobalSearchUser({
   `;
 
   return openPrintWindow(`Usuario - ${user.name}`, body);
+}
+
+export function printGlobalSearchStock({
+  stock,
+  products,
+}: StockPrintData): GlobalSearchPrintResult {
+  const generatedAt = new Date().toLocaleString("pt-BR");
+  const totalQuantity = products.reduce((total, product) => total + product.stock, 0);
+  const status = stock.arquivado ? "Arquivado" : stock.ativo ? "Ativo" : "Inativo";
+
+  const body = `
+    <header>
+      <div>
+        ${reportBrandHtml()}
+        <h1>Relatorio de Estoque</h1>
+        <div class="muted">Gerado em ${escapeHtml(generatedAt)}</div>
+      </div>
+      <div class="muted">Busca global</div>
+    </header>
+
+    <section class="summary">
+      <div class="box">
+        <span class="label">Estoque</span>
+        <span class="value">${escapeHtml(stock.nome)}</span>
+      </div>
+      <div class="box">
+        <span class="label">Tipo</span>
+        <span class="value">${escapeHtml(stock.tipo)}</span>
+      </div>
+      <div class="box">
+        <span class="label">Status</span>
+        <span class="value">${escapeHtml(status)}</span>
+      </div>
+      <div class="box">
+        <span class="label">Criado em</span>
+        <span class="value">${escapeHtml(formatDate(stock.criadoEm))}</span>
+      </div>
+      <div class="box">
+        <span class="label">Produtos com saldo</span>
+        <span class="value">${escapeHtml(products.length)}</span>
+      </div>
+      <div class="box">
+        <span class="label">Saldo total</span>
+        <span class="value">${escapeHtml(totalQuantity)}</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Produtos neste estoque</h2>
+      ${
+        products.length
+          ? `<table>
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th>Codigo</th>
+                  <th>Categoria</th>
+                  <th>Status</th>
+                  <th class="number">Saldo</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${products
+                  .map(
+                    (product) => `
+                      <tr>
+                        <td>${escapeHtml(product.productName)}</td>
+                        <td>${escapeHtml(product.barcode)}</td>
+                        <td>${escapeHtml(product.categoryName ?? "Sem categoria")}</td>
+                        <td>${escapeHtml(product.status)}</td>
+                        <td class="number">${escapeHtml(product.stock)}</td>
+                      </tr>
+                    `,
+                  )
+                  .join("")}
+              </tbody>
+            </table>`
+          : `<div class="empty">Nenhum produto com saldo encontrado neste estoque.</div>`
+      }
+    </section>
+  `;
+
+  return openPrintWindow(`Estoque - ${stock.nome}`, body);
 }

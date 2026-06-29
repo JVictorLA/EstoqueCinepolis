@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
+  AlertTriangle,
   ArrowLeft,
   ChevronRight,
   Check,
@@ -15,14 +16,24 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { toast } from "sonner";
 import {
+  ApiError,
   adminLogin,
   changeUserPassword,
   createInitialSetup,
+  getOperationalStatus,
   getPasswordChallenge,
   getSetupStatus,
   getUserByMatricula,
@@ -31,6 +42,30 @@ import {
 import { passwordChallengeMessage, resolvePasswordStatus } from "@/lib/passwordChallenge";
 
 import zyntraIcon from "@/icones/android-chrome-512x512.png";
+
+const MAINTENANCE_MESSAGE =
+  "Sistema em modo manutenção. Operações do modo operador estão temporariamente bloqueadas.";
+
+function getTemporaryUserLockInfo(error: unknown) {
+  const empty = { seconds: 0, showFinalWarningAfterTimer: false };
+  if (!(error instanceof ApiError) || error.status !== 403) return empty;
+  const data = error.data;
+  if (!data || typeof data !== "object") return empty;
+  const record = data as Record<string, unknown>;
+  if (record.usuario_bloqueado_temporariamente !== true) return empty;
+  const seconds = Number(record.retry_after_seconds);
+  return {
+    seconds: Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : 0,
+    showFinalWarningAfterTimer: record.aviso_ultimas_tentativas_apos_timer === true,
+  };
+}
+
+function hasAutoDisabledPasswordUser(error: unknown) {
+  if (!(error instanceof ApiError) || error.status !== 403) return false;
+  const data = error.data;
+  if (!data || typeof data !== "object") return false;
+  return (data as Record<string, unknown>).usuario_desabilitado_por_senha === true;
+}
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -157,14 +192,18 @@ function AccessCard({
       </span>
       <span className="min-w-0 flex-1">
         <span className="block font-semibold text-foreground">{title}</span>
-        <span className="mt-1 hidden text-sm leading-6 text-muted-foreground sm:block">{description}</span>
+        <span className="mt-1 hidden text-sm leading-6 text-muted-foreground sm:block">
+          {description}
+        </span>
       </span>
       <ChevronRight className="h-5 w-5 shrink-0 text-primary transition group-hover:translate-x-0.5" />
     </button>
   );
 }
 
-const defaultSetupPayload: InitialSetupPayload & { master: InitialSetupPayload["master"] & { confirmarSenha: string } } = {
+const defaultSetupPayload: InitialSetupPayload & {
+  master: InitialSetupPayload["master"] & { confirmarSenha: string };
+} = {
   empresa: {
     nome_empresa: "",
     unidade_empresa: "",
@@ -205,7 +244,6 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
   const updateEmpresa = (key: keyof InitialSetupPayload["empresa"], value: string) =>
     setPayload((current) => ({ ...current, empresa: { ...current.empresa, [key]: value } }));
 
-
   const updateMaster = (key: keyof typeof payload.master, value: string) =>
     setPayload((current) => ({ ...current, master: { ...current.master, [key]: value } }));
 
@@ -231,10 +269,11 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
       }
     }
     if (target === 3) {
-      if (!payload.master.nome.trim()) return toast.error("Informe o nome do master"), false;
-      if (!payload.master.matricula.trim()) return toast.error("Informe a matrícula do master"), false;
-      if (!payload.master.senha) return toast.error("Informe a senha do master"), false;
-      if (!payload.master.confirmarSenha) return toast.error("Confirme a senha do master"), false;
+      if (!payload.master.nome.trim()) return (toast.error("Informe o nome do master"), false);
+      if (!payload.master.matricula.trim())
+        return (toast.error("Informe a matrícula do master"), false);
+      if (!payload.master.senha) return (toast.error("Informe a senha do master"), false);
+      if (!payload.master.confirmarSenha) return (toast.error("Confirme a senha do master"), false);
       if (payload.master.senha.length < 6) {
         toast.error("A senha deve ter pelo menos 6 caracteres");
         return false;
@@ -318,10 +357,12 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
             <div className="grid gap-8 py-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
               <BrandLogo size="lg" />
               <div className="space-y-4">
-                <h1 className="text-2xl font-bold sm:text-3xl">Vamos configurar o Zytrex Inventory para sua empresa.</h1>
+                <h1 className="text-2xl font-bold sm:text-3xl">
+                  Vamos configurar o Zytrex Inventory para sua empresa.
+                </h1>
                 <p className="text-sm text-muted-foreground sm:text-base">
-                  Este assistente cria os dados iniciais, estoques e o
-                  usuario master para o primeiro acesso.
+                  Este assistente cria os dados iniciais, estoques e o usuario master para o
+                  primeiro acesso.
                 </p>
                 <Button className="zyntra-gradient border-0" onClick={next}>
                   Começar configuração
@@ -333,31 +374,60 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
           {step === 1 && (
             <SetupGrid>
               <SetupField label="Nome da empresa" required>
-                <Input value={payload.empresa.nome_empresa} onChange={(e) => updateEmpresa("nome_empresa", e.target.value)} />
+                <Input
+                  value={payload.empresa.nome_empresa}
+                  onChange={(e) => updateEmpresa("nome_empresa", e.target.value)}
+                />
               </SetupField>
               <SetupField label="Unidade">
-                <Input value={payload.empresa.unidade_empresa} onChange={(e) => updateEmpresa("unidade_empresa", e.target.value)} />
+                <Input
+                  value={payload.empresa.unidade_empresa}
+                  onChange={(e) => updateEmpresa("unidade_empresa", e.target.value)}
+                />
               </SetupField>
               <SetupField label="CNPJ">
-                <Input value={payload.empresa.cnpj_empresa} onChange={(e) => updateEmpresa("cnpj_empresa", e.target.value)} />
+                <Input
+                  value={payload.empresa.cnpj_empresa}
+                  onChange={(e) => updateEmpresa("cnpj_empresa", e.target.value)}
+                />
               </SetupField>
               <SetupField label="Cidade">
-                <Input value={payload.empresa.cidade_empresa} onChange={(e) => updateEmpresa("cidade_empresa", e.target.value)} />
+                <Input
+                  value={payload.empresa.cidade_empresa}
+                  onChange={(e) => updateEmpresa("cidade_empresa", e.target.value)}
+                />
               </SetupField>
               <SetupField label="UF">
-                <Input maxLength={2} value={payload.empresa.uf_empresa} onChange={(e) => updateEmpresa("uf_empresa", e.target.value.toUpperCase())} />
+                <Input
+                  maxLength={2}
+                  value={payload.empresa.uf_empresa}
+                  onChange={(e) => updateEmpresa("uf_empresa", e.target.value.toUpperCase())}
+                />
               </SetupField>
               <SetupField label="Endereço">
-                <Input value={payload.empresa.endereco_empresa} onChange={(e) => updateEmpresa("endereco_empresa", e.target.value)} />
+                <Input
+                  value={payload.empresa.endereco_empresa}
+                  onChange={(e) => updateEmpresa("endereco_empresa", e.target.value)}
+                />
               </SetupField>
               <SetupField label="Telefone">
-                <Input value={payload.empresa.telefone_empresa} onChange={(e) => updateEmpresa("telefone_empresa", e.target.value)} />
+                <Input
+                  value={payload.empresa.telefone_empresa}
+                  onChange={(e) => updateEmpresa("telefone_empresa", e.target.value)}
+                />
               </SetupField>
               <SetupField label="Email">
-                <Input type="email" value={payload.empresa.email_empresa} onChange={(e) => updateEmpresa("email_empresa", e.target.value)} />
+                <Input
+                  type="email"
+                  value={payload.empresa.email_empresa}
+                  onChange={(e) => updateEmpresa("email_empresa", e.target.value)}
+                />
               </SetupField>
               <SetupField label="Logo URL">
-                <Input value={payload.empresa.logo_url} onChange={(e) => updateEmpresa("logo_url", e.target.value)} />
+                <Input
+                  value={payload.empresa.logo_url}
+                  onChange={(e) => updateEmpresa("logo_url", e.target.value)}
+                />
               </SetupField>
             </SetupGrid>
           )}
@@ -407,34 +477,71 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
           {step === 3 && (
             <SetupGrid>
               <SetupField label="Nome" required>
-                <Input value={payload.master.nome} onChange={(e) => updateMaster("nome", e.target.value)} />
+                <Input
+                  value={payload.master.nome}
+                  onChange={(e) => updateMaster("nome", e.target.value)}
+                />
               </SetupField>
               <SetupField label="Matrícula" required>
-                <Input value={payload.master.matricula} onChange={(e) => updateMaster("matricula", e.target.value)} />
+                <Input
+                  value={payload.master.matricula}
+                  onChange={(e) => updateMaster("matricula", e.target.value)}
+                />
               </SetupField>
               <SetupField label="Email">
-                <Input type="email" value={payload.master.email} onChange={(e) => updateMaster("email", e.target.value)} />
+                <Input
+                  type="email"
+                  value={payload.master.email}
+                  onChange={(e) => updateMaster("email", e.target.value)}
+                />
               </SetupField>
               <SetupField label="Senha" required>
-                <Input type="password" value={payload.master.senha} onChange={(e) => updateMaster("senha", e.target.value)} />
+                <Input
+                  type="password"
+                  value={payload.master.senha}
+                  onChange={(e) => updateMaster("senha", e.target.value)}
+                />
               </SetupField>
               <SetupField label="Confirmar senha" required>
-                <Input type="password" value={payload.master.confirmarSenha} onChange={(e) => updateMaster("confirmarSenha", e.target.value)} />
+                <Input
+                  type="password"
+                  value={payload.master.confirmarSenha}
+                  onChange={(e) => updateMaster("confirmarSenha", e.target.value)}
+                />
               </SetupField>
             </SetupGrid>
           )}
 
           {step === 4 && (
             <div className="grid gap-4 md:grid-cols-2">
-              <ReviewBlock title="Empresa" items={[payload.empresa.nome_empresa, payload.empresa.unidade_empresa, [payload.empresa.cidade_empresa, payload.empresa.uf_empresa].filter(Boolean).join(" - ")]} />
+              <ReviewBlock
+                title="Empresa"
+                items={[
+                  payload.empresa.nome_empresa,
+                  payload.empresa.unidade_empresa,
+                  [payload.empresa.cidade_empresa, payload.empresa.uf_empresa]
+                    .filter(Boolean)
+                    .join(" - "),
+                ]}
+              />
               <ReviewBlock title="Estoques" items={payload.estoques} />
-              <ReviewBlock title="Usuário master" items={[payload.master.nome, payload.master.matricula, payload.master.email || "Email não informado"]} />
+              <ReviewBlock
+                title="Usuário master"
+                items={[
+                  payload.master.nome,
+                  payload.master.matricula,
+                  payload.master.email || "Email não informado",
+                ]}
+              />
             </div>
           )}
 
           {step > 0 && (
             <div className="mt-8 flex justify-between gap-3 border-t pt-5">
-              <Button variant="outline" onClick={() => setStep((current) => Math.max(0, current - 1))}>
+              <Button
+                variant="outline"
+                onClick={() => setStep((current) => Math.max(0, current - 1))}
+              >
                 Voltar
               </Button>
               {step < steps.length - 1 ? (
@@ -500,8 +607,14 @@ function LoginPage() {
   const [pass, setPass] = useState("");
 
   const [loading, setLoading] = useState(false);
+  const [loginLockSeconds, setLoginLockSeconds] = useState(0);
+  const [showFinalPasswordWarning, setShowFinalPasswordWarning] = useState(false);
+  const [showFinalPasswordWarningAfterLock, setShowFinalPasswordWarningAfterLock] =
+    useState(false);
+  const [autoDisabledDialogOpen, setAutoDisabledDialogOpen] = useState(false);
   const [setupLoading, setSetupLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(null);
 
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [userId, setUserId] = useState<number | null>(null);
@@ -512,16 +625,58 @@ function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   useEffect(() => {
-    getSetupStatus()
-      .then((status) => setNeedsSetup(status.precisaSetup))
+    Promise.all([getSetupStatus(), getOperationalStatus().catch(() => null)])
+      .then(([status, operationalStatus]) => {
+        setNeedsSetup(status.precisaSetup);
+        setMaintenanceMessage(
+          operationalStatus?.modo_manutencao
+            ? operationalStatus.mensagem || MAINTENANCE_MESSAGE
+            : null,
+        );
+      })
       .catch((err: unknown) => {
         toast.error(err instanceof Error ? err.message : "Erro ao verificar setup inicial");
       })
       .finally(() => setSetupLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (loginLockSeconds <= 0) return;
+
+    const timer = window.setInterval(() => {
+      setLoginLockSeconds((current) => {
+        const next = Math.max(0, current - 1);
+        if (next === 0 && showFinalPasswordWarningAfterLock) {
+          setShowFinalPasswordWarning(true);
+          setShowFinalPasswordWarningAfterLock(false);
+        }
+        return next;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [loginLockSeconds, showFinalPasswordWarningAfterLock]);
+
+  const openOperatorMode = () => {
+    if (maintenanceMessage) {
+      toast.warning(maintenanceMessage);
+      return;
+    }
+    navigate({ to: "/operador" });
+  };
+
+  const updateMatricula = (value: string) => {
+    setMatricula(value);
+    setLoginLockSeconds(0);
+    setShowFinalPasswordWarning(false);
+    setShowFinalPasswordWarningAfterLock(false);
+    setAutoDisabledDialogOpen(false);
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (loginLockSeconds > 0) return;
 
     if (!matricula || !pass) {
       toast.error("Informe matrícula e senha");
@@ -532,13 +687,36 @@ function LoginPage() {
 
     try {
       const response = await adminLogin(matricula, pass);
+      setLoginLockSeconds(0);
+      setShowFinalPasswordWarning(false);
+      setShowFinalPasswordWarningAfterLock(false);
+      setAutoDisabledDialogOpen(false);
       setTheme(response.themePreference);
 
       toast.success(`Bem-vindo, ${response.nome}!`);
       navigate({ to: "/admin" });
     } catch (err: unknown) {
+      const lockInfo = getTemporaryUserLockInfo(err);
+      if (lockInfo.seconds > 0) {
+        setLoginLockSeconds(lockInfo.seconds);
+        setShowFinalPasswordWarning(false);
+        setShowFinalPasswordWarningAfterLock(lockInfo.showFinalWarningAfterTimer);
+        toast.warning(err instanceof Error ? err.message : "Usuário temporariamente bloqueado");
+        return;
+      }
+
+      if (hasAutoDisabledPasswordUser(err)) {
+        setLoginLockSeconds(0);
+        setShowFinalPasswordWarning(false);
+        setShowFinalPasswordWarningAfterLock(false);
+        setAutoDisabledDialogOpen(true);
+        return;
+      }
+
       const challenge = getPasswordChallenge(err);
       if (challenge) {
+        setShowFinalPasswordWarning(false);
+        setShowFinalPasswordWarningAfterLock(false);
         setUserId(challenge.usuario.id);
         setCurrentPassword(pass);
         setPasswordStatus(challenge.password_status);
@@ -553,6 +731,8 @@ function LoginPage() {
           const resolvedStatus = resolvePasswordStatus(user);
 
           if (resolvedStatus === "expired" || resolvedStatus === "first_access") {
+            setShowFinalPasswordWarning(false);
+            setShowFinalPasswordWarningAfterLock(false);
             setUserId(user.id);
             setCurrentPassword(pass);
             setPasswordStatus(resolvedStatus);
@@ -606,6 +786,14 @@ function LoginPage() {
     }
   };
 
+  const isLoginLocked = loginLockSeconds > 0;
+  const loginButtonLabel = isLoginLocked ? `${loginLockSeconds}s` : "Entrar";
+  const finalPasswordWarning = showFinalPasswordWarning ? (
+    <p className="text-xs font-medium text-destructive">
+      Ultimas tentativas antes do bloqueio automatico.
+    </p>
+  ) : null;
+
   if (setupLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -615,7 +803,14 @@ function LoginPage() {
   }
 
   if (needsSetup) {
-    return <SetupWizard onDone={() => { setNeedsSetup(false); setMode("admin"); }} />;
+    return (
+      <SetupWizard
+        onDone={() => {
+          setNeedsSetup(false);
+          setMode("admin");
+        }}
+      />
+    );
   }
 
   const renderAdminLoginForm = (showBack: boolean) => (
@@ -648,7 +843,7 @@ function LoginPage() {
         <Input
           id="user"
           value={matricula}
-          onChange={(e) => setMatricula(e.target.value)}
+          onChange={(e) => updateMatricula(e.target.value)}
           placeholder="Sua matrícula"
           autoFocus
         />
@@ -663,15 +858,16 @@ function LoginPage() {
           onChange={(e) => setPass(e.target.value)}
           placeholder="••••••••"
         />
+        {finalPasswordWarning}
       </div>
 
       <Button
         type="submit"
         className="zyntra-gradient w-full border-0"
-        disabled={loading}
+        disabled={loading || isLoginLocked}
       >
-        {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-        Entrar
+        {loading && !isLoginLocked && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+        {loginButtonLabel}
       </Button>
     </form>
   );
@@ -697,108 +893,132 @@ function LoginPage() {
 
           <section className="border-border/80 lg:border-l lg:pl-12">
             <div className="rounded-xl border bg-card/95 p-4 shadow-[var(--shadow-card)] backdrop-blur sm:rounded-3xl sm:p-7">
-              <div className="sm:hidden">
-                {renderAdminLoginForm(false)}
-              </div>
+              <div className="sm:hidden">{renderAdminLoginForm(false)}</div>
 
               <div className="hidden sm:block">
-              {mode === "choose" ? (
-                <div className="space-y-6">
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/15">
-                      <Shield className="h-5 w-5" />
+                {mode === "choose" ? (
+                  <div className="space-y-6">
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary ring-1 ring-primary/15">
+                        <Shield className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h1 className="text-xl font-bold text-foreground">Escolha o acesso</h1>
+                        <p className="mt-1 hidden max-w-md text-sm leading-6 text-muted-foreground sm:block">
+                          Entre no painel administrativo ou acesse o modo operacional para registros
+                          rápidos.
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h1 className="text-xl font-bold text-foreground">Escolha o acesso</h1>
-                      <p className="mt-1 hidden max-w-md text-sm leading-6 text-muted-foreground sm:block">
-                        Entre no painel administrativo ou acesse o modo operacional para registros
-                        rápidos.
-                      </p>
+
+                    <div className="grid gap-3">
+                      <AccessCard
+                        icon={Shield}
+                        title="Acesso Administrativo"
+                        description="Gerencie produtos, estoques, usuários, relatórios e inventários."
+                        action={() => setMode("admin")}
+                        tone="blue"
+                      />
+                      <AccessCard
+                        icon={maintenanceMessage ? AlertTriangle : UserCog}
+                        title="Modo Operacional"
+                        description={
+                          maintenanceMessage ||
+                          "Registre entradas, saídas, desperdícios e conferências com agilidade."
+                        }
+                        action={openOperatorMode}
+                        tone="purple"
+                      />
                     </div>
+
+                    <p className="hidden items-center justify-center gap-2 pt-2 text-center text-xs text-muted-foreground sm:flex">
+                      <Lock className="h-3.5 w-3.5" />
+                      Sessão segura e trilha de movimentações.
+                    </p>
                   </div>
+                ) : (
+                  <form onSubmit={submit} className="space-y-5">
+                    <button
+                      type="button"
+                      onClick={() => setMode("choose")}
+                      className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                      Voltar
+                    </button>
 
-                  <div className="grid gap-3">
-                    <AccessCard
-                      icon={Shield}
-                      title="Acesso Administrativo"
-                      description="Gerencie produtos, estoques, usuários, relatórios e inventários."
-                      action={() => setMode("admin")}
-                      tone="blue"
-                    />
-                    <AccessCard
-                      icon={UserCog}
-                      title="Modo Operacional"
-                      description="Registre entradas, saídas, desperdícios e conferências com agilidade."
-                      action={() => navigate({ to: "/operador" })}
-                      tone="purple"
-                    />
-                  </div>
-
-                  <p className="hidden items-center justify-center gap-2 pt-2 text-center text-xs text-muted-foreground sm:flex">
-                    <Lock className="h-3.5 w-3.5" />
-                    Sessão segura e trilha de movimentações.
-                  </p>
-                </div>
-              ) : (
-                <form onSubmit={submit} className="space-y-5">
-                  <button
-                    type="button"
-                    onClick={() => setMode("choose")}
-                    className="inline-flex items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    Voltar
-                  </button>
-
-                  <div className="flex items-start gap-4">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/15">
-                      <LockKeyhole className="h-5 w-5" />
+                    <div className="flex items-start gap-4">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/15">
+                        <LockKeyhole className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <h1 className="text-2xl font-bold text-foreground">
+                          Acesso Administrativo
+                        </h1>
+                        <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
+                          Use suas credenciais para entrar no painel Zytrex Inventory.
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <h1 className="text-2xl font-bold text-foreground">Acesso Administrativo</h1>
-                      <p className="mt-1 hidden text-sm text-muted-foreground sm:block">
-                        Use suas credenciais para entrar no painel Zytrex Inventory.
-                      </p>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="user">Matrícula</Label>
+                      <Input
+                        id="user"
+                        value={matricula}
+                        onChange={(e) => updateMatricula(e.target.value)}
+                        placeholder="Sua matrícula"
+                        autoFocus
+                      />
                     </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="user">Matrícula</Label>
-                    <Input
-                      id="user"
-                      value={matricula}
-                      onChange={(e) => setMatricula(e.target.value)}
-                      placeholder="Sua matrícula"
-                      autoFocus
-                    />
-                  </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="pass">Senha</Label>
+                      <Input
+                        id="pass"
+                        type="password"
+                        value={pass}
+                        onChange={(e) => setPass(e.target.value)}
+                        placeholder="••••••••"
+                      />
+                      {finalPasswordWarning}
+                    </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="pass">Senha</Label>
-                    <Input
-                      id="pass"
-                      type="password"
-                      value={pass}
-                      onChange={(e) => setPass(e.target.value)}
-                      placeholder="••••••••"
-                    />
-                  </div>
-
-                  <Button
-                    type="submit"
-                    className="zyntra-gradient w-full border-0"
-                    disabled={loading}
-                  >
-                    {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Entrar
-                  </Button>
-                </form>
-              )}
+                    <Button
+                      type="submit"
+                      className="zyntra-gradient w-full border-0"
+                      disabled={loading || isLoginLocked}
+                    >
+                      {loading && !isLoginLocked && (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      )}
+                      {loginButtonLabel}
+                    </Button>
+                  </form>
+                )}
               </div>
             </div>
           </section>
         </div>
       </main>
+
+      <Dialog open={autoDisabledDialogOpen} onOpenChange={setAutoDisabledDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Usuario bloqueado por seguranca
+            </DialogTitle>
+            <DialogDescription>
+              Muitas tentativas incorretas foram registradas para esta matricula. Procure um
+              administrador ou o tecnico de TI para desbloquear e recuperar sua senha.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setAutoDisabledDialogOpen(false)}>Entendi</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {showChangePassword && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">

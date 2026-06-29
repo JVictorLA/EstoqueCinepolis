@@ -106,6 +106,24 @@ async function ensureDatabaseSchema() {
   );
 
   await ensureColumn(
+    "usuarios",
+    "login_tentativas_falhas",
+    "ALTER TABLE usuarios ADD COLUMN login_tentativas_falhas INT NOT NULL DEFAULT 0 AFTER theme_preference",
+  );
+
+  await ensureColumn(
+    "usuarios",
+    "login_bloqueado_ate",
+    "ALTER TABLE usuarios ADD COLUMN login_bloqueado_ate DATETIME NULL AFTER login_tentativas_falhas",
+  );
+
+  await ensureColumn(
+    "usuarios",
+    "login_bloqueio_nivel",
+    "ALTER TABLE usuarios ADD COLUMN login_bloqueio_nivel INT NOT NULL DEFAULT 0 AFTER login_bloqueado_ate",
+  );
+
+  await ensureColumn(
     "estoques",
     "tipo",
     "ALTER TABLE estoques ADD COLUMN tipo VARCHAR(20) NOT NULL DEFAULT 'permanente' AFTER ativo",

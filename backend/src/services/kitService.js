@@ -1,5 +1,6 @@
 const { pool } = require("../database/connection");
 const loteService = require("./loteService");
+const maintenanceService = require("./maintenanceService");
 const usuarioService = require("./usuarioService");
 
 const KIT_STATUSES = new Set([
@@ -28,6 +29,20 @@ async function validateUserCredentials(matricula, senha) {
   const user = await usuarioService.validateCredentials(matricula, senha);
   if (!user) throw Object.assign(new Error("Matrícula ou senha inválidos"), { status: 401 });
   if (user.error === "inactive") throw Object.assign(new Error("Usuário inativo"), { status: 403 });
+  if (user.error === "locked") {
+    throw Object.assign(new Error(user.message), {
+      status: 403,
+      usuario_bloqueado_temporariamente: true,
+      retry_after_seconds: user.retry_after_seconds,
+      aviso_ultimas_tentativas_apos_timer: !!user.aviso_ultimas_tentativas_apos_timer,
+    });
+  }
+  if (user.error === "disabled_by_password_attempts") {
+    throw Object.assign(new Error(user.message), {
+      status: user.status || 403,
+      usuario_desabilitado_por_senha: true,
+    });
+  }
   if (user.password_status) {
     const message =
       user.password_status === "expired"
@@ -140,20 +155,18 @@ async function assertProductsLinkedToStock(conn, estoqueId, items) {
   const linked = new Set(rows.map((row) => Number(row.produto_id)));
   const missing = productIds.filter((id) => !linked.has(id));
   if (missing.length) {
-    throw Object.assign(
-      new Error("Este produto não está vinculado ao estoque selecionado."),
-      { status: 400 },
-    );
+    throw Object.assign(new Error("Este produto não está vinculado ao estoque selecionado."), {
+      status: 400,
+    });
   }
 }
 
 async function consumeStock(conn, produtoId, estoqueId, quantidade) {
   const stockProduct = await loteService.getStockProduct(conn, produtoId, estoqueId, true);
   if (!stockProduct) {
-    throw Object.assign(
-      new Error("Este produto não está vinculado ao estoque selecionado."),
-      { status: 400 },
-    );
+    throw Object.assign(new Error("Este produto não está vinculado ao estoque selecionado."), {
+      status: 400,
+    });
   }
 
   if (!stockProduct.estoque_ativo || stockProduct.estoque_arquivado) {
@@ -185,10 +198,10 @@ async function consumeStock(conn, produtoId, estoqueId, quantidade) {
     if (restante <= 0) break;
     const current = toNumber(lot.quantidade);
     const remove = Math.min(current, restante);
-    await conn.query("UPDATE produto_lotes SET quantidade = ?, atualizado_em = NOW() WHERE id = ?", [
-      current - remove,
-      lot.id,
-    ]);
+    await conn.query(
+      "UPDATE produto_lotes SET quantidade = ?, atualizado_em = NOW() WHERE id = ?",
+      [current - remove, lot.id],
+    );
     restante -= remove;
   }
 
@@ -202,9 +215,7 @@ async function consumeStock(conn, produtoId, estoqueId, quantidade) {
 }
 
 function calculateKitStatus(items) {
-  return items.every(
-    (item) => toNumber(item.quantidade_atual) >= toNumber(item.quantidade_padrao),
-  )
+  return items.every((item) => toNumber(item.quantidade_atual) >= toNumber(item.quantidade_padrao))
     ? "pronto_para_retirada"
     : "kit_incompleto";
 }
@@ -464,10 +475,10 @@ async function montarOuRepor({ kitId, usuario_id, tipo = "montagem", observacao 
     }
 
     const refreshed = await getKitItems(conn, kitId, true);
-    await conn.query(
-      "UPDATE kits_caixa SET status = ?, atualizado_em = NOW() WHERE id = ?",
-      [calculateKitStatus(refreshed), kitId],
-    );
+    await conn.query("UPDATE kits_caixa SET status = ?, atualizado_em = NOW() WHERE id = ?", [
+      calculateKitStatus(refreshed),
+      kitId,
+    ]);
 
     await insertKitMovement(conn, {
       kitId,
@@ -495,6 +506,7 @@ async function montarOuRepor({ kitId, usuario_id, tipo = "montagem", observacao 
 
 async function retirar({ kitId, matricula, senha, observacao }) {
   const usuario = await validateUserCredentials(matricula, senha);
+  await maintenanceService.assertOperationalAllowed(usuario);
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -537,6 +549,7 @@ async function retirar({ kitId, matricula, senha, observacao }) {
 
 async function receber({ kitId, matricula, senha, itens, observacao }) {
   const usuario = await validateUserCredentials(matricula, senha);
+  await maintenanceService.assertOperationalAllowed(usuario);
   const payloadByProduct = new Map(
     (itens || []).map((item) => [
       Number(item.produto_id),

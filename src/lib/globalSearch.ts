@@ -1,4 +1,4 @@
-import type { InventoryCurrentItem, SystemUser } from "@/types";
+import type { Estoque, InventoryCurrentItem, SystemUser } from "@/types";
 
 function normalizeSearch(value: string) {
   return value
@@ -70,4 +70,18 @@ export function searchUsers(query: string, users: SystemUser[], limit = 6): Syst
     .sort((a, b) => b.score - a.score || a.user.name.localeCompare(b.user.name))
     .slice(0, limit)
     .map((item) => item.user);
+}
+
+export function searchStocks(query: string, stocks: Estoque[], limit = 6): Estoque[] {
+  if (!canRunGlobalSearch(query)) return [];
+
+  return stocks
+    .map((stock) => ({
+      stock,
+      score: scoreText(query, stock.nome),
+    }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.stock.nome.localeCompare(b.stock.nome))
+    .slice(0, limit)
+    .map((item) => item.stock);
 }

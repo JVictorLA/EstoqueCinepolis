@@ -173,6 +173,8 @@
 
   html {
     color-scheme: light;
+    scrollbar-color: rgb(79 124 255 / 0.42) transparent;
+    scrollbar-width: thin;
   }
 
   body {
@@ -188,6 +190,43 @@
     background:
       radial-gradient(circle at 50% -20%, rgb(79 124 255 / 0.12), transparent 34rem),
       linear-gradient(180deg, #0b1020 0%, #080d1a 100%);
+  }
+
+  .dark {
+    scrollbar-color: rgb(34 211 238 / 0.38) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    min-height: 48px;
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+    background-color: rgb(79 124 255 / 0.34);
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(79 124 255 / 0.56);
+  }
+
+  .dark *::-webkit-scrollbar-thumb {
+    background-color: rgb(34 211 238 / 0.3);
+  }
+
+  .dark *::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(34 211 238 / 0.52);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
   }
 
   h1,

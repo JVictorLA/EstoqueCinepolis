@@ -6,12 +6,14 @@ import {
   ArrowUpFromLine,
   Barcode,
   Clock,
+  ExternalLink,
   Loader2,
   Package,
   Printer,
   Search,
   Trash2,
   User,
+  Warehouse,
 } from "lucide-react";
 import JsBarcode from "jsbarcode";
 import { toast } from "sonner";
@@ -20,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  getEstoques,
   getInventoryCurrent,
   getMovements,
   getProductLots,
@@ -27,18 +30,25 @@ import {
   getWastes,
 } from "@/services/api";
 import type {
+  Estoque,
   InventoryCurrentItem,
   Movement,
   ProductLot,
   SystemUser,
   Waste,
 } from "@/types";
-import { canRunGlobalSearch, searchProducts, searchUsers } from "@/lib/globalSearch";
-import { printGlobalSearchProduct, printGlobalSearchUser } from "@/lib/globalSearchPrint";
+import { canRunGlobalSearch, searchProducts, searchStocks, searchUsers } from "@/lib/globalSearch";
+import {
+  printGlobalSearchProduct,
+  printGlobalSearchStock,
+  printGlobalSearchUser,
+  type StockPrintProduct,
+} from "@/lib/globalSearchPrint";
 
 export type GlobalSearchSelection =
   | { type: "product"; item: InventoryCurrentItem }
-  | { type: "user"; item: SystemUser };
+  | { type: "user"; item: SystemUser }
+  | { type: "stock"; item: Estoque };
 
 export interface GlobalSearchViewState {
   query: string;
@@ -80,7 +90,38 @@ function openMovement(path: string, barcode: string, operation?: "transferencia"
 
 function getSelectionKey(selection: GlobalSearchSelection | null) {
   if (!selection) return "";
-  return `${selection.type}-${selection.item.id ?? selection.item.productId}`;
+  if (selection.type === "product") return `product-${selection.item.productId}`;
+  return `${selection.type}-${selection.item.id}`;
+}
+
+function stockProductsFor(stock: Estoque, products: InventoryCurrentItem[]): StockPrintProduct[] {
+  return products
+    .flatMap((product) => {
+      const locations = product.estoques.length
+        ? product.estoques
+        : product.estoqueId === stock.id
+          ? [
+              {
+                estoqueId: product.estoqueId,
+                estoqueNome: product.estoqueNome ?? stock.nome,
+                stock: product.stock,
+              },
+            ]
+          : [];
+      const location = locations.find((item) => item.estoqueId === stock.id);
+      if (!location || location.stock <= 0) return [];
+      return [
+        {
+          productId: product.productId,
+          productName: product.productName,
+          barcode: product.barcode,
+          categoryName: product.categoryName,
+          stock: location.stock,
+          status: product.status,
+        },
+      ];
+    })
+    .sort((a, b) => b.stock - a.stock || a.productName.localeCompare(b.productName));
 }
 
 export function GlobalSearch({ onOpenSearch, onCloseSearch }: GlobalSearchProps) {
@@ -90,24 +131,27 @@ export function GlobalSearch({ onOpenSearch, onCloseSearch }: GlobalSearchProps)
   const [error, setError] = useState("");
   const [products, setProducts] = useState<InventoryCurrentItem[]>([]);
   const [users, setUsers] = useState<SystemUser[]>([]);
+  const [stocks, setStocks] = useState<Estoque[]>([]);
 
   const shouldSearch = canRunGlobalSearch(query);
   const productResults = useMemo(() => searchProducts(query, products), [products, query]);
   const userResults = useMemo(() => searchUsers(query, users), [query, users]);
+  const stockResults = useMemo(() => searchStocks(query, stocks), [query, stocks]);
   const showResults = focused && shouldSearch;
 
   useEffect(() => {
-    if (!shouldSearch || products.length || users.length) return;
+    if (!shouldSearch || products.length || users.length || stocks.length) return;
 
     let alive = true;
     setLoading(true);
     setError("");
 
-    Promise.all([getInventoryCurrent("all"), getUsers()])
-      .then(([inventory, systemUsers]) => {
+    Promise.all([getInventoryCurrent("all"), getUsers(), getEstoques()])
+      .then(([inventory, systemUsers, stockList]) => {
         if (!alive) return;
         setProducts(inventory);
         setUsers(systemUsers);
+        setStocks(stockList);
       })
       .catch((err: unknown) => {
         if (!alive) return;
@@ -120,7 +164,7 @@ export function GlobalSearch({ onOpenSearch, onCloseSearch }: GlobalSearchProps)
     return () => {
       alive = false;
     };
-  }, [products.length, shouldSearch, users.length]);
+  }, [products.length, shouldSearch, stocks.length, users.length]);
 
   const openSearchPage = (selection: GlobalSearchSelection | null = null) => {
     setFocused(false);
@@ -132,7 +176,9 @@ export function GlobalSearch({ onOpenSearch, onCloseSearch }: GlobalSearchProps)
       ? ({ type: "product", item: productResults[0] } as GlobalSearchSelection)
       : userResults[0]
         ? ({ type: "user", item: userResults[0] } as GlobalSearchSelection)
-        : null;
+        : stockResults[0]
+          ? ({ type: "stock", item: stockResults[0] } as GlobalSearchSelection)
+          : null;
     if (first || shouldSearch) openSearchPage(first);
   };
 
@@ -153,7 +199,7 @@ export function GlobalSearch({ onOpenSearch, onCloseSearch }: GlobalSearchProps)
             onCloseSearch();
           }
         }}
-        placeholder="Buscar produtos, usuarios, codigos..."
+        placeholder="Buscar produtos, usuarios, codigos, estoques..."
         className="bg-card pl-9 text-sm shadow-none"
       />
 
@@ -168,7 +214,7 @@ export function GlobalSearch({ onOpenSearch, onCloseSearch }: GlobalSearchProps)
 
           {!loading && error && <div className="px-3 py-4 text-sm text-destructive">{error}</div>}
 
-          {!loading && !error && productResults.length === 0 && userResults.length === 0 && (
+          {!loading && !error && productResults.length === 0 && userResults.length === 0 && stockResults.length === 0 && (
             <div className="px-3 py-4 text-sm text-muted-foreground">Nenhum resultado encontrado.</div>
           )}
 
@@ -198,7 +244,7 @@ export function GlobalSearch({ onOpenSearch, onCloseSearch }: GlobalSearchProps)
           )}
 
           {!loading && !error && userResults.length > 0 && (
-            <div className="py-2">
+            <div className="border-b py-2">
               <div className="px-3 pb-1 text-xs font-medium uppercase text-muted-foreground">
                 Usuarios
               </div>
@@ -215,6 +261,31 @@ export function GlobalSearch({ onOpenSearch, onCloseSearch }: GlobalSearchProps)
                     <span className="block truncate font-medium">{user.name}</span>
                     <span className="block truncate text-xs text-muted-foreground">
                       {user.matricula} - {user.role}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {!loading && !error && stockResults.length > 0 && (
+            <div className="py-2">
+              <div className="px-3 pb-1 text-xs font-medium uppercase text-muted-foreground">
+                Estoques
+              </div>
+              {stockResults.map((stock) => (
+                <button
+                  key={`stock-${stock.id}`}
+                  type="button"
+                  className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-muted"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => openSearchPage({ type: "stock", item: stock })}
+                >
+                  <Warehouse className="h-4 w-4 text-muted-foreground" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{stock.nome}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {stock.tipo} - {stock.arquivado ? "arquivado" : stock.ativo ? "ativo" : "inativo"}
                     </span>
                   </span>
                 </button>
@@ -239,6 +310,7 @@ export function GlobalSearchPage({
   const [error, setError] = useState("");
   const [products, setProducts] = useState<InventoryCurrentItem[]>([]);
   const [users, setUsers] = useState<SystemUser[]>([]);
+  const [stocks, setStocks] = useState<Estoque[]>([]);
   const [productLots, setProductLots] = useState<ProductLot[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [wastes, setWastes] = useState<Waste[]>([]);
@@ -246,8 +318,14 @@ export function GlobalSearchPage({
   const shouldSearch = canRunGlobalSearch(query);
   const productResults = useMemo(() => searchProducts(query, products, 12), [products, query]);
   const userResults = useMemo(() => searchUsers(query, users, 12), [query, users]);
+  const stockResults = useMemo(() => searchStocks(query, stocks, 12), [query, stocks]);
   const selectedProduct = selection?.type === "product" ? selection.item : null;
   const selectedUser = selection?.type === "user" ? selection.item : null;
+  const selectedStock = selection?.type === "stock" ? selection.item : null;
+  const selectedStockProducts = useMemo(
+    () => (selectedStock ? stockProductsFor(selectedStock, products) : []),
+    [products, selectedStock],
+  );
   const totalWasteValue = wastes.reduce((total, waste) => total + waste.totalValue, 0);
   const selectionKey = getSelectionKey(selection);
 
@@ -261,11 +339,12 @@ export function GlobalSearchPage({
     setLoading(true);
     setError("");
 
-    Promise.all([getInventoryCurrent("all"), getUsers()])
-      .then(([inventory, systemUsers]) => {
+    Promise.all([getInventoryCurrent("all"), getUsers(), getEstoques()])
+      .then(([inventory, systemUsers, stockList]) => {
         if (!alive) return;
         setProducts(inventory);
         setUsers(systemUsers);
+        setStocks(stockList);
       })
       .catch((err: unknown) => {
         if (!alive) return;
@@ -295,12 +374,22 @@ export function GlobalSearchPage({
       ? ({ type: "product", item: productResults[0] } as GlobalSearchSelection)
       : userResults[0]
         ? ({ type: "user", item: userResults[0] } as GlobalSearchSelection)
-        : null;
+        : stockResults[0]
+          ? ({ type: "stock", item: stockResults[0] } as GlobalSearchSelection)
+          : null;
     if (first) setSelection(first);
-  }, [loading, productResults, selection, userResults]);
+  }, [loading, productResults, selection, stockResults, userResults]);
 
   useEffect(() => {
     if (!selection) {
+      setProductLots([]);
+      setMovements([]);
+      setWastes([]);
+      return;
+    }
+
+    if (selection.type === "stock") {
+      setDetailsLoading(false);
       setProductLots([]);
       setMovements([]);
       setWastes([]);
@@ -362,14 +451,19 @@ export function GlobalSearchPage({
             lots: productLots,
             movements,
           })
-        : selectedUser
+        : selection.type === "user" && selectedUser
           ? printGlobalSearchUser({
               user: selectedUser,
               movements,
               wastes,
               totalWasteValue,
             })
-          : null;
+          : selection.type === "stock" && selectedStock
+            ? printGlobalSearchStock({
+                stock: selectedStock,
+                products: selectedStockProducts,
+              })
+            : null;
 
     if (result === "blocked") {
       toast.error("Nao foi possivel abrir a janela de impressao. Verifique o bloqueador de pop-ups.");
@@ -408,7 +502,7 @@ export function GlobalSearchPage({
         <Input
           value={query}
           onChange={(event) => updateQuery(event.target.value)}
-          placeholder="Buscar por produto, codigo, usuario ou matricula..."
+          placeholder="Buscar por produto, codigo, usuario, matricula ou estoque..."
           className="h-11 bg-card pl-9"
           autoFocus
         />
@@ -438,6 +532,7 @@ export function GlobalSearchPage({
           <SearchResultsList
             productResults={productResults}
             userResults={userResults}
+            stockResults={stockResults}
             selectionKey={selectionKey}
             onSelect={setSelection}
           />
@@ -463,6 +558,10 @@ export function GlobalSearchPage({
               />
             )}
 
+            {!detailsLoading && selectedStock && (
+              <StockDetails stock={selectedStock} products={selectedStockProducts} />
+            )}
+
             {!detailsLoading && !selection && (
               <div className="rounded-lg border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
                 Selecione um resultado para ver os detalhes.
@@ -478,15 +577,17 @@ export function GlobalSearchPage({
 function SearchResultsList({
   productResults,
   userResults,
+  stockResults,
   selectionKey,
   onSelect,
 }: {
   productResults: InventoryCurrentItem[];
   userResults: SystemUser[];
+  stockResults: Estoque[];
   selectionKey: string;
   onSelect: (selection: GlobalSearchSelection) => void;
 }) {
-  if (productResults.length === 0 && userResults.length === 0) {
+  if (productResults.length === 0 && userResults.length === 0 && stockResults.length === 0) {
     return (
       <div className="rounded-lg border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
         Nenhum resultado encontrado.
@@ -549,6 +650,37 @@ function SearchResultsList({
                     <span className="block truncate font-medium">{user.name}</span>
                     <span className="block truncate text-xs text-muted-foreground">
                       {user.matricula} - {user.role}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {stockResults.length > 0 && (
+        <section className="overflow-hidden rounded-lg border bg-card">
+          <div className="border-b px-3 py-2 text-xs font-medium uppercase text-muted-foreground">
+            Estoques
+          </div>
+          <div className="divide-y">
+            {stockResults.map((stock) => {
+              const key = `stock-${stock.id}`;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`flex w-full items-center gap-3 px-3 py-3 text-left text-sm transition hover:bg-muted ${
+                    selectionKey === key ? "bg-muted" : ""
+                  }`}
+                  onClick={() => onSelect({ type: "stock", item: stock })}
+                >
+                  <Warehouse className="h-4 w-4 text-muted-foreground" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{stock.nome}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {stock.tipo} - {stock.arquivado ? "arquivado" : stock.ativo ? "ativo" : "inativo"}
                     </span>
                   </span>
                 </button>
@@ -725,6 +857,77 @@ function UserDetails({
             ))
           ) : (
             <div className="px-3 py-3 text-sm text-muted-foreground">Nenhum desperdicio encontrado.</div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function StockDetails({ stock, products }: { stock: Estoque; products: StockPrintProduct[] }) {
+  const totalQuantity = products.reduce((total, product) => total + product.stock, 0);
+  const status = stock.arquivado ? "Arquivado" : stock.ativo ? "Ativo" : "Inativo";
+
+  return (
+    <div className="space-y-4">
+      <section className="rounded-lg border bg-card p-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <h2 className="truncate text-2xl font-semibold tracking-normal">{stock.nome}</h2>
+            <div className="mt-2 text-sm text-muted-foreground">
+              Estoque {stock.tipo} - criado em {formatDate(stock.criadoEm)}
+            </div>
+          </div>
+          <Badge variant={stock.ativo && !stock.arquivado ? "default" : "secondary"}>{status}</Badge>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <Metric label="Tipo" value={stock.tipo} />
+          <Metric label="Produtos com saldo" value={products.length} />
+          <Metric label="Saldo total" value={totalQuantity} />
+        </div>
+      </section>
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <MetricCard label="Status" value={status} />
+        <MetricCard label="Arquivado" value={stock.arquivado ? "Sim" : "Nao"} />
+        <MetricCard label="Criado em" value={formatDate(stock.criadoEm)} />
+      </div>
+
+      <Button
+        type="button"
+        variant="outline"
+        className="w-full gap-2 sm:w-fit"
+        onClick={() => {
+          window.location.href = "/admin/estoques";
+        }}
+      >
+        <ExternalLink className="h-4 w-4" />
+        Abrir estoques
+      </Button>
+
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">Produtos neste estoque</h3>
+        <div className="divide-y rounded-lg border bg-card">
+          {products.length ? (
+            products.slice(0, 20).map((product) => (
+              <div key={product.productId} className="flex gap-3 px-3 py-2 text-sm">
+                <Package className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="truncate font-medium">{product.productName}</span>
+                    <span className="font-semibold">{product.stock}</span>
+                  </div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {product.barcode} - {product.categoryName ?? "Sem categoria"} - {product.status}
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="px-3 py-3 text-sm text-muted-foreground">
+              Nenhum produto com saldo encontrado neste estoque.
+            </div>
           )}
         </div>
       </section>

@@ -1,4 +1,5 @@
 const desperdicioService = require("../services/desperdicioService");
+const maintenanceService = require("../services/maintenanceService");
 const usuarioService = require("../services/usuarioService");
 const { ok, created, fail } = require("../utils/response");
 
@@ -13,6 +14,30 @@ function sendPasswordChallenge(res, cred) {
     message,
     data: usuarioService.buildPasswordChallenge(cred),
     error: message,
+  });
+}
+
+function sendTemporaryUserLock(res, cred) {
+  return res.status(cred.status || 403).json({
+    success: false,
+    message: cred.message,
+    data: {
+      usuario_bloqueado_temporariamente: true,
+      retry_after_seconds: cred.retry_after_seconds,
+      aviso_ultimas_tentativas_apos_timer: !!cred.aviso_ultimas_tentativas_apos_timer,
+    },
+    error: cred.message,
+  });
+}
+
+function sendAutoDisabledUser(res, cred) {
+  return res.status(cred.status || 403).json({
+    success: false,
+    message: cred.message,
+    data: {
+      usuario_desabilitado_por_senha: true,
+    },
+    error: cred.message,
   });
 }
 
@@ -38,9 +63,11 @@ async function criar(req, res) {
   const cred = await usuarioService.validateCredentials(matricula, senha);
   if (!cred) return fail(res, 401, "Matrícula ou senha inválidos");
   if (cred.error === "inactive") return fail(res, 403, "Usuário inativo");
+  if (cred.error === "locked") return sendTemporaryUserLock(res, cred);
+  if (cred.error === "disabled_by_password_attempts") return sendAutoDisabledUser(res, cred);
   if (cred.password_status) return sendPasswordChallenge(res, cred);
-
   try {
+    await maintenanceService.assertOperationalAllowed(cred);
     const desperdicio = await desperdicioService.registrarManual({
       estoque_id: Number(estoque_id),
       codigo_barras,
@@ -51,6 +78,14 @@ async function criar(req, res) {
     });
     return created(res, desperdicio, "Desperdicio registrado");
   } catch (e) {
+    if (e.modo_manutencao) {
+      return res.status(e.status || 403).json({
+        success: false,
+        message: e.message,
+        data: { modo_manutencao: true },
+        error: e.message,
+      });
+    }
     return fail(res, e.status || 500, e.message || "Erro ao registrar desperdicio");
   }
 }

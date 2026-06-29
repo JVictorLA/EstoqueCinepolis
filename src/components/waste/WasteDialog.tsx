@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { BarcodeInput } from "@/components/scanner/BarcodeInput";
 import {
+  ApiError,
   changeUserPassword,
   getPasswordChallenge,
   getProductByBarcode,
@@ -31,6 +32,12 @@ import type { Estoque, Product, ProductLot, WasteReason } from "@/types";
 import { toast } from "sonner";
 import { passwordChallengeMessage, resolvePasswordStatus } from "@/lib/passwordChallenge";
 import { validateWaste } from "@/lib/wasteRules";
+
+function hasMaintenanceBlock(data: unknown) {
+  return (
+    !!data && typeof data === "object" && (data as Record<string, unknown>).modo_manutencao === true
+  );
+}
 
 interface EmployeeLookup {
   id: number;
@@ -252,6 +259,11 @@ export function WasteDialog({
       onOpenChange(false);
       onSaved?.();
     } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 403 && hasMaintenanceBlock(err.data)) {
+        setCredentialsOpen(false);
+        toast.warning(err.message);
+        return;
+      }
       const challenge = getPasswordChallenge(err);
       if (challenge) {
         setCurrentPassword(password);
@@ -451,11 +463,7 @@ export function WasteDialog({
 
             <div className="space-y-2">
               <Label>Matrícula</Label>
-              <Input
-                value={matricula}
-                onChange={(e) => setMatricula(e.target.value)}
-                autoFocus
-              />
+              <Input value={matricula} onChange={(e) => setMatricula(e.target.value)} autoFocus />
             </div>
 
             <div className="space-y-2">
@@ -493,7 +501,9 @@ export function WasteDialog({
       <Dialog open={changePasswordOpen} onOpenChange={setChangePasswordOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{passwordStatus === "expired" ? "Senha vencida" : "Primeiro acesso"}</DialogTitle>
+            <DialogTitle>
+              {passwordStatus === "expired" ? "Senha vencida" : "Primeiro acesso"}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div className="text-sm text-muted-foreground">

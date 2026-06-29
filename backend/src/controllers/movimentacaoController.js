@@ -17,6 +17,82 @@ function sendPasswordChallenge(res, cred) {
   });
 }
 
+function sendStockTimeBlock(res, error) {
+  return res.status(error.status || 403).json({
+    success: false,
+    message: error.message,
+    data: {
+      estoque_bloqueado_por_horario: true,
+      ...(error.estoque_bloqueado_por_horario || {}),
+    },
+    error: error.message,
+  });
+}
+
+function sendMaintenanceBlock(res, error) {
+  return res.status(error.status || 403).json({
+    success: false,
+    message: error.message,
+    data: { modo_manutencao: true },
+    error: error.message,
+  });
+}
+
+function sendTemporaryUserLock(res, cred) {
+  return res.status(cred.status || 403).json({
+    success: false,
+    message: cred.message,
+    data: {
+      usuario_bloqueado_temporariamente: true,
+      retry_after_seconds: cred.retry_after_seconds,
+      aviso_ultimas_tentativas_apos_timer: !!cred.aviso_ultimas_tentativas_apos_timer,
+    },
+    error: cred.message,
+  });
+}
+
+function sendAutoDisabledUser(res, cred) {
+  return res.status(cred.status || 403).json({
+    success: false,
+    message: cred.message,
+    data: {
+      usuario_desabilitado_por_senha: true,
+    },
+    error: cred.message,
+  });
+}
+
+async function validateAdminAuthorization(autorizacaoAdmin) {
+  if (!autorizacaoAdmin) return false;
+
+  const cred = await usuarioService.validateCredentials(
+    autorizacaoAdmin.matricula,
+    autorizacaoAdmin.senha,
+  );
+  if (cred?.error === "locked") {
+    throw Object.assign(new Error(cred.message), {
+      status: 403,
+      usuario_bloqueado_temporariamente: true,
+      retry_after_seconds: cred.retry_after_seconds,
+      aviso_ultimas_tentativas_apos_timer: !!cred.aviso_ultimas_tentativas_apos_timer,
+    });
+  }
+  if (cred?.error === "disabled_by_password_attempts") {
+    throw Object.assign(new Error(cred.message), {
+      status: cred.status || 403,
+      usuario_desabilitado_por_senha: true,
+    });
+  }
+  if (!cred || cred.error === "inactive" || cred.password_status) {
+    throw Object.assign(new Error("Autorizacao administrativa invalida"), { status: 403 });
+  }
+  if (!["admin", "master"].includes(cred.tipo)) {
+    throw Object.assign(new Error("Autorizacao restrita a administradores"), { status: 403 });
+  }
+
+  return true;
+}
+
 async function criar(req, res) {
   const {
     codigo_barras,
@@ -30,8 +106,8 @@ async function criar(req, res) {
     data_validade,
     confirmar_ignorar_fefo,
     justificativa_fefo,
-  } =
-    req.body || {};
+    autorizacao_admin,
+  } = req.body || {};
 
   if (!codigo_barras) return fail(res, 400, "codigo_barras é obrigatório");
   if (!Number(estoque_id)) return fail(res, 400, "estoque_id é obrigatório");
@@ -47,6 +123,8 @@ async function criar(req, res) {
   const cred = await usuarioService.validateCredentials(matricula, senha);
   if (!cred) return fail(res, 401, "Matrícula ou senha inválidos");
   if (cred.error === "inactive") return fail(res, 403, "Usuário inativo");
+  if (cred.error === "locked") return sendTemporaryUserLock(res, cred);
+  if (cred.error === "disabled_by_password_attempts") return sendAutoDisabledUser(res, cred);
   if (cred.password_status) return sendPasswordChallenge(res, cred);
 
   const produto =
@@ -61,10 +139,11 @@ async function criar(req, res) {
   }
 
   try {
+    const autorizacaoAdminValida = await validateAdminAuthorization(autorizacao_admin);
     const mov = await movService.registrarMovimentacao({
       produto,
       estoque_id: Number(estoque_id),
-      usuario: { id: cred.id, nome: cred.nome },
+      usuario: { id: cred.id, nome: cred.nome, tipo: cred.tipo },
       tipo,
       quantidade: qtd,
       observacao,
@@ -72,6 +151,7 @@ async function criar(req, res) {
       data_validade,
       confirmar_ignorar_fefo: !!confirmar_ignorar_fefo,
       justificativa_fefo,
+      autorizacaoAdminValida,
     });
 
     if (mov.bloqueado_vencido) {
@@ -85,6 +165,22 @@ async function criar(req, res) {
 
     return created(res, mov, "Movimentacao registrada");
   } catch (e) {
+    if (e.modo_manutencao) return sendMaintenanceBlock(res, e);
+    if (e.usuario_bloqueado_temporariamente) {
+      return sendTemporaryUserLock(res, {
+        status: e.status,
+        message: e.message,
+        retry_after_seconds: e.retry_after_seconds,
+        aviso_ultimas_tentativas_apos_timer: e.aviso_ultimas_tentativas_apos_timer,
+      });
+    }
+    if (e.usuario_desabilitado_por_senha) {
+      return sendAutoDisabledUser(res, {
+        status: e.status,
+        message: e.message,
+      });
+    }
+    if (e.estoque_bloqueado_por_horario) return sendStockTimeBlock(res, e);
     if (e.fefo) {
       return res.status(e.status || 409).json({
         success: false,
@@ -119,6 +215,7 @@ async function transferir(req, res) {
     lote,
     confirmar_ignorar_fefo,
     justificativa_fefo,
+    autorizacao_admin,
   } = req.body || {};
 
   if (!codigo_barras) return fail(res, 400, "codigo_barras é obrigatório");
@@ -137,6 +234,8 @@ async function transferir(req, res) {
   const cred = await usuarioService.validateCredentials(matricula, senha);
   if (!cred) return fail(res, 401, "Matrícula ou senha inválidos");
   if (cred.error === "inactive") return fail(res, 403, "Usuário inativo");
+  if (cred.error === "locked") return sendTemporaryUserLock(res, cred);
+  if (cred.error === "disabled_by_password_attempts") return sendAutoDisabledUser(res, cred);
   if (cred.password_status) return sendPasswordChallenge(res, cred);
 
   const produto = await produtoService.findByBarcode(codigo_barras, estoque_origem_id);
@@ -146,19 +245,37 @@ async function transferir(req, res) {
   if (!produto.estoque_id) return fail(res, 404, "Produto não vinculado ao estoque de origem");
 
   try {
+    const autorizacaoAdminValida = await validateAdminAuthorization(autorizacao_admin);
     const transferencia = await movService.transferirEstoque({
       produto,
       estoque_origem_id: Number(estoque_origem_id),
       estoque_destino_id: Number(estoque_destino_id),
-      usuario: { id: cred.id, nome: cred.nome },
+      usuario: { id: cred.id, nome: cred.nome, tipo: cred.tipo },
       quantidade: qtd,
       observacao,
       lote,
       confirmar_ignorar_fefo: !!confirmar_ignorar_fefo,
       justificativa_fefo,
+      autorizacaoAdminValida,
     });
     return created(res, transferencia, "Transferencia registrada");
   } catch (e) {
+    if (e.modo_manutencao) return sendMaintenanceBlock(res, e);
+    if (e.usuario_bloqueado_temporariamente) {
+      return sendTemporaryUserLock(res, {
+        status: e.status,
+        message: e.message,
+        retry_after_seconds: e.retry_after_seconds,
+        aviso_ultimas_tentativas_apos_timer: e.aviso_ultimas_tentativas_apos_timer,
+      });
+    }
+    if (e.usuario_desabilitado_por_senha) {
+      return sendAutoDisabledUser(res, {
+        status: e.status,
+        message: e.message,
+      });
+    }
+    if (e.estoque_bloqueado_por_horario) return sendStockTimeBlock(res, e);
     if (e.fefo) {
       return res.status(e.status || 409).json({
         success: false,
@@ -179,6 +296,7 @@ async function transferirLote(req, res) {
     estoque_destino_id,
     observacao,
     itens,
+    autorizacao_admin,
   } = req.body || {};
 
   if (!Number(estoque_origem_id)) return fail(res, 400, "estoque_origem_id Ã© obrigatÃ³rio");
@@ -194,6 +312,8 @@ async function transferirLote(req, res) {
   const cred = await usuarioService.validateCredentials(matricula, senha);
   if (!cred) return fail(res, 401, "MatrÃ­cula ou senha invÃ¡lidos");
   if (cred.error === "inactive") return fail(res, 403, "UsuÃ¡rio inativo");
+  if (cred.error === "locked") return sendTemporaryUserLock(res, cred);
+  if (cred.error === "disabled_by_password_attempts") return sendAutoDisabledUser(res, cred);
   if (cred.password_status) return sendPasswordChallenge(res, cred);
 
   const itensResolvidos = [];
@@ -228,15 +348,33 @@ async function transferirLote(req, res) {
   }
 
   try {
+    const autorizacaoAdminValida = await validateAdminAuthorization(autorizacao_admin);
     const transferencia = await movService.transferirEstoqueEmLote({
       itens: itensResolvidos,
       estoque_origem_id: Number(estoque_origem_id),
       estoque_destino_id: Number(estoque_destino_id),
-      usuario: { id: cred.id, nome: cred.nome },
+      usuario: { id: cred.id, nome: cred.nome, tipo: cred.tipo },
       observacao,
+      autorizacaoAdminValida,
     });
     return created(res, transferencia, "Transferencia em lote registrada");
   } catch (e) {
+    if (e.modo_manutencao) return sendMaintenanceBlock(res, e);
+    if (e.usuario_bloqueado_temporariamente) {
+      return sendTemporaryUserLock(res, {
+        status: e.status,
+        message: e.message,
+        retry_after_seconds: e.retry_after_seconds,
+        aviso_ultimas_tentativas_apos_timer: e.aviso_ultimas_tentativas_apos_timer,
+      });
+    }
+    if (e.usuario_desabilitado_por_senha) {
+      return sendAutoDisabledUser(res, {
+        status: e.status,
+        message: e.message,
+      });
+    }
+    if (e.estoque_bloqueado_por_horario) return sendStockTimeBlock(res, e);
     if (e.fefo) {
       return res.status(e.status || 409).json({
         success: false,

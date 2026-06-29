@@ -20,6 +20,30 @@ async function login(req, res) {
     return fail(res, 403, "Usuário inativo");
   }
 
+  if (result.error === "locked") {
+    return res.status(403).json({
+      success: false,
+      message: result.message,
+      data: {
+        usuario_bloqueado_temporariamente: true,
+        retry_after_seconds: result.retry_after_seconds,
+        aviso_ultimas_tentativas_apos_timer: !!result.aviso_ultimas_tentativas_apos_timer,
+      },
+      error: result.message,
+    });
+  }
+
+  if (result.error === "disabled_by_password_attempts") {
+    return res.status(result.status || 403).json({
+      success: false,
+      message: result.message,
+      data: {
+        usuario_desabilitado_por_senha: true,
+      },
+      error: result.message,
+    });
+  }
+
   if (result.password_status) {
     const message =
       result.password_status === "expired"

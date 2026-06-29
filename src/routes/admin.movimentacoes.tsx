@@ -568,7 +568,7 @@ function MovsPage() {
                   {selectedFefoMovement.productName}
                 </div>
                 <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-2">
-                  <span>Funcion?rio: {selectedFefoMovement.userName}</span>
+                  <span>Funcionário: {selectedFefoMovement.userName}</span>
                   <span>Lote: {displayLot(selectedFefoMovement.lotCode) ?? "Sem lote"}</span>
                   <span>Quantidade: {selectedFefoMovement.quantity}</span>
                   <span>{formatShortDate(movementDateKey(selectedFefoMovement.createdAt))}</span>

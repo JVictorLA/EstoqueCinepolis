@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { searchProducts, searchUsers } from "./globalSearch";
-import type { InventoryCurrentItem, SystemUser } from "@/types";
+import { searchProducts, searchStocks, searchUsers } from "./globalSearch";
+import type { Estoque, InventoryCurrentItem, SystemUser } from "@/types";
 
 function product(partial: Partial<InventoryCurrentItem>): InventoryCurrentItem {
   return {
@@ -33,6 +33,19 @@ function user(partial: Partial<SystemUser>): SystemUser {
     role: "operador",
     active: true,
     createdAt: "2026-01-01",
+    ...partial,
+  };
+}
+
+function stock(partial: Partial<Estoque>): Estoque {
+  return {
+    id: 1,
+    nome: "Estoque",
+    ativo: true,
+    tipo: "permanente",
+    arquivado: false,
+    arquivadoEm: null,
+    criadoEm: "2026-01-01",
     ...partial,
   };
 }
@@ -81,5 +94,32 @@ describe("globalSearch", () => {
     ]);
 
     expect(results.map((item) => item.productName)).toEqual(["Coca", "Coca Cola Zero"]);
+  });
+
+  it("finds stocks by name", () => {
+    const results = searchStocks("bomboniere", [
+      stock({ id: 1, nome: "Bomboniere Principal" }),
+      stock({ id: 2, nome: "Almoxarifado" }),
+    ]);
+
+    expect(results.map((item) => item.nome)).toEqual(["Bomboniere Principal"]);
+  });
+
+  it("sorts exact stock matches before partial matches", () => {
+    const results = searchStocks("bar", [
+      stock({ id: 1, nome: "Bar Temporario" }),
+      stock({ id: 2, nome: "Bar" }),
+    ]);
+
+    expect(results.map((item) => item.nome)).toEqual(["Bar", "Bar Temporario"]);
+  });
+
+  it("finds stocks ignoring accents and case", () => {
+    const results = searchStocks("temporario", [
+      stock({ id: 1, nome: "Estoque Temporário" }),
+      stock({ id: 2, nome: "Principal" }),
+    ]);
+
+    expect(results.map((item) => item.nome)).toEqual(["Estoque Temporário"]);
   });
 });

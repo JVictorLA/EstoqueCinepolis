@@ -451,6 +451,7 @@ interface RawUser {
   ativo: 0 | 1 | boolean;
   criado_em: string;
   theme_preference?: "light" | "dark" | null;
+  can_delete?: 0 | 1 | boolean;
 }
 function mapUser(r: RawUser): SystemUser {
   return {
@@ -462,6 +463,7 @@ function mapUser(r: RawUser): SystemUser {
     active: !!r.ativo,
     createdAt: r.criado_em,
     themePreference: normalizeThemePreference(r.theme_preference),
+    canDelete: !!r.can_delete,
   };
 }
 
@@ -526,11 +528,11 @@ interface RawKitMovementHistory {
   criado_em: string;
   itens: Array<{
     produto_id: number;
-      produto_nome: string;
-      quantidade_anterior: number | string;
-      reposicao_operacao: number | string;
-      quantidade_movimentada: number | string;
-      quantidade_final: number | string;
+    produto_nome: string;
+    quantidade_anterior: number | string;
+    reposicao_operacao: number | string;
+    quantidade_movimentada: number | string;
+    quantidade_final: number | string;
   }>;
 }
 
@@ -749,11 +751,11 @@ function mapKitMovementHistory(r: RawKitMovementHistory): KitMovementHistory {
     createdAt: r.criado_em,
     items: (r.itens ?? []).map((item) => ({
       productId: item.produto_id,
-        productName: item.produto_nome,
-        previousQuantity: Number(item.quantidade_anterior),
-        operationReplenishment: Number(item.reposicao_operacao ?? 0),
-        movedQuantity: Number(item.quantidade_movimentada),
-        finalQuantity: Number(item.quantidade_final),
+      productName: item.produto_nome,
+      previousQuantity: Number(item.quantidade_anterior),
+      operationReplenishment: Number(item.reposicao_operacao ?? 0),
+      movedQuantity: Number(item.quantidade_movimentada),
+      finalQuantity: Number(item.quantidade_final),
     })),
   };
 }
@@ -1005,11 +1007,11 @@ export async function withdrawKit(
 export async function receiveKit(
   id: number,
   payload: {
-      matricula: string;
-      senha: string;
-      observacao?: string;
-      itens: Array<{ produto_id: number; quantidade_atual: number; reposicao_operacao?: number }>;
-    },
+    matricula: string;
+    senha: string;
+    observacao?: string;
+    itens: Array<{ produto_id: number; quantidade_atual: number; reposicao_operacao?: number }>;
+  },
 ): Promise<Kit> {
   const row = await request<RawKit>(`/kits/${id}/receber`, {
     method: "POST",
@@ -1082,6 +1084,19 @@ export async function updateSystemConfigs(
     auth: true,
     body: JSON.stringify({ configs }),
   });
+}
+
+export interface OperationalStatus {
+  modo_manutencao: boolean;
+  mensagem?: string;
+}
+
+export async function getOperationalStatus(): Promise<OperationalStatus> {
+  const status = await request<OperationalStatus>("/status-operacional");
+  return {
+    modo_manutencao: !!status?.modo_manutencao,
+    mensagem: status?.mensagem,
+  };
 }
 
 /* ----------------- INVENTARIO E CONFERENCIAS ----------------- */
@@ -1292,6 +1307,10 @@ export async function registerMovement(payload: {
   data_validade?: string | null;
   confirmar_ignorar_fefo?: boolean;
   justificativa_fefo?: string;
+  autorizacao_admin?: {
+    matricula: string;
+    senha: string;
+  };
 }): Promise<Movement> {
   const endpoint = payload.tipo === "entrada" ? "/movimentacoes/entrada" : "/movimentacoes/saida";
   const r = await request<RawMovement>(endpoint, {
@@ -1312,6 +1331,10 @@ export async function transferStock(payload: {
   lote: string;
   confirmar_ignorar_fefo?: boolean;
   justificativa_fefo?: string;
+  autorizacao_admin?: {
+    matricula: string;
+    senha: string;
+  };
 }): Promise<TransferMovement> {
   const r = await request<RawTransferMovement>("/movimentacoes/transferencia", {
     method: "POST",
@@ -1473,6 +1496,14 @@ export async function setUserStatus(id: number, ativo: boolean): Promise<SystemU
   });
   return mapUser(r);
 }
+
+export async function deleteUser(id: number): Promise<void> {
+  await request<void>(`/usuarios/${id}`, {
+    method: "DELETE",
+    auth: true,
+  });
+}
+
 export async function getUserByMatricula(matricula: string) {
   const res = await fetch(`${API_URL}/usuarios/${matricula}`);
 

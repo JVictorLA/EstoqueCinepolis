@@ -77,6 +77,36 @@ async function retirar(req, res) {
     });
     return ok(res, kit, "Kit retirado");
   } catch (e) {
+    if (e.usuario_bloqueado_temporariamente) {
+      return res.status(e.status || 403).json({
+        success: false,
+        message: e.message,
+        data: {
+          usuario_bloqueado_temporariamente: true,
+          retry_after_seconds: e.retry_after_seconds,
+          aviso_ultimas_tentativas_apos_timer: !!e.aviso_ultimas_tentativas_apos_timer,
+        },
+        error: e.message,
+      });
+    }
+    if (e.usuario_desabilitado_por_senha) {
+      return res.status(e.status || 403).json({
+        success: false,
+        message: e.message,
+        data: {
+          usuario_desabilitado_por_senha: true,
+        },
+        error: e.message,
+      });
+    }
+    if (e.modo_manutencao) {
+      return res.status(e.status || 403).json({
+        success: false,
+        message: e.message,
+        data: { modo_manutencao: true },
+        error: e.message,
+      });
+    }
     if (e.password_challenge) {
       return res.status(e.status || 403).json({
         success: false,
@@ -100,6 +130,36 @@ async function receber(req, res) {
     });
     return ok(res, kit, "Kit recebido");
   } catch (e) {
+    if (e.usuario_bloqueado_temporariamente) {
+      return res.status(e.status || 403).json({
+        success: false,
+        message: e.message,
+        data: {
+          usuario_bloqueado_temporariamente: true,
+          retry_after_seconds: e.retry_after_seconds,
+          aviso_ultimas_tentativas_apos_timer: !!e.aviso_ultimas_tentativas_apos_timer,
+        },
+        error: e.message,
+      });
+    }
+    if (e.usuario_desabilitado_por_senha) {
+      return res.status(e.status || 403).json({
+        success: false,
+        message: e.message,
+        data: {
+          usuario_desabilitado_por_senha: true,
+        },
+        error: e.message,
+      });
+    }
+    if (e.modo_manutencao) {
+      return res.status(e.status || 403).json({
+        success: false,
+        message: e.message,
+        data: { modo_manutencao: true },
+        error: e.message,
+      });
+    }
     if (e.password_challenge) {
       return res.status(e.status || 403).json({
         success: false,

@@ -10,6 +10,7 @@ const usuarioCtrl = require("../controllers/usuarioController");
 const categoriaCtrl = require("../controllers/categoriaController");
 const setupCtrl = require("../controllers/setupController");
 const configuracaoCtrl = require("../controllers/configuracaoController");
+const statusCtrl = require("../controllers/statusController");
 const inventarioCtrl = require("../controllers/inventarioController");
 const conferenciaCtrl = require("../controllers/conferenciaController");
 const kitCtrl = require("../controllers/kitController");
@@ -46,6 +47,9 @@ router.get("/health", (_req, res) =>
 
 // Auth (somente admin)
 router.post("/login", asyncHandler(authCtrl.login));
+
+// Status operacional publico
+router.get("/status-operacional", asyncHandler(statusCtrl.operacional));
 
 // Setup inicial
 router.get("/setup/status", asyncHandler(setupCtrl.status));
@@ -95,13 +99,23 @@ router.delete(
   asyncHandler(produtoCtrl.remover),
 );
 router.get("/produtos/:codigo_barras", asyncHandler(produtoCtrl.buscarPorCodigo));
-router.post("/produtos/batch", auth.authMiddleware, auth.adminOnly, asyncHandler(produtoCtrl.criarEmLote));
+router.post(
+  "/produtos/batch",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(produtoCtrl.criarEmLote),
+);
 router.post("/produtos", auth.authMiddleware, auth.adminOnly, asyncHandler(produtoCtrl.criar));
 
 // Movimentações
 router.post("/movimentacoes/transferencia/lote", asyncHandler(movCtrl.transferirLote));
 router.post("/movimentacoes/transferencia", asyncHandler(movCtrl.transferir));
-router.post("/movimentacoes/ajuste", auth.authMiddleware, auth.adminOnly, asyncHandler(movCtrl.ajustar));
+router.post(
+  "/movimentacoes/ajuste",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(movCtrl.ajustar),
+);
 router.post("/movimentacoes/entrada", asyncHandler(movCtrl.criarEntrada));
 router.post("/movimentacoes/saida", asyncHandler(movCtrl.criarSaida));
 router.post("/movimentacoes", asyncHandler(movCtrl.criar));
@@ -110,7 +124,12 @@ router.get("/movimentacoes", asyncHandler(movCtrl.listar));
 // Kits da bomboniere
 router.get("/kits/operacional", asyncHandler(kitCtrl.listarOperacional));
 router.get("/kits/operacional/:id", asyncHandler(kitCtrl.buscarOperacional));
-router.get("/kits/produtos", auth.authMiddleware, auth.adminOnly, asyncHandler(kitCtrl.produtosDisponiveis));
+router.get(
+  "/kits/produtos",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(kitCtrl.produtosDisponiveis),
+);
 router.get("/kits/historico", auth.authMiddleware, auth.adminOnly, asyncHandler(kitCtrl.historico));
 router.get("/kits", auth.authMiddleware, auth.adminOnly, asyncHandler(kitCtrl.listar));
 router.post("/kits", auth.authMiddleware, auth.adminOnly, asyncHandler(kitCtrl.criar));
@@ -128,8 +147,18 @@ router.get(
   auth.adminOnly,
   asyncHandler(conferenciaCtrl.buscarProduto),
 );
-router.get("/conferencias", auth.authMiddleware, auth.adminOnly, asyncHandler(conferenciaCtrl.listar));
-router.post("/conferencias", auth.authMiddleware, auth.adminOnly, asyncHandler(conferenciaCtrl.criar));
+router.get(
+  "/conferencias",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(conferenciaCtrl.listar),
+);
+router.post(
+  "/conferencias",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(conferenciaCtrl.criar),
+);
 router.get(
   "/conferencias/:id",
   auth.authMiddleware,
@@ -205,7 +234,6 @@ router.patch(
   auth.adminOnly,
   asyncHandler(usuarioCtrl.alterarStatus),
 );
-router.get("/usuarios/:matricula", asyncHandler(usuarioCtrl.buscarPorMatricula));
 
 router.patch(
   "/usuarios/:id/resetar-senha",
@@ -213,5 +241,14 @@ router.patch(
   auth.adminOnly,
   asyncHandler(usuarioCtrl.resetarSenha),
 );
+
+router.delete(
+  "/usuarios/:id",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(usuarioCtrl.remover),
+);
+
+router.get("/usuarios/:matricula", asyncHandler(usuarioCtrl.buscarPorMatricula));
 
 module.exports = router;

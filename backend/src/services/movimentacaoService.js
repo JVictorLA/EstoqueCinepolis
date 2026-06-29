@@ -1,6 +1,7 @@
 const { pool } = require("../database/connection");
 const loteService = require("./loteService");
 const configuracaoService = require("./configuracaoService");
+const maintenanceService = require("./maintenanceService");
 
 const ADJUSTMENT_REASONS = new Set([
   "Contagem fisica / inventario",
@@ -20,6 +21,60 @@ function parseBooleanConfig(value, fallback) {
   return fallback;
 }
 
+function parseTimeToMinutes(value) {
+  const match = String(value || "")
+    .trim()
+    .match(/^(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+function isMinuteInsideWindow(currentMinute, startMinute, endMinute) {
+  if (startMinute === endMinute) return false;
+  if (startMinute < endMinute) {
+    return currentMinute >= startMinute && currentMinute < endMinute;
+  }
+  return currentMinute >= startMinute || currentMinute < endMinute;
+}
+
+function getCurrentLocalMinute(now = new Date()) {
+  return now.getHours() * 60 + now.getMinutes();
+}
+
+function buildStockTimeBlockError(rules) {
+  return Object.assign(
+    new Error(
+      `Movimentacoes operacionais bloqueadas entre ${rules.horarioBloqueioInicio} e ${rules.horarioBloqueioFim}. Solicite autorizacao administrativa.`,
+    ),
+    {
+      status: 403,
+      estoque_bloqueado_por_horario: {
+        inicio: rules.horarioBloqueioInicio,
+        fim: rules.horarioBloqueioFim,
+      },
+    },
+  );
+}
+
+function isOperationalStockBlockedNow(rules, now = new Date()) {
+  if (!rules.bloquearMovimentacaoPorHorario) return false;
+  const startMinute = parseTimeToMinutes(rules.horarioBloqueioInicio);
+  const endMinute = parseTimeToMinutes(rules.horarioBloqueioFim);
+  if (startMinute === null || endMinute === null || startMinute === endMinute) return false;
+  return isMinuteInsideWindow(getCurrentLocalMinute(now), startMinute, endMinute);
+}
+
+function assertOperationalMovementAllowed(rules, usuario, autorizacaoAdminValida) {
+  if (usuario?.tipo !== "operador") return;
+  if (autorizacaoAdminValida) return;
+  if (isOperationalStockBlockedNow(rules)) {
+    throw buildStockTimeBlockError(rules);
+  }
+}
+
 async function getMovementRules(conn) {
   const bloquearSaidaProdutoVencido = await configuracaoService.getConfig(
     "bloquear_saida_produto_vencido",
@@ -34,12 +89,24 @@ async function getMovementRules(conn) {
     "exigir_justificativa_fefo",
     conn,
   );
+  const bloquearMovimentacaoPorHorario = await configuracaoService.getConfig(
+    "bloquear_movimentacao_por_horario",
+    conn,
+  );
+  const horarioBloqueioInicio = await configuracaoService.getConfig(
+    "horario_bloqueio_inicio",
+    conn,
+  );
+  const horarioBloqueioFim = await configuracaoService.getConfig("horario_bloqueio_fim", conn);
 
   return {
     bloquearSaidaProdutoVencido: parseBooleanConfig(bloquearSaidaProdutoVencido, true),
     registrarVencidoAoTentarRetirar: parseBooleanConfig(registrarVencidoAoTentarRetirar, true),
     permitirIgnorarFefo: parseBooleanConfig(permitirIgnorarFefo, true),
     exigirJustificativaFefo: parseBooleanConfig(exigirJustificativaFefo, true),
+    bloquearMovimentacaoPorHorario: parseBooleanConfig(bloquearMovimentacaoPorHorario, false),
+    horarioBloqueioInicio: horarioBloqueioInicio || "",
+    horarioBloqueioFim: horarioBloqueioFim || "",
   };
 }
 
@@ -252,11 +319,14 @@ async function registrarMovimentacao({
   data_validade,
   confirmar_ignorar_fefo,
   justificativa_fefo,
+  autorizacaoAdminValida,
 }) {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     const rules = await getMovementRules(conn);
+    await maintenanceService.assertOperationalAllowed(usuario, conn);
+    assertOperationalMovementAllowed(rules, usuario, autorizacaoAdminValida);
 
     const atual =
       tipo === "entrada"
@@ -294,12 +364,7 @@ async function registrarMovimentacao({
       });
       estoque_depois = estoque_antes + quantidade;
     } else if (tipo === "saida") {
-      loteMovimentado = await loteService.resolveLotForStockProduct(
-        conn,
-        atual,
-        lote,
-        true,
-      );
+      loteMovimentado = await loteService.resolveLotForStockProduct(conn, atual, lote, true);
       if (
         rules.bloquearSaidaProdutoVencido &&
         rules.registrarVencidoAoTentarRetirar &&
@@ -325,7 +390,11 @@ async function registrarMovimentacao({
         });
       }
 
-      const fefo = await loteService.getFefoWarning(conn, atual.estoque_produto_id, loteMovimentado);
+      const fefo = await loteService.getFefoWarning(
+        conn,
+        atual.estoque_produto_id,
+        loteMovimentado,
+      );
       ignorouFefo = assertFefoAllowed(fefo, rules, confirmar_ignorar_fefo, justificativa_fefo);
 
       await conn.query(
@@ -417,184 +486,177 @@ async function transferirEstoqueItem({
   lote,
   confirmar_ignorar_fefo,
   justificativa_fefo,
+  autorizacaoAdminValida,
 }) {
+  assertOperationalMovementAllowed(rules, usuario, autorizacaoAdminValida);
+
   if (Number(estoque_origem_id) === Number(estoque_destino_id)) {
     throw Object.assign(new Error("Escolha um estoque de destino diferente da origem"), {
       status: 400,
     });
   }
 
-    const [destinoRows] = await conn.query(
-      "SELECT id, nome, ativo, COALESCE(arquivado, 0) AS arquivado FROM estoques WHERE id = ? LIMIT 1",
-      [estoque_destino_id],
-    );
+  const [destinoRows] = await conn.query(
+    "SELECT id, nome, ativo, COALESCE(arquivado, 0) AS arquivado FROM estoques WHERE id = ? LIMIT 1",
+    [estoque_destino_id],
+  );
 
-    if (!destinoRows.length) {
-      throw Object.assign(new Error("Estoque de destino não encontrado"), {
-        status: 404,
-      });
-    }
-    if (!destinoRows[0].ativo || destinoRows[0].arquivado) {
-      throw Object.assign(new Error("Estoque de destino inativo ou arquivado"), {
-        status: 400,
-      });
-    }
-
-    const origem = await loteService.getStockProduct(conn, produto.id, estoque_origem_id, true);
-
-    if (!origem) {
-      throw Object.assign(new Error("Produto não vinculado ao estoque de origem"), {
-        status: 404,
-      });
-    }
-    if (!origem.estoque_ativo || origem.estoque_arquivado) {
-      throw Object.assign(new Error("Estoque de origem inativo ou arquivado"), { status: 400 });
-    }
-
-    await loteService.ensureDefaultLotFromCache(conn, origem);
-    const loteOrigem = await loteService.resolveLotForStockProduct(
-      conn,
-      origem,
-      lote,
-      true,
-    );
-    assertLotCanLeave(loteOrigem, rules);
-
-    const origemAntes = await loteService.recalcStockProduct(conn, origem.estoque_produto_id);
-    const origemDepois = origemAntes - quantidade;
-
-    if (origemDepois < 0 || Number(loteOrigem.quantidade) - quantidade < 0) {
-      throw Object.assign(new Error("Saldo insuficiente neste estoque."), {
-        status: 400,
-      });
-    }
-
-    const fefo = await loteService.getFefoWarning(conn, origem.estoque_produto_id, loteOrigem);
-    const ignorouFefo = assertFefoAllowed(
-      fefo,
-      rules,
-      confirmar_ignorar_fefo,
-      justificativa_fefo,
-    );
-
-    const destinoProduto = await loteService.ensureStockProduct(conn, produto.id, estoque_destino_id);
-    const destinoAntes = await loteService.recalcStockProduct(
-      conn,
-      destinoProduto.estoque_produto_id,
-    );
-    const destinoNome = destinoRows[0].nome;
-
-    await conn.query(
-      "UPDATE produto_lotes SET quantidade = ?, atualizado_em = NOW() WHERE id = ?",
-      [Number(loteOrigem.quantidade) - quantidade, loteOrigem.id],
-    );
-
-    const loteDestino = await loteService.upsertLot(conn, destinoProduto.estoque_produto_id, {
-      lote: loteOrigem.lote,
-      data_validade: loteOrigem.data_validade,
-      quantidade,
-      categoria_id: destinoProduto.categoria_id,
+  if (!destinoRows.length) {
+    throw Object.assign(new Error("Estoque de destino não encontrado"), {
+      status: 404,
     });
+  }
+  if (!destinoRows[0].ativo || destinoRows[0].arquivado) {
+    throw Object.assign(new Error("Estoque de destino inativo ou arquivado"), {
+      status: 400,
+    });
+  }
 
-    const origemDepoisRecalc = await loteService.recalcStockProduct(conn, origem.estoque_produto_id);
-    const destinoDepoisRecalc = await loteService.recalcStockProduct(
-      conn,
-      destinoProduto.estoque_produto_id,
-    );
+  const origem = await loteService.getStockProduct(conn, produto.id, estoque_origem_id, true);
 
-    await conn.query("UPDATE produtos SET atualizado_em = NOW() WHERE id = ?", [produto.id]);
+  if (!origem) {
+    throw Object.assign(new Error("Produto não vinculado ao estoque de origem"), {
+      status: 404,
+    });
+  }
+  if (!origem.estoque_ativo || origem.estoque_arquivado) {
+    throw Object.assign(new Error("Estoque de origem inativo ou arquivado"), { status: 400 });
+  }
 
-    const notaOrigem = [`Transferencia para ${destinoNome}`, observacao || null]
-      .filter(Boolean)
-      .join(" - ");
+  await loteService.ensureDefaultLotFromCache(conn, origem);
+  const loteOrigem = await loteService.resolveLotForStockProduct(conn, origem, lote, true);
+  assertLotCanLeave(loteOrigem, rules);
 
-    const notaDestino = [`Transferencia de ${origem.estoque_nome}`, observacao || null]
-      .filter(Boolean)
-      .join(" - ");
+  const origemAntes = await loteService.recalcStockProduct(conn, origem.estoque_produto_id);
+  const origemDepois = origemAntes - quantidade;
 
-    const [saida] = await conn.query(
-      `INSERT INTO movimentacoes
+  if (origemDepois < 0 || Number(loteOrigem.quantidade) - quantidade < 0) {
+    throw Object.assign(new Error("Saldo insuficiente neste estoque."), {
+      status: 400,
+    });
+  }
+
+  const fefo = await loteService.getFefoWarning(conn, origem.estoque_produto_id, loteOrigem);
+  const ignorouFefo = assertFefoAllowed(fefo, rules, confirmar_ignorar_fefo, justificativa_fefo);
+
+  const destinoProduto = await loteService.ensureStockProduct(conn, produto.id, estoque_destino_id);
+  const destinoAntes = await loteService.recalcStockProduct(
+    conn,
+    destinoProduto.estoque_produto_id,
+  );
+  const destinoNome = destinoRows[0].nome;
+
+  await conn.query("UPDATE produto_lotes SET quantidade = ?, atualizado_em = NOW() WHERE id = ?", [
+    Number(loteOrigem.quantidade) - quantidade,
+    loteOrigem.id,
+  ]);
+
+  const loteDestino = await loteService.upsertLot(conn, destinoProduto.estoque_produto_id, {
+    lote: loteOrigem.lote,
+    data_validade: loteOrigem.data_validade,
+    quantidade,
+    categoria_id: destinoProduto.categoria_id,
+  });
+
+  const origemDepoisRecalc = await loteService.recalcStockProduct(conn, origem.estoque_produto_id);
+  const destinoDepoisRecalc = await loteService.recalcStockProduct(
+    conn,
+    destinoProduto.estoque_produto_id,
+  );
+
+  await conn.query("UPDATE produtos SET atualizado_em = NOW() WHERE id = ?", [produto.id]);
+
+  const notaOrigem = [`Transferencia para ${destinoNome}`, observacao || null]
+    .filter(Boolean)
+    .join(" - ");
+
+  const notaDestino = [`Transferencia de ${origem.estoque_nome}`, observacao || null]
+    .filter(Boolean)
+    .join(" - ");
+
+  const [saida] = await conn.query(
+    `INSERT INTO movimentacoes
         (estoque_id, produto_id, usuario_id, tipo, quantidade,
          estoque_antes, estoque_depois,
          usuario_nome, produto_nome, observacao, criado_em)
        VALUES (?, ?, ?, 'saida', ?, ?, ?, ?, ?, ?, NOW())`,
-      [
-        estoque_origem_id,
-        produto.id,
-        usuario.id,
-        quantidade,
-        origemAntes,
-        origemDepoisRecalc,
-        usuario.nome,
-        origem.produto_nome,
-        notaOrigem,
-      ],
-    );
+    [
+      estoque_origem_id,
+      produto.id,
+      usuario.id,
+      quantidade,
+      origemAntes,
+      origemDepoisRecalc,
+      usuario.nome,
+      origem.produto_nome,
+      notaOrigem,
+    ],
+  );
 
-    const [entrada] = await conn.query(
-      `INSERT INTO movimentacoes
+  const [entrada] = await conn.query(
+    `INSERT INTO movimentacoes
         (estoque_id, produto_id, usuario_id, tipo, quantidade,
          estoque_antes, estoque_depois,
          usuario_nome, produto_nome, observacao, criado_em)
        VALUES (?, ?, ?, 'entrada', ?, ?, ?, ?, ?, ?, NOW())`,
-      [
-        estoque_destino_id,
-        produto.id,
-        usuario.id,
-        quantidade,
-        destinoAntes,
-        destinoDepoisRecalc,
-        usuario.nome,
-        origem.produto_nome,
-        notaDestino,
-      ],
-    );
-
-    await loteService.insertMovementLot(conn, {
-      movimentacaoId: saida.insertId,
-      loteId: loteOrigem.id,
-      quantidade,
-      ignorouFefo,
-      justificativaFefo: justificativa_fefo,
-    });
-    await loteService.insertMovementLot(conn, {
-      movimentacaoId: entrada.insertId,
-      loteId: loteDestino.id,
-      quantidade,
-    });
-
-    await atualizarAlertasEstoque(
-      conn,
-      produto.id,
-      estoque_origem_id,
-      origemDepoisRecalc,
-      origem.estoque_minimo,
-    );
-
-    await atualizarAlertasEstoque(
-      conn,
-      produto.id,
+    [
       estoque_destino_id,
+      produto.id,
+      usuario.id,
+      quantidade,
+      destinoAntes,
       destinoDepoisRecalc,
-      destinoProduto.estoque_minimo,
-    );
+      usuario.nome,
+      origem.produto_nome,
+      notaDestino,
+    ],
+  );
 
-    return {
-      saida_id: saida.insertId,
-      entrada_id: entrada.insertId,
-      produto_id: produto.id,
-      produto_nome: origem.produto_nome,
-      estoque_origem_id,
-      estoque_origem_nome: origem.estoque_nome,
-      estoque_destino_id,
-      estoque_destino_nome: destinoNome,
-      quantidade,
-      usuario_id: usuario.id,
-      usuario_nome: usuario.nome,
-      lote_id: loteOrigem.id,
-      lote_codigo: loteService.displayLotCode(loteOrigem.lote),
-      ignorou_fefo: ignorouFefo,
-    };
+  await loteService.insertMovementLot(conn, {
+    movimentacaoId: saida.insertId,
+    loteId: loteOrigem.id,
+    quantidade,
+    ignorouFefo,
+    justificativaFefo: justificativa_fefo,
+  });
+  await loteService.insertMovementLot(conn, {
+    movimentacaoId: entrada.insertId,
+    loteId: loteDestino.id,
+    quantidade,
+  });
+
+  await atualizarAlertasEstoque(
+    conn,
+    produto.id,
+    estoque_origem_id,
+    origemDepoisRecalc,
+    origem.estoque_minimo,
+  );
+
+  await atualizarAlertasEstoque(
+    conn,
+    produto.id,
+    estoque_destino_id,
+    destinoDepoisRecalc,
+    destinoProduto.estoque_minimo,
+  );
+
+  return {
+    saida_id: saida.insertId,
+    entrada_id: entrada.insertId,
+    produto_id: produto.id,
+    produto_nome: origem.produto_nome,
+    estoque_origem_id,
+    estoque_origem_nome: origem.estoque_nome,
+    estoque_destino_id,
+    estoque_destino_nome: destinoNome,
+    quantidade,
+    usuario_id: usuario.id,
+    usuario_nome: usuario.nome,
+    lote_id: loteOrigem.id,
+    lote_codigo: loteService.displayLotCode(loteOrigem.lote),
+    ignorou_fefo: ignorouFefo,
+  };
 }
 
 async function transferirEstoque(payload) {
@@ -602,6 +664,7 @@ async function transferirEstoque(payload) {
   try {
     await conn.beginTransaction();
     const rules = await getMovementRules(conn);
+    await maintenanceService.assertOperationalAllowed(payload.usuario, conn);
     const result = await transferirEstoqueItem({ conn, rules, ...payload });
     await conn.commit();
     return result;
@@ -619,6 +682,7 @@ async function transferirEstoqueEmLote({
   estoque_destino_id,
   usuario,
   observacao,
+  autorizacaoAdminValida,
 }) {
   if (!Array.isArray(itens) || !itens.length) {
     throw Object.assign(new Error("Informe pelo menos um item para transferir"), { status: 400 });
@@ -628,6 +692,7 @@ async function transferirEstoqueEmLote({
   try {
     await conn.beginTransaction();
     const rules = await getMovementRules(conn);
+    await maintenanceService.assertOperationalAllowed(usuario, conn);
     const resultados = [];
 
     for (const item of itens) {
@@ -644,6 +709,7 @@ async function transferirEstoqueEmLote({
           lote: item.lote,
           confirmar_ignorar_fefo: item.confirmar_ignorar_fefo,
           justificativa_fefo: item.justificativa_fefo,
+          autorizacaoAdminValida,
         }),
       );
     }
@@ -730,11 +796,17 @@ async function ajustarEstoque({ usuario, itens }) {
     .map((item) => ({
       produto_id: Number(item.produto_id),
       estoque_id: Number(item.estoque_id),
-      lote_id: item.lote_id === undefined || item.lote_id === null || item.lote_id === "" ? null : Number(item.lote_id),
+      lote_id:
+        item.lote_id === undefined || item.lote_id === null || item.lote_id === ""
+          ? null
+          : Number(item.lote_id),
       quantidade_final: Number(item.quantidade_final),
       motivo: String(item.motivo || "").trim(),
     }))
-    .filter((item) => item.produto_id || item.estoque_id || item.motivo || Number.isFinite(item.quantidade_final));
+    .filter(
+      (item) =>
+        item.produto_id || item.estoque_id || item.motivo || Number.isFinite(item.quantidade_final),
+    );
 
   if (!normalizedItems.length) {
     throw Object.assign(new Error("Informe pelo menos um ajuste"), { status: 400 });
@@ -746,8 +818,10 @@ async function ajustarEstoque({ usuario, itens }) {
     const results = [];
 
     for (const item of normalizedItems) {
-      if (!item.produto_id) throw Object.assign(new Error("Produto é obrigatório"), { status: 400 });
-      if (!item.estoque_id) throw Object.assign(new Error("Estoque é obrigatório"), { status: 400 });
+      if (!item.produto_id)
+        throw Object.assign(new Error("Produto é obrigatório"), { status: 400 });
+      if (!item.estoque_id)
+        throw Object.assign(new Error("Estoque é obrigatório"), { status: 400 });
       if (!Number.isFinite(item.quantidade_final) || item.quantidade_final < 0) {
         throw Object.assign(new Error("Quantidade final inválida"), { status: 400 });
       }
@@ -775,7 +849,10 @@ async function ajustarEstoque({ usuario, itens }) {
 
       await loteService.ensureDefaultLotFromCache(conn, stockProduct);
       const lote = await getAdjustmentLot(conn, stockProduct, item.lote_id);
-      const estoqueAntes = await loteService.recalcStockProduct(conn, stockProduct.estoque_produto_id);
+      const estoqueAntes = await loteService.recalcStockProduct(
+        conn,
+        stockProduct.estoque_produto_id,
+      );
       const loteAntes = Number(lote.quantidade || 0);
 
       await conn.query(
@@ -931,4 +1008,7 @@ module.exports = {
   ajustarEstoque,
   listar,
   atualizarAlertasEstoque,
+  parseTimeToMinutes,
+  isMinuteInsideWindow,
+  isOperationalStockBlockedNow,
 };

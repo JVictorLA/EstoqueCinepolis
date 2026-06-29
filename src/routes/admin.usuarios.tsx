@@ -1,7 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { createUser, updateUser, changeUserPassword, resetUserPassword } from "@/services/api";
-import { Users, Plus } from "lucide-react";
+import {
+  createUser,
+  updateUser,
+  changeUserPassword,
+  resetUserPassword,
+  deleteUser,
+  getStoredUser,
+  getUsers,
+  setUserStatus,
+} from "@/services/api";
+import { Users, Plus, Trash2 } from "lucide-react";
 import { PageHeader, EmptyState } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +40,16 @@ import {
   DialogFooter,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { getUsers, setUserStatus } from "@/services/api";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { SystemUser } from "@/types";
 import { toast } from "sonner";
 
@@ -43,6 +61,8 @@ function UsuariosPage() {
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [open, setOpen] = useState(false);
   const [editUser, setEditUser] = useState<SystemUser | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SystemUser | null>(null);
+  const loggedUserId = getStoredUser()?.id;
 
   const loadUsers = async () => {
     const data = await getUsers();
@@ -62,6 +82,21 @@ function UsuariosPage() {
       toast.success(`Usuário ${ativo ? "ativado" : "desativado"}`);
     } catch (error: unknown) {
       toast.error(error instanceof Error ? error.message : "Erro ao atualizar status");
+    }
+  };
+
+  const canShowDelete = (user: SystemUser) => user.canDelete && user.id !== loggedUserId;
+
+  const confirmDeleteUser = async () => {
+    if (!deleteTarget) return;
+
+    try {
+      await deleteUser(deleteTarget.id);
+      toast.success("Usuario excluido");
+      setDeleteTarget(null);
+      await loadUsers();
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : "Erro ao excluir usuario");
     }
   };
 
@@ -124,6 +159,18 @@ function UsuariosPage() {
                     <Button variant="ghost" size="sm" onClick={() => setEditUser(u)}>
                       Editar
                     </Button>
+                    {canShowDelete(u) && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => setDeleteTarget(u)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Excluir usuario</span>
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -180,6 +227,18 @@ function UsuariosPage() {
                     <Button variant="ghost" size="sm" onClick={() => setEditUser(u)}>
                       Editar
                     </Button>
+                    {canShowDelete(u) && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => setDeleteTarget(u)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only">Excluir usuario</span>
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -195,6 +254,27 @@ function UsuariosPage() {
           <EditUserDialog user={editUser} onClose={() => setEditUser(null)} onSuccess={loadUsers} />
         )}
       </Dialog>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir este usuario?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Essa acao nao pode ser desfeita. O usuario {deleteTarget?.name} sera removido do
+              sistema.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmDeleteUser}
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
