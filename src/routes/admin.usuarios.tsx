@@ -260,7 +260,7 @@ function UsuariosPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Excluir este usuario?</AlertDialogTitle>
             <AlertDialogDescription>
-              Essa acao nao pode ser desfeita. O usuario {deleteTarget?.name} sera removido do
+              Essa ação nao pode ser desfeita. O usuario {deleteTarget?.name} será removido do
               sistema.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -359,7 +359,7 @@ function EditUserDialog({
           </Select>
           {isMaster && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Usu?rio master n?o pode ter o tipo alterado pelo CRUD comum.
+              Usuário master não pode ter o tipo alterado pelo CRUD comum.
             </p>
           )}
         </div>
@@ -391,7 +391,7 @@ function EditUserDialog({
         )}
         {isMaster && (
           <div className="text-sm text-muted-foreground bg-muted/40 border p-3 rounded-lg">
-            Usu?rio master n?o pode ser desativado, resetado ou transformado pelo CRUD comum.
+            Usuário master não pode ser desativado, resetado ou transformado pelo CRUD comum.
           </div>
         )}
         {changePassword && (

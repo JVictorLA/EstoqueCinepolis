@@ -261,3 +261,154 @@ export function printProductsTable(
 
   return "printed";
 }
+
+export function printProductBarcodeSheet(products: Product[]): ProductPrintResult {
+  if (products.length === 0) return "empty";
+
+  const generatedAt = new Date().toLocaleString("pt-BR");
+  const cards = products
+    .map((product) => {
+      const code = product.barcode.trim();
+      const renderedCode = barcodeSvg(code);
+
+      return `
+        <article class="label-card">
+          <strong>${escapeHtml(product.name)}</strong>
+          <div class="barcode-wrap">
+            ${
+              renderedCode
+                ? `<div class="barcode">${renderedCode}</div>`
+                : `<div class="barcode-fallback">Codigo indisponivel</div>`
+            }
+          </div>
+          <div class="barcode-number">${escapeHtml(code)}</div>
+        </article>
+      `;
+    })
+    .join("");
+
+  const printWindow = window.open("", "_blank", "width=900,height=800");
+  if (!printWindow) return "blocked";
+
+  printWindow.document.write(`
+    <!doctype html>
+    <html lang="pt-BR">
+      <head>
+        <meta charset="utf-8" />
+        <title>Etiquetas de produtos</title>
+        <style>
+          * { box-sizing: border-box; }
+          @page { size: A4 portrait; margin: 10mm; }
+          html,
+          body {
+            height: auto;
+            margin: 0;
+            overflow: visible;
+            color: #0f172a;
+            background: #ffffff;
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 12px;
+          }
+          body { padding: 0; }
+          header {
+            display: flex;
+            justify-content: space-between;
+            gap: 18px;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 8px;
+            margin-bottom: 10px;
+            break-inside: avoid;
+          }
+          h1 { margin: 0 0 3px; font-size: 17px; }
+          ${reportBrandStyles()}
+          .muted { color: #64748b; font-size: 10px; }
+          .label-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 7mm;
+          }
+          .label-card {
+            display: flex;
+            min-height: 36mm;
+            break-inside: avoid;
+            page-break-inside: avoid;
+            flex-direction: column;
+            justify-content: center;
+            gap: 3mm;
+            overflow: hidden;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 5mm;
+            text-align: center;
+          }
+          .label-card strong {
+            display: -webkit-box;
+            min-height: 9mm;
+            overflow: hidden;
+            font-size: 13px;
+            line-height: 1.2;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+          }
+          .barcode-wrap {
+            display: flex;
+            min-height: 17mm;
+            align-items: center;
+            justify-content: center;
+          }
+          .barcode {
+            display: flex;
+            width: 100%;
+            justify-content: center;
+            overflow: hidden;
+          }
+          .barcode-svg {
+            width: 100%;
+            max-width: 78mm;
+            height: 16mm;
+          }
+          .barcode-number {
+            color: #0f172a;
+            font-family: "Courier New", monospace;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .08em;
+            overflow-wrap: anywhere;
+          }
+          .barcode-fallback {
+            color: #dc2626;
+            font-size: 11px;
+            font-weight: 700;
+          }
+          @media print {
+            html,
+            body {
+              height: auto !important;
+              overflow: visible !important;
+            }
+            header, .label-card { break-inside: avoid; }
+          }
+        </style>
+      </head>
+      <body>
+        <header>
+          <div>
+            ${reportBrandHtml()}
+            <h1>Etiquetas de Produtos</h1>
+            <div class="muted">Gerado em ${escapeHtml(generatedAt)}</div>
+          </div>
+          <div class="muted">Produtos selecionados: ${escapeHtml(products.length)}</div>
+        </header>
+
+        <main class="label-grid">${cards}</main>
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+  window.setTimeout(() => {
+    printWindow.focus();
+    printWindow.print();
+  }, 250);
+
+  return "printed";
+}

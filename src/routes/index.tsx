@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import {
   AlertTriangle,
@@ -16,6 +17,8 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { BrandLoadingScreen } from "@/components/layout/BrandLoadingScreen";
+import { WaveTransition } from "@/components/layout/WaveTransition";
 import {
   Dialog,
   DialogContent,
@@ -45,6 +48,14 @@ import zyntraIcon from "@/icones/android-chrome-512x512.png";
 
 const MAINTENANCE_MESSAGE =
   "Sistema em modo manutenção. Operações do modo operador estão temporariamente bloqueadas.";
+const SKIP_LOGIN_INTRO_ONCE_KEY = "zytrex.skipLoginIntroOnce";
+
+function consumeSkipLoginIntroOnce() {
+  if (typeof window === "undefined") return false;
+  const shouldSkip = window.sessionStorage.getItem(SKIP_LOGIN_INTRO_ONCE_KEY) === "true";
+  if (shouldSkip) window.sessionStorage.removeItem(SKIP_LOGIN_INTRO_ONCE_KEY);
+  return shouldSkip;
+}
 
 function getTemporaryUserLockInfo(error: unknown) {
   const empty = { seconds: 0, showFinalWarningAfterTimer: false };
@@ -612,7 +623,9 @@ function LoginPage() {
   const [showFinalPasswordWarningAfterLock, setShowFinalPasswordWarningAfterLock] =
     useState(false);
   const [autoDisabledDialogOpen, setAutoDisabledDialogOpen] = useState(false);
-  const [setupLoading, setSetupLoading] = useState(true);
+  const [systemReady, setSystemReady] = useState(false);
+  const [showIntro, setShowIntro] = useState(() => !consumeSkipLoginIntroOnce());
+  const [adminLoginTransitioning, setAdminLoginTransitioning] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState<string | null>(null);
 
@@ -625,8 +638,11 @@ function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
 
   useEffect(() => {
+    let active = true;
+
     Promise.all([getSetupStatus(), getOperationalStatus().catch(() => null)])
       .then(([status, operationalStatus]) => {
+        if (!active) return;
         setNeedsSetup(status.precisaSetup);
         setMaintenanceMessage(
           operationalStatus?.modo_manutencao
@@ -635,9 +651,16 @@ function LoginPage() {
         );
       })
       .catch((err: unknown) => {
+        if (!active) return;
         toast.error(err instanceof Error ? err.message : "Erro ao verificar setup inicial");
       })
-      .finally(() => setSetupLoading(false));
+      .finally(() => {
+        if (active) setSystemReady(true);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -694,7 +717,7 @@ function LoginPage() {
       setTheme(response.themePreference);
 
       toast.success(`Bem-vindo, ${response.nome}!`);
-      navigate({ to: "/admin" });
+      setAdminLoginTransitioning(true);
     } catch (err: unknown) {
       const lockInfo = getTemporaryUserLockInfo(err);
       if (lockInfo.seconds > 0) {
@@ -794,22 +817,32 @@ function LoginPage() {
     </p>
   ) : null;
 
-  if (setupLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-      </div>
-    );
+  const renderPageTransition = (children: React.ReactNode) => (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+    >
+      {children}
+    </motion.div>
+  );
+
+  if (showIntro) {
+    return <BrandLoadingScreen ready={systemReady} onComplete={() => setShowIntro(false)} />;
+  }
+
+  if (!systemReady) {
+    return <div className="min-h-screen bg-background" />;
   }
 
   if (needsSetup) {
-    return (
+    return renderPageTransition(
       <SetupWizard
         onDone={() => {
           setNeedsSetup(false);
           setMode("admin");
         }}
-      />
+      />,
     );
   }
 
@@ -872,7 +905,7 @@ function LoginPage() {
     </form>
   );
 
-  return (
+  return renderPageTransition(
     <>
       <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_0%,rgba(34,211,238,0.11),transparent_28rem),radial-gradient(circle_at_88%_12%,rgba(139,92,246,0.1),transparent_28rem)] dark:bg-[radial-gradient(circle_at_10%_0%,rgba(34,211,238,0.08),transparent_28rem),radial-gradient(circle_at_88%_12%,rgba(139,92,246,0.08),transparent_28rem)]" />
@@ -1020,6 +1053,14 @@ function LoginPage() {
         </DialogContent>
       </Dialog>
 
+      {adminLoginTransitioning && (
+        <WaveTransition
+          onComplete={() => {
+            navigate({ to: "/admin" });
+          }}
+        />
+      )}
+
       {showChangePassword && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md space-y-4 rounded-3xl border bg-card p-6 text-card-foreground shadow-[var(--shadow-card)]">
@@ -1061,6 +1102,6 @@ function LoginPage() {
           </div>
         </div>
       )}
-    </>
+    </>,
   );
 }

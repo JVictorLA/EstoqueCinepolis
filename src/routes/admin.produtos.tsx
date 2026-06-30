@@ -16,6 +16,7 @@ import {
   Check,
   X,
   Printer,
+  Barcode,
 } from "lucide-react";
 import { PageHeader, StatCard, EmptyState } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -64,6 +65,7 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { BarcodeInput } from "@/components/scanner/BarcodeInput";
 import { WasteDialog } from "@/components/waste/WasteDialog";
@@ -82,7 +84,7 @@ import {
   isAdjustmentRowComplete,
   validateAdjustmentRow,
 } from "@/lib/productRules";
-import { printProductsTable } from "@/lib/productPrint";
+import { printProductBarcodeSheet, printProductsTable } from "@/lib/productPrint";
 import {
   getProducts,
   updateProduct,
@@ -231,6 +233,10 @@ function ProdutosPage() {
   const [draftFilters, setDraftFilters] = useState<ProductFilters>(emptyFilters);
   const [appliedFilters, setAppliedFilters] = useState<ProductFilters>(emptyFilters);
   const [adjustmentMode, setAdjustmentMode] = useState(false);
+  const [labelMode, setLabelMode] = useState(false);
+  const [selectedLabelProductIds, setSelectedLabelProductIds] = useState<Set<number>>(
+    () => new Set(),
+  );
   const [adjustmentCatalog, setAdjustmentCatalog] = useState<AdjustmentProductOption[]>([]);
   const [adjustmentRows, setAdjustmentRows] = useState<AdjustmentRow[]>([createAdjustmentRow()]);
   const [adjustmentLots, setAdjustmentLots] = useState<Record<string, ProductLot[]>>({});
@@ -259,6 +265,18 @@ function ProdutosPage() {
   }, [selectedEstoqueId]);
 
   const filtered = applyProductFilters(products, query, appliedFilters);
+  const filteredProductIds = useMemo(() => filtered.map((product) => product.id), [filtered]);
+  const selectedLabelProducts = useMemo(
+    () => filtered.filter((product) => selectedLabelProductIds.has(product.id)),
+    [filtered, selectedLabelProductIds],
+  );
+  const filteredSelectedCount = filteredProductIds.filter((id) =>
+    selectedLabelProductIds.has(id),
+  ).length;
+  const allFilteredSelected =
+    filteredProductIds.length > 0 && filteredSelectedCount === filteredProductIds.length;
+  const someFilteredSelected =
+    filteredSelectedCount > 0 && filteredSelectedCount < filteredProductIds.length;
 
   const activeFilterCount = Object.entries(appliedFilters).filter(([key, value]) => {
     const emptyValue = emptyFilters[key as keyof ProductFilters];
@@ -317,6 +335,8 @@ function ProdutosPage() {
 
   const enterAdjustmentMode = () => {
     setAdjustmentMode(true);
+    setLabelMode(false);
+    setSelectedLabelProductIds(new Set());
     setFiltersOpen(false);
     setAdjustmentRows([createAdjustmentRow()]);
     setAdjustmentLots({});
@@ -327,6 +347,45 @@ function ProdutosPage() {
     setAdjustmentMode(false);
     setAdjustmentRows([createAdjustmentRow()]);
     setAdjustmentLots({});
+  };
+
+  const enterLabelMode = () => {
+    setLabelMode(true);
+    setFiltersOpen(false);
+    setEditingProduct(null);
+    setWasteProduct(null);
+    setLotProduct(null);
+    setProductToDelete(null);
+    setSelectedLabelProductIds(new Set());
+  };
+
+  const exitLabelMode = () => {
+    setLabelMode(false);
+    setSelectedLabelProductIds(new Set());
+  };
+
+  const toggleLabelProduct = (productId: number) => {
+    setSelectedLabelProductIds((current) => {
+      const next = new Set(current);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllFilteredLabels = () => {
+    setSelectedLabelProductIds((current) => {
+      const next = new Set(current);
+      if (allFilteredSelected) {
+        filteredProductIds.forEach((id) => next.delete(id));
+      } else {
+        filteredProductIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
   };
 
   const updateAdjustmentRow = (id: string, patch: Partial<AdjustmentRow>) => {
@@ -451,6 +510,19 @@ function ProdutosPage() {
     }
   };
 
+  const printSelectedLabels = () => {
+    const result = printProductBarcodeSheet(selectedLabelProducts);
+
+    if (result === "empty") {
+      toast.info("Selecione pelo menos um produto para imprimir os códigos.");
+      return;
+    }
+
+    if (result === "blocked") {
+      toast.error("Nao foi possivel abrir a janela de impressao. Verifique o bloqueador de pop-ups.");
+    }
+  };
+
   const lowStock = products.filter((p) => p.stock > 0 && p.stock <= p.minStock).length;
   const noStock = products.filter((p) => p.stock === 0).length;
   const total = products.reduce((s, p) => s + p.price * p.stock, 0);
@@ -465,10 +537,12 @@ function ProdutosPage() {
         title="Produtos"
         subtitle={`${products.length} ${products.length === 1 ? "item cadastrado" : "itens cadastrados"}`}
         actions={
-          <Button variant="outline" className="hidden gap-2 md:inline-flex" onClick={printProducts}>
-            <Printer className="h-4 w-4" />
-            Imprimir produtos
-          </Button>
+          <div className="hidden gap-2 md:flex">
+            <Button variant="outline" className="gap-2" onClick={printProducts}>
+              <Printer className="h-4 w-4" />
+              Imprimir produtos
+            </Button>
+          </div>
         }
       />
 
@@ -503,6 +577,58 @@ function ProdutosPage() {
                 Salvar ajustes
               </Button>
             </>
+          ) : labelMode ? (
+            <>
+              <div className="relative min-w-[200px] flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Item ou código"
+                  className="pl-9"
+                />
+              </div>
+              <Button
+                variant={filtersOpen ? "secondary" : "outline"}
+                size="sm"
+                className="gap-2"
+                onClick={() => setFiltersOpen((open) => !open)}
+              >
+                <Filter className="h-4 w-4" />
+                Filtros
+                {activeFilterCount > 0 && (
+                  <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                disabled={filtered.length === 0}
+                onClick={toggleAllFilteredLabels}
+              >
+                <Checkbox
+                  checked={allFilteredSelected || (someFilteredSelected ? "indeterminate" : false)}
+                  className="pointer-events-none"
+                />
+                <span className="hidden sm:inline">Selecionar filtrados</span>
+                <span className="sm:hidden">Todos</span>
+              </Button>
+              <div className="min-w-fit flex-1 text-sm text-muted-foreground sm:flex-none">
+                {selectedLabelProducts.length} selecionado
+                {selectedLabelProducts.length === 1 ? "" : "s"}
+              </div>
+              <Button variant="outline" size="sm" onClick={exitLabelMode}>
+                Cancelar
+              </Button>
+              <Button size="sm" className="gap-2" onClick={printSelectedLabels}>
+                <Printer className="h-4 w-4" />
+                Imprimir códigos
+              </Button>
+            </>
           ) : (
             <>
           <div className="relative flex-1 min-w-[200px]">
@@ -532,6 +658,10 @@ function ProdutosPage() {
             <RefreshCw className="h-4 w-4" />
             <span className="hidden sm:inline">Ajuste de estoque</span>
             <span className="sm:hidden">Ajuste</span>
+          </Button>
+          <Button variant="outline" size="sm" className="gap-2" onClick={enterLabelMode}>
+            <Barcode className="h-4 w-4" />
+            Imprimir códigos
           </Button>
           <Dialog open={categoryOpen} onOpenChange={setCategoryOpen}>
             <DialogTrigger asChild>
@@ -770,10 +900,32 @@ function ProdutosPage() {
         ) : (
           <>
           <div className="divide-y md:hidden">
-            {filtered.map((p) => (
-              <div key={p.id} className="p-3" onClick={() => setLotProduct(p)}>
+            {filtered.map((p) => {
+              const selectedForLabel = selectedLabelProductIds.has(p.id);
+
+              return (
+              <div
+                key={p.id}
+                className={`p-3 ${labelMode ? "cursor-pointer" : ""} ${selectedForLabel ? "bg-primary/5" : ""}`}
+                onClick={() => {
+                  if (labelMode) {
+                    toggleLabelProduct(p.id);
+                    return;
+                  }
+                  setLotProduct(p);
+                }}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
+                    {labelMode && (
+                      <Checkbox
+                        checked={selectedForLabel}
+                        className="mt-3"
+                        onClick={(event) => event.stopPropagation()}
+                        onCheckedChange={() => toggleLabelProduct(p.id)}
+                        aria-label={`Selecionar ${p.name} para imprimir código`}
+                      />
+                    )}
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
                       {p.imageUrl ? (
                         <img src={p.imageUrl} alt={p.name} className="h-full w-full object-cover" />
@@ -809,7 +961,8 @@ function ProdutosPage() {
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-2" onClick={(event) => event.stopPropagation()}>
                     <div className="text-sm font-semibold">{money(p.price)}</div>
-                    <div className="flex items-center gap-1">
+                    {!labelMode && (
+                      <div className="flex items-center gap-1">
                       <Button
                         variant="ghost"
                         size="icon"
@@ -827,16 +980,27 @@ function ProdutosPage() {
                         <Pencil className="h-4 w-4" />
                       </Button>
                     </div>
+                    )}
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
           <div className="hidden md:block">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-10"></TableHead>
+                  <TableHead className="w-10">
+                    {labelMode && (
+                      <Checkbox
+                        checked={allFilteredSelected || (someFilteredSelected ? "indeterminate" : false)}
+                        disabled={filtered.length === 0}
+                        onCheckedChange={toggleAllFilteredLabels}
+                        aria-label="Selecionar produtos filtrados para imprimir códigos"
+                      />
+                    )}
+                  </TableHead>
                   <TableHead>Produto</TableHead>
                   <TableHead>Categoria</TableHead>
                   <TableHead className="text-center">Validade</TableHead>
@@ -850,13 +1014,28 @@ function ProdutosPage() {
                 {filtered.map((p) => (
                   <TableRow
                     key={p.id}
-                    className="cursor-pointer"
-                    onClick={() => setLotProduct(p)}
+                    className={`cursor-pointer ${selectedLabelProductIds.has(p.id) ? "bg-primary/5" : ""}`}
+                    onClick={() => {
+                      if (labelMode) {
+                        toggleLabelProduct(p.id);
+                        return;
+                      }
+                      setLotProduct(p);
+                    }}
                   >
                     <TableCell>
-                      <Star
-                        className={`h-4 w-4 ${p.favorite ? "fill-warning text-warning" : "text-muted-foreground"}`}
-                      />
+                      {labelMode ? (
+                        <Checkbox
+                          checked={selectedLabelProductIds.has(p.id)}
+                          onClick={(event) => event.stopPropagation()}
+                          onCheckedChange={() => toggleLabelProduct(p.id)}
+                          aria-label={`Selecionar ${p.name} para imprimir código`}
+                        />
+                      ) : (
+                        <Star
+                          className={`h-4 w-4 ${p.favorite ? "fill-warning text-warning" : "text-muted-foreground"}`}
+                        />
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3">
@@ -906,13 +1085,15 @@ function ProdutosPage() {
                     <TableCell className="text-sm">R$ {p.price.toFixed(2)}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
-                        <Switch
-                          checked={
-                            p.active && !(p.requiresExpiration && isExpired(p.expirationDate))
-                          }
-                          disabled={p.requiresExpiration && isExpired(p.expirationDate)}
-                          onCheckedChange={(checked) => toggleProductStatus(p, checked)}
-                        />
+                        {!labelMode && (
+                          <Switch
+                            checked={
+                              p.active && !(p.requiresExpiration && isExpired(p.expirationDate))
+                            }
+                            disabled={p.requiresExpiration && isExpired(p.expirationDate)}
+                            onCheckedChange={(checked) => toggleProductStatus(p, checked)}
+                          />
+                        )}
                         <span className="text-xs text-muted-foreground">
                           {p.requiresExpiration && isExpired(p.expirationDate)
                             ? "Vencido"
@@ -923,7 +1104,8 @@ function ProdutosPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-1">
+                      {!labelMode && (
+                        <div className="flex gap-1">
                         <Button
                           variant="ghost"
                           size="icon"
@@ -961,6 +1143,7 @@ function ProdutosPage() {
                           </Button>
                         )}
                       </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

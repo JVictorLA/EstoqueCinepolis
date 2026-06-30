@@ -48,6 +48,8 @@ import {
 
 import zyntraIcon from "@/icones/android-chrome-512x512.png";
 
+const SKIP_LOGIN_INTRO_ONCE_KEY = "zytrex.skipLoginIntroOnce";
+
 type NavItem = { to: string; label: string; icon: LucideIcon };
 type HelpTopic = {
   title: string;
@@ -299,6 +301,7 @@ export function AppShell({ variant, children }: AppShellProps) {
   const signOut = () => {
     clearSession();
     localStorage.removeItem("cinepolis.estoque");
+    sessionStorage.setItem(SKIP_LOGIN_INTRO_ONCE_KEY, "true");
     navigate({ to: "/" });
   };
 
