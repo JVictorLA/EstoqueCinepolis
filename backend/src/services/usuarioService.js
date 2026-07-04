@@ -1,21 +1,31 @@
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
 const { pool } = require("../database/connection");
+const configuracaoService = require("./configuracaoService");
 
 /**
  * Tabela `usuarios`:
- *   id, matricula, nome, email, senha_hash, tipo, ativo, criado_em,
+ *   id, matricula, nome, email, senha_hash, tipo, ativo, arquivado, arquivado_em, criado_em,
  *   atualizado_em, senha_atualizada_em, theme_preference
  */
 
 const PUBLIC_FIELDS =
-  "id, matricula, nome, email, tipo, ativo, criado_em, atualizado_em, senha_atualizada_em, precisa_trocar_senha, theme_preference";
+  "id, matricula, nome, email, tipo, ativo, arquivado, arquivado_em, criado_em, atualizado_em, senha_atualizada_em, precisa_trocar_senha, theme_preference";
 const PASSWORD_MAX_AGE_DAYS = 7;
 const MAX_FAILED_PASSWORD_ATTEMPTS = 5;
 const FAILED_ATTEMPTS_AFTER_LOCK = 3;
 const PASSWORD_LOCK_SECONDS = [15, 30, 60];
 const FINAL_LOCK_LEVEL = PASSWORD_LOCK_SECONDS.length;
+const MASTER_RECOVERY_MAX_FAILED_ATTEMPTS = 5;
+const MASTER_RECOVERY_LOCK_SECONDS = 300;
 const AUTO_DISABLE_MESSAGE =
   "Usuario desabilitado por seguranca. Procure um administrador ou o tecnico de TI para desbloquear e recuperar sua senha.";
+const MASTER_RECOVERY_KEYS = {
+  hash: "master_recovery_key_hash",
+  createdAt: "master_recovery_key_created_at",
+  failedAttempts: "master_recovery_failed_attempts",
+  blockedUntil: "master_recovery_bloqueado_ate",
+};
 
 function getTemporaryPassword() {
   if (!process.env.DEFAULT_TEMPORARY_PASSWORD) {
@@ -24,6 +34,27 @@ function getTemporaryPassword() {
     );
   }
   return process.env.DEFAULT_TEMPORARY_PASSWORD;
+}
+
+function passwordMatchesMatricula(matricula, senha) {
+  return String(matricula || "").trim() === String(senha || "").trim();
+}
+
+function assertPasswordDiffersFromMatricula(matricula, senha) {
+  if (passwordMatchesMatricula(matricula, senha)) {
+    throw Object.assign(new Error("A senha deve ser diferente da matricula"), { status: 400 });
+  }
+}
+
+function assertValidFinalPassword(matricula, senha) {
+  if (!senha || String(senha).length < 6) {
+    throw Object.assign(new Error("A senha deve ter pelo menos 6 caracteres"), { status: 400 });
+  }
+  assertPasswordDiffersFromMatricula(matricula, senha);
+}
+
+function generateRecoveryKeyValue() {
+  return crypto.randomBytes(24).toString("hex").match(/.{1,6}/g).join("-");
 }
 
 function parseDate(value) {
@@ -49,6 +80,12 @@ function getLockRemainingSeconds(user) {
   const lockedUntil = parseDate(user.login_bloqueado_ate);
   if (!lockedUntil) return 0;
   return Math.max(0, Math.ceil((lockedUntil.getTime() - Date.now()) / 1000));
+}
+
+function getDateRemainingSeconds(value) {
+  const date = parseDate(value);
+  if (!date) return 0;
+  return Math.max(0, Math.ceil((date.getTime() - Date.now()) / 1000));
 }
 
 function buildLockedCredentialResult(user, retryAfterSeconds = getLockRemainingSeconds(user)) {
@@ -107,7 +144,7 @@ function buildPasswordChallenge(user) {
 async function listAll({ includeMaster = false } = {}) {
   const where = includeMaster ? "" : "WHERE tipo <> 'master'";
   const [rows] = await pool.query(
-    `SELECT ${PUBLIC_FIELDS} FROM usuarios ${where} ORDER BY nome ASC`,
+    `SELECT ${PUBLIC_FIELDS} FROM usuarios ${where} ORDER BY arquivado ASC, ativo DESC, nome ASC`,
   );
   return Promise.all(
     rows.map(async (row) => ({
@@ -166,7 +203,9 @@ async function existsAdminOrMaster() {
 }
 
 async function create({ matricula, nome, email, senha, tipo, ativo }) {
-  const senha_hash = await bcrypt.hash(senha || getTemporaryPassword(), 10);
+  const rawPassword = senha || getTemporaryPassword();
+  assertPasswordDiffersFromMatricula(matricula, rawPassword);
+  const senha_hash = await bcrypt.hash(rawPassword, 10);
 
   const [result] = await pool.query(
     `INSERT INTO usuarios
@@ -190,6 +229,7 @@ async function create({ matricula, nome, email, senha, tipo, ativo }) {
 }
 
 async function createMaster({ matricula, nome, email, senha }) {
+  assertPasswordDiffersFromMatricula(matricula, senha);
   const senha_hash = await bcrypt.hash(senha, 10);
 
   const [result] = await pool.query(
@@ -245,6 +285,13 @@ async function update(id, { matricula, nome, email, senha, tipo, ativo }) {
   fields.push("atualizado_em = NOW()");
 
   if (senha) {
+    let targetMatricula = matricula;
+    if (targetMatricula === undefined) {
+      const [rows] = await pool.query("SELECT matricula FROM usuarios WHERE id = ? LIMIT 1", [id]);
+      targetMatricula = rows[0]?.matricula;
+    }
+    assertPasswordDiffersFromMatricula(targetMatricula, senha);
+
     const senha_hash = await bcrypt.hash(senha, 10);
     fields.push("senha_hash = ?");
     values.push(senha_hash);
@@ -277,6 +324,32 @@ async function setStatus(id, ativo) {
   return findById(id);
 }
 
+async function archiveUser(id) {
+  await pool.query(
+    `UPDATE usuarios
+     SET arquivado = 1,
+         arquivado_em = NOW(),
+         ativo = 0,
+         atualizado_em = NOW()
+     WHERE id = ?`,
+    [id],
+  );
+  return findById(id);
+}
+
+async function restoreUser(id) {
+  await pool.query(
+    `UPDATE usuarios
+     SET arquivado = 0,
+         arquivado_em = NULL,
+         ativo = 0,
+         atualizado_em = NOW()
+     WHERE id = ?`,
+    [id],
+  );
+  return findById(id);
+}
+
 async function resetPassword(id) {
   const senha_hash = await bcrypt.hash(getTemporaryPassword(), 10);
 
@@ -306,6 +379,160 @@ async function resetPasswordFailures(id) {
      WHERE id = ?`,
     [id],
   );
+}
+
+async function generateMasterRecoveryKey(masterUserId, conn = pool) {
+  const recoveryKey = generateRecoveryKeyValue();
+  const recoveryKeyHash = await bcrypt.hash(recoveryKey, 10);
+  const createdAt = new Date().toISOString();
+
+  await configuracaoService.setManyConfigs(
+    [
+      {
+        chave: MASTER_RECOVERY_KEYS.hash,
+        valor: recoveryKeyHash,
+        categoria: "seguranca",
+        nivelAcesso: "master",
+        tipo: "string",
+      },
+      {
+        chave: MASTER_RECOVERY_KEYS.createdAt,
+        valor: createdAt,
+        categoria: "seguranca",
+        nivelAcesso: "master",
+        tipo: "string",
+      },
+      {
+        chave: MASTER_RECOVERY_KEYS.failedAttempts,
+        valor: 0,
+        categoria: "seguranca",
+        nivelAcesso: "master",
+        tipo: "number",
+      },
+      {
+        chave: MASTER_RECOVERY_KEYS.blockedUntil,
+        valor: "",
+        categoria: "seguranca",
+        nivelAcesso: "master",
+        tipo: "string",
+      },
+    ],
+    masterUserId,
+    conn,
+  );
+
+  return {
+    recoveryKey,
+    recoveryKeyCreatedAt: createdAt,
+  };
+}
+
+async function getMasterRecoveryState(conn = pool) {
+  const entries = await Promise.all(
+    Object.entries(MASTER_RECOVERY_KEYS).map(async ([name, key]) => [
+      name,
+      await configuracaoService.getConfig(key, conn),
+    ]),
+  );
+  return Object.fromEntries(entries);
+}
+
+async function setMasterRecoveryAttemptState({ failedAttempts, blockedUntil }, conn = pool) {
+  await configuracaoService.setManyConfigs(
+    [
+      {
+        chave: MASTER_RECOVERY_KEYS.failedAttempts,
+        valor: failedAttempts,
+        categoria: "seguranca",
+        nivelAcesso: "master",
+        tipo: "number",
+      },
+      {
+        chave: MASTER_RECOVERY_KEYS.blockedUntil,
+        valor: blockedUntil || "",
+        categoria: "seguranca",
+        nivelAcesso: "master",
+        tipo: "string",
+      },
+    ],
+    null,
+    conn,
+  );
+}
+
+async function recoverMasterPassword({ matricula, recoveryKey, novaSenha, confirmarSenha }) {
+  const cleanMatricula = String(matricula || "").trim();
+  const cleanRecoveryKey = String(recoveryKey || "").trim();
+  const password = String(novaSenha || "");
+  const confirmation = String(confirmarSenha || "");
+
+  if (!cleanMatricula || !cleanRecoveryKey || !password || !confirmation) {
+    throw Object.assign(new Error("Informe matricula, chave de recuperação e nova senha"), {
+      status: 400,
+    });
+  }
+  if (password !== confirmation) {
+    throw Object.assign(new Error("As senhas não coincidem"), { status: 400 });
+  }
+
+  const user = await findByMatricula(cleanMatricula);
+  if (!user || user.tipo !== "master") {
+    throw Object.assign(new Error("Recuperação disponível apenas para o usuário master"), {
+      status: 403,
+    });
+  }
+  assertValidFinalPassword(user.matricula, password);
+
+  const state = await getMasterRecoveryState();
+  if (!state.hash) {
+    throw Object.assign(new Error("Chave de recuperação do master não foi gerada"), {
+      status: 404,
+    });
+  }
+
+  const retryAfterSeconds = getDateRemainingSeconds(state.blockedUntil);
+  if (retryAfterSeconds > 0) {
+    const error = new Error(
+      `Recuperação temporariamente bloqueada. Tente novamente em ${retryAfterSeconds} segundos.`,
+    );
+    error.status = 403;
+    error.data = {
+      recuperacao_master_bloqueada: true,
+      retry_after_seconds: retryAfterSeconds,
+    };
+    throw error;
+  }
+
+  const matches = await bcrypt.compare(cleanRecoveryKey, state.hash);
+  if (!matches) {
+    const nextAttempts = Number(state.failedAttempts || 0) + 1;
+    if (nextAttempts >= MASTER_RECOVERY_MAX_FAILED_ATTEMPTS) {
+      const blockedUntil = new Date(Date.now() + MASTER_RECOVERY_LOCK_SECONDS * 1000).toISOString();
+      await setMasterRecoveryAttemptState({ failedAttempts: 0, blockedUntil });
+      const error = new Error(
+        `Muitas tentativas inválidas. Tente novamente em ${MASTER_RECOVERY_LOCK_SECONDS} segundos.`,
+      );
+      error.status = 403;
+      error.data = {
+        recuperacao_master_bloqueada: true,
+        retry_after_seconds: MASTER_RECOVERY_LOCK_SECONDS,
+      };
+      throw error;
+    }
+
+    await setMasterRecoveryAttemptState({ failedAttempts: nextAttempts, blockedUntil: "" });
+    throw Object.assign(new Error("Chave de recuperação inválida"), { status: 401 });
+  }
+
+  await update(user.id, { senha: password });
+  await resetPasswordFailures(user.id);
+  const nextRecovery = await generateMasterRecoveryKey(user.id);
+
+  return {
+    usuario: await findById(user.id),
+    recoveryKey: nextRecovery.recoveryKey,
+    recoveryKeyCreatedAt: nextRecovery.recoveryKeyCreatedAt,
+  };
 }
 
 async function registerFailedPasswordAttempt(user) {
@@ -464,8 +691,12 @@ module.exports = {
   update,
   updateThemePreference,
   setStatus,
+  archiveUser,
+  restoreUser,
   validateCredentials,
   resetPassword,
+  generateMasterRecoveryKey,
+  recoverMasterPassword,
   registerFailedPasswordAttempt,
   resetPasswordFailures,
   hasDeleteBlockers,

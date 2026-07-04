@@ -1,6 +1,33 @@
 const produtoService = require("../services/produtoService");
 const estoqueService = require("../services/estoqueService");
+const multer = require("multer");
+const productImageService = require("../services/productImageService");
 const { ok, created, fail } = require("../utils/response");
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = String(file.originalname || "").split(".").pop()?.toLowerCase();
+    if (
+      !["jpg", "jpeg", "png", "webp"].includes(ext) ||
+      !["image/jpeg", "image/png", "image/webp"].includes(file.mimetype)
+    ) {
+      return cb(Object.assign(new Error("Formato inválido. Use JPG, PNG ou WebP"), { status: 400 }));
+    }
+    return cb(null, true);
+  },
+});
+
+function uploadImagemMiddleware(req, res, next) {
+  upload.single("imagem")(req, res, (error) => {
+    if (!error) return next();
+    if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+      return fail(res, 400, "Imagem muito grande. O limite é 5 MB");
+    }
+    return fail(res, error.status || 400, error.message || "Erro ao receber imagem");
+  });
+}
 
 async function listar(req, res) {
   const rows = await produtoService.listAll(req.query.estoque_id);
@@ -250,10 +277,41 @@ async function remover(req, res) {
   }
 
   try {
+    const product = await produtoService.findById(id, "all");
     await produtoService.remove(id);
+    await productImageService.deleteProductImage(product?.imagem_url);
     return ok(res, null, "Produto excluido");
   } catch (e) {
     return fail(res, e.status || 500, e.message || "Erro ao excluir produto");
+  }
+}
+
+async function atualizarImagem(req, res) {
+  const id = Number(req.params.id);
+  if (!id) return fail(res, 400, "Produto inválido");
+
+  let imagemUrl = null;
+  try {
+    imagemUrl = await productImageService.saveProductImage(id, req.file);
+    const { product, previousImageUrl } = await produtoService.updateImage(id, imagemUrl);
+    await productImageService.deleteProductImage(previousImageUrl);
+    return ok(res, product, "Imagem do produto atualizada");
+  } catch (e) {
+    await productImageService.deleteProductImage(imagemUrl);
+    return fail(res, e.status || 500, e.message || "Erro ao atualizar imagem do produto");
+  }
+}
+
+async function removerImagem(req, res) {
+  const id = Number(req.params.id);
+  if (!id) return fail(res, 400, "Produto inválido");
+
+  try {
+    const { product, previousImageUrl } = await produtoService.clearImage(id);
+    await productImageService.deleteProductImage(previousImageUrl);
+    return ok(res, product, "Imagem do produto removida");
+  } catch (e) {
+    return fail(res, e.status || 500, e.message || "Erro ao remover imagem do produto");
   }
 }
 
@@ -263,8 +321,11 @@ module.exports = {
   criar,
   criarEmLote,
   atualizar,
+  atualizarImagem,
+  removerImagem,
   atualizarLote,
   alterarStatus,
   remover,
   listarLotes,
+  uploadImagemMiddleware,
 };

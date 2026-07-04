@@ -25,6 +25,7 @@ export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
 
 interface StatCardProps {
   label: string;
+  mobileLabel?: string;
   value: string | number;
   hint?: string;
   icon?: LucideIcon;
@@ -33,6 +34,7 @@ interface StatCardProps {
 }
 export function StatCard({
   label,
+  mobileLabel,
   value,
   hint,
   icon: Icon,
@@ -52,7 +54,14 @@ export function StatCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="line-clamp-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground sm:text-xs">
-            {label}
+            {mobileLabel ? (
+              <>
+                <span className="sm:hidden">{mobileLabel}</span>
+                <span className="hidden sm:inline">{label}</span>
+              </>
+            ) : (
+              label
+            )}
           </div>
           <div
             className={cn(

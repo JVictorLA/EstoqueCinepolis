@@ -98,6 +98,9 @@ import {
   getProductLots,
   adjustStock,
   updateProductLot,
+  uploadProductImage,
+  removeProductImage,
+  getStoredUser,
 } from "@/services/api";
 import type { Product, Category, Estoque, ProductLot, LotStatus } from "@/types";
 
@@ -1626,7 +1629,7 @@ function ProductLotsDialog({
     if (!product) return;
     setLoading(true);
     getProductLots(product.id, estoqueId)
-      .then(setLots)
+      .then((items) => setLots(items.filter((lot) => lot.quantity > 0)))
       .catch(() => toast.error("Erro ao carregar lotes"))
       .finally(() => setLoading(false));
   }, [product, estoqueId]);
@@ -1643,7 +1646,7 @@ function ProductLotsDialog({
         {loading ? (
           <div className="py-8 text-sm text-muted-foreground">Carregando lotes...</div>
         ) : lots.length === 0 ? (
-          <div className="py-8 text-sm text-muted-foreground">Nenhum lote cadastrado.</div>
+          <div className="py-8 text-sm text-muted-foreground">Nenhum lote com estoque disponível.</div>
         ) : (
           <div className="overflow-x-auto rounded-md border">
             <Table>
@@ -1926,8 +1929,11 @@ function EditProductDialog({
   const [lots, setLots] = useState<EditableLot[]>([]);
   const [loadingLots, setLoadingLots] = useState(false);
   const [savingLotId, setSavingLotId] = useState<number | null>(null);
+  const [imageUrl, setImageUrl] = useState(product.imageUrl ?? null);
+  const [savingImage, setSavingImage] = useState(false);
   const selectedCategory = categories.find((category) => String(category.id) === categoryId);
   const requiresExpiration = !!selectedCategory?.exigeValidade;
+  const canEditImage = getStoredUser()?.tipo === "master";
 
   const toEditableLot = (lot: ProductLot): EditableLot => ({
     ...lot,
@@ -1942,6 +1948,7 @@ function EditProductDialog({
     setCategoryId(product.categoryId ? String(product.categoryId) : "");
     setUnit(product.unit);
     setPrice(String(product.price));
+    setImageUrl(product.imageUrl ?? null);
   }, [product]);
 
   useEffect(() => {
@@ -2026,6 +2033,38 @@ function EditProductDialog({
     }
   };
 
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setSavingImage(true);
+    try {
+      const updated = await uploadProductImage(product.id, file);
+      setImageUrl(updated.imageUrl ?? null);
+      toast.success("Imagem do produto atualizada");
+      onProductsChanged();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar imagem");
+    } finally {
+      setSavingImage(false);
+    }
+  };
+
+  const handleImageRemove = async () => {
+    setSavingImage(true);
+    try {
+      const updated = await removeProductImage(product.id);
+      setImageUrl(updated.imageUrl ?? null);
+      toast.success("Imagem do produto removida");
+      onProductsChanged();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao remover imagem");
+    } finally {
+      setSavingImage(false);
+    }
+  };
+
   return (
     <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
       <DialogHeader>
@@ -2077,6 +2116,54 @@ function EditProductDialog({
             />
           </div>
         </div>
+
+        {canEditImage && (
+          <div className="rounded-lg border bg-muted/20 p-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold">Imagem do produto</h3>
+                <p className="text-xs text-muted-foreground">
+                  JPG, PNG ou WebP. A imagem será comprimida automaticamente.
+                </p>
+              </div>
+              {savingImage && <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />}
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-background">
+                {imageUrl ? (
+                  <img src={imageUrl} alt={name} className="h-full w-full object-cover" />
+                ) : (
+                  <Package className="h-8 w-8 text-muted-foreground" />
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" disabled={savingImage} asChild>
+                  <label className="cursor-pointer">
+                    Enviar imagem
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="sr-only"
+                      onChange={handleImageUpload}
+                    />
+                  </label>
+                </Button>
+                {imageUrl && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    disabled={savingImage}
+                    onClick={handleImageRemove}
+                  >
+                    Remover imagem
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {requiresExpiration && (
           <div className="space-y-3 rounded-lg border bg-muted/20 p-3">

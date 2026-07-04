@@ -231,7 +231,19 @@ export function GlobalSearch({ onOpenSearch, onCloseSearch }: GlobalSearchProps)
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => openSearchPage({ type: "product", item: product })}
                 >
-                  <Package className="h-4 w-4 text-muted-foreground" />
+                  <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted">
+                    <Package className="h-4 w-4 text-muted-foreground" />
+                    {product.imageUrl ? (
+                      <img
+                        src={product.imageUrl}
+                        alt={product.productName}
+                        className="absolute inset-0 h-full w-full object-cover"
+                        onError={(event) => {
+                          event.currentTarget.style.display = "none";
+                        }}
+                      />
+                    ) : null}
+                  </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">{product.productName}</span>
                     <span className="block truncate text-xs text-muted-foreground">
@@ -706,13 +718,28 @@ function ProductDetails({
     <div className="space-y-4">
       <section className="rounded-lg border bg-card p-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
+          <div className="flex min-w-0 flex-1 gap-4">
+            <div className="relative flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border bg-muted">
+              <Package className="h-9 w-9 text-muted-foreground" />
+              {product.imageUrl ? (
+                <img
+                  src={product.imageUrl}
+                  alt={product.productName}
+                  className="absolute inset-0 h-full w-full object-cover"
+                  onError={(event) => {
+                    event.currentTarget.style.display = "none";
+                  }}
+                />
+              ) : null}
+            </div>
+            <div className="min-w-0">
             <h2 className="truncate text-2xl font-semibold tracking-normal">{product.productName}</h2>
             <div className="mt-2 flex items-center gap-2 font-mono text-sm text-muted-foreground">
               <Barcode className="h-4 w-4" />
               {product.barcode}
             </div>
             <ProductBarcodePreview code={product.barcode} />
+            </div>
           </div>
           <Badge variant={product.active ? "default" : "secondary"}>
             {product.active ? "Ativo" : "Inativo"}

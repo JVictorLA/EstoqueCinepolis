@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   ChevronRight,
   Check,
+  Copy,
   Loader2,
   Lock,
   LockKeyhole,
@@ -40,7 +41,9 @@ import {
   getPasswordChallenge,
   getSetupStatus,
   getUserByMatricula,
+  recoverMasterPassword,
   type InitialSetupPayload,
+  type MasterRecoveryResult,
 } from "@/services/api";
 import { passwordChallengeMessage, resolvePasswordStatus } from "@/lib/passwordChallenge";
 
@@ -49,6 +52,49 @@ import zyntraIcon from "@/icones/android-chrome-512x512.png";
 const MAINTENANCE_MESSAGE =
   "Sistema em modo manutenção. Operações do modo operador estão temporariamente bloqueadas.";
 const SKIP_LOGIN_INTRO_ONCE_KEY = "zytrex.skipLoginIntroOnce";
+const RECOVERY_KEY_VISIBLE_SECONDS = 180;
+
+async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
+
+function TemporaryRecoveryKey({
+  value,
+  secondsLeft,
+  onCopy,
+}: {
+  value: string;
+  secondsLeft: number;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="rounded-lg border bg-muted p-3 font-mono text-sm break-all">{value}</div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-muted-foreground">
+          Visivel por {secondsLeft}s. Depois disso, so gerando uma nova chave.
+        </p>
+        <Button type="button" variant="outline" size="sm" onClick={onCopy}>
+          <Copy className="h-4 w-4" />
+          Copiar chave
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function consumeSkipLoginIntroOnce() {
   if (typeof window === "undefined") return false;
@@ -250,6 +296,8 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
   const [payload, setPayload] = useState(defaultSetupPayload);
   const [saving, setSaving] = useState(false);
+  const [setupRecovery, setSetupRecovery] = useState<MasterRecoveryResult | null>(null);
+  const [setupRecoverySeconds, setSetupRecoverySeconds] = useState(0);
   const steps = ["Boas-vindas", "Empresa", "Estoques", "Master", "Revisao"];
 
   const updateEmpresa = (key: keyof InitialSetupPayload["empresa"], value: string) =>
@@ -289,6 +337,10 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
         toast.error("A senha deve ter pelo menos 6 caracteres");
         return false;
       }
+      if (payload.master.senha.trim() === payload.master.matricula.trim()) {
+        toast.error("A senha deve ser diferente da matricula");
+        return false;
+      }
       if (payload.master.senha !== payload.master.confirmarSenha) {
         toast.error("As senhas não coincidem");
         return false;
@@ -312,7 +364,7 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
 
     setSaving(true);
     try {
-      await createInitialSetup({
+      const result = await createInitialSetup({
         empresa: payload.empresa,
         sistema: {
           ...payload.sistema,
@@ -326,8 +378,10 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
           senha: payload.master.senha,
         },
       });
-      toast.success("Configuração inicial concluída. Faça login com o usuário master.");
-      onDone();
+      toast.success("Configuração inicial concluída. Guarde a chave de recuperação.");
+      setSetupRecovery(result.masterRecovery ?? null);
+      setSetupRecoverySeconds(result.masterRecovery ? RECOVERY_KEY_VISIBLE_SECONDS : 0);
+      if (!result.masterRecovery) onDone();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro ao finalizar configuração inicial");
     } finally {
@@ -335,7 +389,33 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
     }
   };
 
+  useEffect(() => {
+    if (!setupRecovery || setupRecoverySeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      setSetupRecoverySeconds((current) => {
+        const next = Math.max(0, current - 1);
+        if (next === 0) {
+          setSetupRecovery(null);
+          onDone();
+        }
+        return next;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [onDone, setupRecovery, setupRecoverySeconds]);
+
+  const copySetupRecoveryKey = async () => {
+    if (!setupRecovery?.recoveryKey) return;
+    try {
+      await copyTextToClipboard(setupRecovery.recoveryKey);
+      toast.success("Chave copiada");
+    } catch {
+      toast.error("Nao foi possivel copiar a chave");
+    }
+  };
+
   return (
+    <>
     <main className="min-h-screen bg-background px-3 py-4 text-foreground sm:px-6 sm:py-6">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
         <header className="flex items-center justify-between gap-4">
@@ -568,6 +648,37 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
         </section>
       </div>
     </main>
+    <Dialog open={!!setupRecovery}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Chave de recuperação do master</DialogTitle>
+          <DialogDescription>
+            Guarde esta chave fora do sistema. Ela permite recuperar o acesso do master e não será
+            exibida novamente.
+          </DialogDescription>
+        </DialogHeader>
+        {setupRecovery?.recoveryKey && (
+          <TemporaryRecoveryKey
+            value={setupRecovery.recoveryKey}
+            secondsLeft={setupRecoverySeconds}
+            onCopy={copySetupRecoveryKey}
+          />
+        )}
+        <DialogFooter>
+          <Button
+            className="zyntra-gradient border-0"
+            onClick={() => {
+              setSetupRecovery(null);
+              setSetupRecoverySeconds(0);
+              onDone();
+            }}
+          >
+            Já guardei a chave
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
@@ -633,6 +744,18 @@ function LoginPage() {
   const [userId, setUserId] = useState<number | null>(null);
   const [passwordStatus, setPasswordStatus] = useState<"first_access" | "expired">("first_access");
   const [currentPassword, setCurrentPassword] = useState("");
+  const [isMasterMatricula, setIsMasterMatricula] = useState(false);
+  const [checkingMasterMatricula, setCheckingMasterMatricula] = useState(false);
+  const [masterRecoveryOpen, setMasterRecoveryOpen] = useState(false);
+  const [masterRecoveryKey, setMasterRecoveryKey] = useState("");
+  const [masterRecoveryPassword, setMasterRecoveryPassword] = useState("");
+  const [masterRecoveryConfirm, setMasterRecoveryConfirm] = useState("");
+  const [masterRecoveryResult, setMasterRecoveryResult] = useState<MasterRecoveryResult | null>(
+    null,
+  );
+  const [masterRecoveryResultSeconds, setMasterRecoveryResultSeconds] = useState(0);
+  const [masterRecoveryLoading, setMasterRecoveryLoading] = useState(false);
+  const [masterRecoveryLockSeconds, setMasterRecoveryLockSeconds] = useState(0);
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -680,6 +803,58 @@ function LoginPage() {
     return () => window.clearInterval(timer);
   }, [loginLockSeconds, showFinalPasswordWarningAfterLock]);
 
+  useEffect(() => {
+    const cleanMatricula = matricula.trim();
+    setIsMasterMatricula(false);
+    if (!cleanMatricula) {
+      setCheckingMasterMatricula(false);
+      return;
+    }
+
+    let active = true;
+    setCheckingMasterMatricula(true);
+    const timer = window.setTimeout(() => {
+      getUserByMatricula(cleanMatricula)
+        .then((user) => {
+          if (active) setIsMasterMatricula(user?.tipo === "master");
+        })
+        .catch(() => {
+          if (active) setIsMasterMatricula(false);
+        })
+        .finally(() => {
+          if (active) setCheckingMasterMatricula(false);
+        });
+    }, 350);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [matricula]);
+
+  useEffect(() => {
+    if (masterRecoveryLockSeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      setMasterRecoveryLockSeconds((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [masterRecoveryLockSeconds]);
+
+  useEffect(() => {
+    if (!masterRecoveryResult || masterRecoveryResultSeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      setMasterRecoveryResultSeconds((current) => {
+        const next = Math.max(0, current - 1);
+        if (next === 0) {
+          setMasterRecoveryResult(null);
+          setMasterRecoveryOpen(false);
+        }
+        return next;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [masterRecoveryResult, masterRecoveryResultSeconds]);
+
   const openOperatorMode = () => {
     if (maintenanceMessage) {
       toast.warning(maintenanceMessage);
@@ -694,6 +869,11 @@ function LoginPage() {
     setShowFinalPasswordWarning(false);
     setShowFinalPasswordWarningAfterLock(false);
     setAutoDisabledDialogOpen(false);
+    setMasterRecoveryResult(null);
+    setMasterRecoveryResultSeconds(0);
+    setMasterRecoveryKey("");
+    setMasterRecoveryPassword("");
+    setMasterRecoveryConfirm("");
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -809,6 +989,58 @@ function LoginPage() {
     }
   };
 
+  const submitMasterRecovery = async () => {
+    if (!matricula.trim()) {
+      toast.error("Informe a matricula do master");
+      return;
+    }
+    if (!masterRecoveryKey.trim() || !masterRecoveryPassword || !masterRecoveryConfirm) {
+      toast.error("Preencha a chave e a nova senha");
+      return;
+    }
+    if (masterRecoveryPassword !== masterRecoveryConfirm) {
+      toast.error("As senhas nao coincidem");
+      return;
+    }
+
+    setMasterRecoveryLoading(true);
+    try {
+      const result = await recoverMasterPassword({
+        matricula: matricula.trim(),
+        chaveRecuperacao: masterRecoveryKey.trim(),
+        novaSenha: masterRecoveryPassword,
+        confirmarSenha: masterRecoveryConfirm,
+      });
+      setMasterRecoveryResult(result);
+      setMasterRecoveryResultSeconds(RECOVERY_KEY_VISIBLE_SECONDS);
+      setMasterRecoveryKey("");
+      setMasterRecoveryPassword("");
+      setMasterRecoveryConfirm("");
+      setPass("");
+      toast.success("Senha do master redefinida");
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.data && typeof err.data === "object") {
+        const retryAfter = Number((err.data as Record<string, unknown>).retry_after_seconds);
+        if (Number.isFinite(retryAfter) && retryAfter > 0) {
+          setMasterRecoveryLockSeconds(Math.ceil(retryAfter));
+        }
+      }
+      toast.error(err instanceof Error ? err.message : "Erro ao recuperar acesso master");
+    } finally {
+      setMasterRecoveryLoading(false);
+    }
+  };
+
+  const copyMasterRecoveryResultKey = async () => {
+    if (!masterRecoveryResult?.recoveryKey) return;
+    try {
+      await copyTextToClipboard(masterRecoveryResult.recoveryKey);
+      toast.success("Chave copiada");
+    } catch {
+      toast.error("Nao foi possivel copiar a chave");
+    }
+  };
+
   const isLoginLocked = loginLockSeconds > 0;
   const loginButtonLabel = isLoginLocked ? `${loginLockSeconds}s` : "Entrar";
   const finalPasswordWarning = showFinalPasswordWarning ? (
@@ -826,6 +1058,22 @@ function LoginPage() {
       {children}
     </motion.div>
   );
+
+  const renderMasterRecoveryLink = () => {
+    if (!isMasterMatricula) return null;
+    return (
+      <button
+        type="button"
+        className="mx-auto block text-xs font-medium text-muted-foreground underline-offset-4 transition hover:text-primary hover:underline"
+        onClick={() => {
+          setMasterRecoveryOpen(true);
+          setMasterRecoveryResult(null);
+        }}
+      >
+        Recuperar acesso master
+      </button>
+    );
+  };
 
   if (showIntro) {
     return <BrandLoadingScreen ready={systemReady} onComplete={() => setShowIntro(false)} />;
@@ -889,7 +1137,7 @@ function LoginPage() {
           type="password"
           value={pass}
           onChange={(e) => setPass(e.target.value)}
-          placeholder="••••••••"
+          placeholder="Digite sua senha (mínimo 8 caracteres)"
         />
         {finalPasswordWarning}
       </div>
@@ -902,6 +1150,7 @@ function LoginPage() {
         {loading && !isLoginLocked && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
         {loginButtonLabel}
       </Button>
+      {checkingMasterMatricula ? null : renderMasterRecoveryLink()}
     </form>
   );
 
@@ -1012,7 +1261,7 @@ function LoginPage() {
                         type="password"
                         value={pass}
                         onChange={(e) => setPass(e.target.value)}
-                        placeholder="••••••••"
+                        placeholder="Digite sua senha (mínimo 8 caracteres)"
                       />
                       {finalPasswordWarning}
                     </div>
@@ -1027,6 +1276,7 @@ function LoginPage() {
                       )}
                       {loginButtonLabel}
                     </Button>
+                    {checkingMasterMatricula ? null : renderMasterRecoveryLink()}
                   </form>
                 )}
               </div>
@@ -1049,6 +1299,98 @@ function LoginPage() {
           </DialogHeader>
           <DialogFooter>
             <Button onClick={() => setAutoDisabledDialogOpen(false)}>Entendi</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={masterRecoveryOpen}
+        onOpenChange={(open) => {
+          setMasterRecoveryOpen(open);
+          if (!open) {
+            setMasterRecoveryResult(null);
+            setMasterRecoveryResultSeconds(0);
+            setMasterRecoveryKey("");
+            setMasterRecoveryPassword("");
+            setMasterRecoveryConfirm("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Recuperar acesso master</DialogTitle>
+            <DialogDescription>
+              Use a chave guardada offline para definir uma nova senha do master.
+            </DialogDescription>
+          </DialogHeader>
+
+          {masterRecoveryResult ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+                Guarde a nova chave abaixo. A chave anterior foi invalidada e esta nao sera exibida
+                novamente.
+              </div>
+              <TemporaryRecoveryKey
+                value={masterRecoveryResult.recoveryKey}
+                secondsLeft={masterRecoveryResultSeconds}
+                onCopy={copyMasterRecoveryResultKey}
+              />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>Matricula do master</Label>
+                <Input value={matricula} onChange={(event) => updateMatricula(event.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Chave de recuperacao</Label>
+                <Input
+                  value={masterRecoveryKey}
+                  onChange={(event) => setMasterRecoveryKey(event.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Nova senha</Label>
+                <Input
+                  type="password"
+                  value={masterRecoveryPassword}
+                  onChange={(event) => setMasterRecoveryPassword(event.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Confirmar nova senha</Label>
+                <Input
+                  type="password"
+                  value={masterRecoveryConfirm}
+                  onChange={(event) => setMasterRecoveryConfirm(event.target.value)}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            {masterRecoveryResult ? (
+              <Button
+                onClick={() => {
+                  setMasterRecoveryResult(null);
+                  setMasterRecoveryResultSeconds(0);
+                  setMasterRecoveryOpen(false);
+                }}
+              >
+                Ja guardei a nova chave
+              </Button>
+            ) : (
+              <Button
+                onClick={submitMasterRecovery}
+                disabled={masterRecoveryLoading || masterRecoveryLockSeconds > 0}
+              >
+                {masterRecoveryLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                {masterRecoveryLockSeconds > 0
+                  ? `${masterRecoveryLockSeconds}s`
+                  : "Redefinir senha"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

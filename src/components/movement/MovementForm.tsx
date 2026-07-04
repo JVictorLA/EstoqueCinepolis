@@ -1142,8 +1142,18 @@ export function MovementForm({
         ) : product ? (
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <div className="h-14 w-14 rounded-lg bg-muted flex items-center justify-center">
+              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-muted flex items-center justify-center">
                 <Package className="h-6 w-6 text-muted-foreground" />
+                {product.imageUrl ? (
+                  <img
+                    src={product.imageUrl}
+                    alt={product.name}
+                    className="absolute inset-0 h-full w-full object-cover"
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                    }}
+                  />
+                ) : null}
               </div>
 
               <div className="min-w-0">

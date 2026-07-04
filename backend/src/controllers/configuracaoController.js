@@ -1,6 +1,12 @@
 const configuracaoService = require("../services/configuracaoService");
 const { ok, fail } = require("../utils/response");
 
+const SENSITIVE_CONFIG_KEYS = new Set([
+  "master_recovery_key_hash",
+  "master_recovery_failed_attempts",
+  "master_recovery_bloqueado_ate",
+]);
+
 function isValidTime(value) {
   const match = String(value || "").match(/^(\d{2}):(\d{2})$/);
   if (!match) return false;
@@ -39,13 +45,16 @@ function validateStockTimeBlockConfigs(configs) {
 
 async function listar(req, res) {
   const rows = await configuracaoService.getConfigsByNivelAcesso(req.user?.tipo || "admin");
-  return ok(res, rows);
+  return ok(res, rows.filter((row) => !SENSITIVE_CONFIG_KEYS.has(row.chave)));
 }
 
 async function atualizar(req, res) {
   const configs = Array.isArray(req.body?.configs) ? req.body.configs : [];
   if (!configs.length) {
     return fail(res, 400, "Informe configs para atualizar");
+  }
+  if (configs.some((item) => SENSITIVE_CONFIG_KEYS.has(item.chave))) {
+    return fail(res, 403, "Configuracao sensivel nao pode ser alterada por este endpoint");
   }
 
   const isMaster = req.user?.tipo === "master";

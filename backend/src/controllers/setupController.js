@@ -65,7 +65,9 @@ async function criarMaster(req, res) {
     master.id,
   );
 
-  return created(res, master, "Usuário master criado");
+  const recovery = await usuarioService.generateMasterRecoveryKey(master.id);
+
+  return created(res, { master, masterRecovery: recovery }, "Usuário master criado");
 }
 
 module.exports = { status, setupInicial, criarMaster };

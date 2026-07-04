@@ -47,6 +47,7 @@ router.get("/health", (_req, res) =>
 
 // Auth (somente admin)
 router.post("/login", asyncHandler(authCtrl.login));
+router.post("/usuarios/master/recuperar-senha", asyncHandler(usuarioCtrl.recuperarSenhaMaster));
 
 // Status operacional publico
 router.get("/status-operacional", asyncHandler(statusCtrl.operacional));
@@ -85,6 +86,19 @@ router.patch(
   auth.authMiddleware,
   auth.adminOnly,
   asyncHandler(produtoCtrl.alterarStatus),
+);
+router.put(
+  "/produtos/:id/imagem",
+  auth.authMiddleware,
+  auth.masterOnly,
+  produtoCtrl.uploadImagemMiddleware,
+  asyncHandler(produtoCtrl.atualizarImagem),
+);
+router.delete(
+  "/produtos/:id/imagem",
+  auth.authMiddleware,
+  auth.masterOnly,
+  asyncHandler(produtoCtrl.removerImagem),
 );
 router.put(
   "/produtos/:id",
@@ -227,6 +241,13 @@ router.patch(
   asyncHandler(usuarioCtrl.atualizarPreferencias),
 );
 
+router.post(
+  "/usuarios/master/chave-recuperacao",
+  auth.authMiddleware,
+  auth.masterOnly,
+  asyncHandler(usuarioCtrl.gerarChaveRecuperacaoMaster),
+);
+
 // Alterar status
 router.patch(
   "/usuarios/:id/status",
@@ -240,6 +261,20 @@ router.patch(
   auth.authMiddleware,
   auth.adminOnly,
   asyncHandler(usuarioCtrl.resetarSenha),
+);
+
+router.patch(
+  "/usuarios/:id/arquivar",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(usuarioCtrl.arquivar),
+);
+
+router.patch(
+  "/usuarios/:id/restaurar",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(usuarioCtrl.restaurar),
 );
 
 router.delete(

@@ -31,7 +31,7 @@ export interface Product {
   minStock: number;
   active: boolean;
   favorite: boolean;
-  imageUrl?: string;
+  imageUrl?: string | null;
   lowStock?: boolean;
   noStock?: boolean;
   movementsCount?: number;
@@ -152,6 +152,8 @@ export interface SystemUser {
   email: string | null;
   role: UserRole;
   active: boolean;
+  archived: boolean;
+  archivedAt: string | null;
   createdAt: string;
   themePreference?: "light" | "dark";
   canDelete?: boolean;
@@ -275,6 +277,7 @@ export interface InventoryCurrentItem {
   expirationDate: string | null;
   unit: string;
   price: number;
+  imageUrl?: string | null;
   estoqueId: number | null;
   estoqueNome: string | null;
   stock: number;

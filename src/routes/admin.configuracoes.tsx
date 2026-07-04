@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Copy, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -12,6 +12,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { APP_VERSION_LABEL } from "@/lib/appVersion";
 import {
+  generateMasterRecoveryKey,
   getStoredUser,
   getSystemConfigs,
   setStoredUser,
@@ -20,6 +21,24 @@ import {
 } from "@/services/api";
 
 type ConfigUpdate = Parameters<typeof updateSystemConfigs>[0][number];
+const RECOVERY_KEY_VISIBLE_SECONDS = 180;
+
+async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
 
 export const Route = createFileRoute("/admin/configuracoes")({
   head: () => ({ meta: [{ title: "Configurações · Zytrex Inventory" }] }),
@@ -76,6 +95,9 @@ function ConfigPage() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [generatingRecoveryKey, setGeneratingRecoveryKey] = useState(false);
+  const [masterRecoveryKey, setMasterRecoveryKey] = useState("");
+  const [masterRecoveryKeySeconds, setMasterRecoveryKeySeconds] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -132,6 +154,20 @@ function ConfigPage() {
       active = false;
     };
   }, [setTheme, user?.themePreference]);
+
+  useEffect(() => {
+    if (!masterRecoveryKey || masterRecoveryKeySeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      setMasterRecoveryKeySeconds((current) => {
+        const next = Math.max(0, current - 1);
+        if (next === 0) {
+          setMasterRecoveryKey("");
+        }
+        return next;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [masterRecoveryKey, masterRecoveryKeySeconds]);
 
   const update = <K extends keyof SettingsState>(key: K, value: SettingsState[K]) => {
     setSettings((current) => ({ ...current, [key]: value }));
@@ -243,6 +279,30 @@ function ConfigPage() {
       toast.error(err instanceof Error ? err.message : "Erro ao salvar configurações");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const rotateMasterRecoveryKey = async () => {
+    setGeneratingRecoveryKey(true);
+    try {
+      const result = await generateMasterRecoveryKey();
+      setMasterRecoveryKey(result.recoveryKey);
+      setMasterRecoveryKeySeconds(RECOVERY_KEY_VISIBLE_SECONDS);
+      toast.success("Nova chave de recuperacao gerada");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao gerar chave de recuperacao");
+    } finally {
+      setGeneratingRecoveryKey(false);
+    }
+  };
+
+  const copyMasterRecoveryKey = async () => {
+    if (!masterRecoveryKey) return;
+    try {
+      await copyTextToClipboard(masterRecoveryKey);
+      toast.success("Chave copiada");
+    } catch {
+      toast.error("Nao foi possivel copiar a chave");
     }
   };
 
@@ -392,6 +452,39 @@ function ConfigPage() {
               checked={settings.modoManutencao}
               onCheckedChange={(checked) => update("modoManutencao", checked)}
             />
+            <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+              <div>
+                <div className="text-sm font-medium">Chave de recuperacao do master</div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Gere uma nova chave para guardar offline. A chave anterior deixa de funcionar.
+                </p>
+              </div>
+              {masterRecoveryKey && (
+                <div className="space-y-2">
+                  <div className="rounded-md border bg-background p-3 font-mono text-sm break-all">
+                    {masterRecoveryKey}
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs text-muted-foreground">
+                      Visivel por {masterRecoveryKeySeconds}s. Depois disso, so gerando outra.
+                    </p>
+                    <Button type="button" variant="outline" size="sm" onClick={copyMasterRecoveryKey}>
+                      <Copy className="h-4 w-4" />
+                      Copiar chave
+                    </Button>
+                  </div>
+                </div>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={rotateMasterRecoveryKey}
+                disabled={generatingRecoveryKey}
+              >
+                {generatingRecoveryKey && <Loader2 className="h-4 w-4 animate-spin" />}
+                Gerar nova chave
+              </Button>
+            </div>
           </Section>
         )}
       </div>

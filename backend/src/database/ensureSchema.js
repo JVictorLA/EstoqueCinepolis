@@ -124,6 +124,18 @@ async function ensureDatabaseSchema() {
   );
 
   await ensureColumn(
+    "usuarios",
+    "arquivado",
+    "ALTER TABLE usuarios ADD COLUMN arquivado TINYINT(1) NOT NULL DEFAULT 0 AFTER ativo",
+  );
+
+  await ensureColumn(
+    "usuarios",
+    "arquivado_em",
+    "ALTER TABLE usuarios ADD COLUMN arquivado_em DATETIME NULL AFTER arquivado",
+  );
+
+  await ensureColumn(
     "estoques",
     "tipo",
     "ALTER TABLE estoques ADD COLUMN tipo VARCHAR(20) NOT NULL DEFAULT 'permanente' AFTER ativo",
@@ -139,6 +151,12 @@ async function ensureDatabaseSchema() {
     "estoques",
     "arquivado_em",
     "ALTER TABLE estoques ADD COLUMN arquivado_em DATETIME NULL AFTER arquivado",
+  );
+
+  await ensureColumn(
+    "produtos",
+    "imagem_url",
+    "ALTER TABLE produtos ADD COLUMN imagem_url VARCHAR(255) NULL AFTER preco_venda",
   );
 
   await pool.query(`

@@ -182,8 +182,24 @@
     background: var(--background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+    user-select: none;
     -webkit-font-smoothing: antialiased;
+    -webkit-user-select: none;
     text-rendering: optimizeLegibility;
+  }
+
+  input,
+  textarea,
+  select,
+  [contenteditable="true"] {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  img,
+  svg {
+    -webkit-user-drag: none;
+    user-drag: none;
   }
 
   .dark body {

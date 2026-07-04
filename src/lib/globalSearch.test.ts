@@ -32,6 +32,8 @@ function user(partial: Partial<SystemUser>): SystemUser {
     email: null,
     role: "operador",
     active: true,
+    archived: false,
+    archivedAt: null,
     createdAt: "2026-01-01",
     ...partial,
   };

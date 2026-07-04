@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
 const { pool } = require("../database/connection");
 const configuracaoService = require("./configuracaoService");
+const usuarioService = require("./usuarioService");
 
 async function isSetupConcluido(conn = pool) {
   const value = await configuracaoService.getConfig("setup_concluido", conn);
@@ -46,6 +47,9 @@ function validatePayload(payload) {
   }
   if (String(master.senha).length < 6) {
     return { error: "A senha deve ter pelo menos 6 caracteres" };
+  }
+  if (String(master.senha || "").trim() === String(master.matricula || "").trim()) {
+    return { error: "A senha deve ser diferente da matricula" };
   }
   if (sistema.tema_padrao && !["light", "dark"].includes(sistema.tema_padrao)) {
     return { error: "tema_padrao deve ser light ou dark" };
@@ -204,6 +208,7 @@ async function executarSetupInicial(payload) {
       userResult.insertId,
       conn,
     );
+    const recovery = await usuarioService.generateMasterRecoveryKey(userResult.insertId, conn);
 
     await conn.commit();
 
@@ -216,6 +221,7 @@ async function executarSetupInicial(payload) {
         tipo: "master",
         ativo: true,
       },
+      masterRecovery: recovery,
       estoques,
     };
   } catch (error) {

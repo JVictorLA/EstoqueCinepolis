@@ -1,5 +1,6 @@
 ﻿const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const config = require("./config");
 const routes = require("./routes");
 const { notFound, errorHandler } = require("./middlewares/errors");
@@ -10,6 +11,7 @@ const corsOrigin = config.cors.origin === "*" ? true : config.cors.origin.split(
 app.use(cors({ origin: corsOrigin, credentials: false }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true }));
+app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
 app.use((req, _res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
   next();

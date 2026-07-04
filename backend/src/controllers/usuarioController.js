@@ -194,6 +194,41 @@ async function alterarStatus(req, res) {
   return ok(res, atualizado, "Status atualizado");
 }
 
+async function arquivar(req, res) {
+  const id = Number(req.params.id);
+  if (!id) return fail(res, 400, "ID invalido");
+
+  const currentUserId = Number(req.user?.id);
+  if (currentUserId === id) {
+    return fail(res, 403, "Voce nao pode arquivar sua propria conta");
+  }
+
+  const existing = await usuarioService.findById(id);
+  if (!existing) return fail(res, 404, "Usuario nao encontrado");
+
+  if (existing.tipo === "master") {
+    return fail(res, 403, "Usuario master nao pode ser arquivado");
+  }
+
+  const atualizado = await usuarioService.archiveUser(id);
+  return ok(res, atualizado, "Usuario arquivado");
+}
+
+async function restaurar(req, res) {
+  const id = Number(req.params.id);
+  if (!id) return fail(res, 400, "ID invalido");
+
+  const existing = await usuarioService.findById(id);
+  if (!existing) return fail(res, 404, "Usuario nao encontrado");
+
+  if (existing.tipo === "master") {
+    return fail(res, 403, "Usuario master nao pode ser restaurado pelo CRUD comum");
+  }
+
+  const atualizado = await usuarioService.restoreUser(id);
+  return ok(res, atualizado, "Usuario restaurado");
+}
+
 async function resetarSenha(req, res) {
   const id = Number(req.params.id);
   if (!id) return fail(res, 400, "ID inválido");
@@ -206,6 +241,42 @@ async function resetarSenha(req, res) {
 
   await usuarioService.resetPassword(id);
   return ok(res, null, "Senha temporária resetada; usuário deve trocá-la no próximo acesso");
+}
+
+async function recuperarSenhaMaster(req, res) {
+  const { matricula, chaveRecuperacao, novaSenha, confirmarSenha } = req.body || {};
+
+  try {
+    const result = await usuarioService.recoverMasterPassword({
+      matricula,
+      recoveryKey: chaveRecuperacao,
+      novaSenha,
+      confirmarSenha,
+    });
+    return ok(res, result, "Senha do master redefinida");
+  } catch (error) {
+    if (error.data) {
+      return res.status(error.status || 500).json({
+        success: false,
+        message: error.message || "Erro ao recuperar senha do master",
+        data: error.data,
+        error: error.message || "Erro ao recuperar senha do master",
+      });
+    }
+    return fail(res, error.status || 500, error.message || "Erro ao recuperar senha do master");
+  }
+}
+
+async function gerarChaveRecuperacaoMaster(req, res) {
+  const userId = Number(req.user?.id);
+  if (!userId) return fail(res, 401, "Não autenticado");
+
+  try {
+    const recovery = await usuarioService.generateMasterRecoveryKey(userId);
+    return ok(res, recovery, "Chave de recuperação gerada");
+  } catch (error) {
+    return fail(res, error.status || 500, error.message || "Erro ao gerar chave de recuperação");
+  }
 }
 
 async function remover(req, res) {
@@ -238,8 +309,12 @@ module.exports = {
   criar,
   atualizar,
   alterarStatus,
+  arquivar,
+  restaurar,
   alterarSenha,
   atualizarPreferencias,
   resetarSenha,
+  recuperarSenhaMaster,
+  gerarChaveRecuperacaoMaster,
   remover,
 };

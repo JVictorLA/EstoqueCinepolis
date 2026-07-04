@@ -50,6 +50,12 @@ function normalizeThemePreference(value: unknown): "light" | "dark" {
   return value === "dark" ? "dark" : "light";
 }
 
+function normalizeAssetUrl(value?: string | null): string | null {
+  if (!value) return null;
+  if (/^https?:\/\//i.test(value)) return value;
+  return `${API_URL}${value.startsWith("/") ? value : `/${value}`}`;
+}
+
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(TOKEN_KEY);
@@ -211,6 +217,7 @@ interface RawProduct {
   data_validade?: string | null;
   unidade: string;
   preco_venda: string | number;
+  imagem_url?: string | null;
   estoque_atual: string | number;
   estoque_minimo: string | number;
   ativo: 0 | 1 | boolean;
@@ -264,6 +271,7 @@ function mapProduct(r: RawProduct): Product {
     expirationDate: r.data_validade ?? null,
     unit: r.unidade,
     price: Number(r.preco_venda),
+    imageUrl: normalizeAssetUrl(r.imagem_url),
     stock: Number(r.estoque_atual),
     minStock: Number(r.estoque_minimo),
     active: !!r.ativo,
@@ -449,6 +457,8 @@ interface RawUser {
   email: string | null;
   tipo: UserRole;
   ativo: 0 | 1 | boolean;
+  arquivado?: 0 | 1 | boolean;
+  arquivado_em?: string | null;
   criado_em: string;
   theme_preference?: "light" | "dark" | null;
   can_delete?: 0 | 1 | boolean;
@@ -461,6 +471,8 @@ function mapUser(r: RawUser): SystemUser {
     email: r.email,
     role: r.tipo,
     active: !!r.ativo,
+    archived: !!r.arquivado,
+    archivedAt: r.arquivado_em ?? null,
     createdAt: r.criado_em,
     themePreference: normalizeThemePreference(r.theme_preference),
     canDelete: !!r.can_delete,
@@ -546,6 +558,7 @@ interface RawInventoryItem {
   data_validade?: string | null;
   unidade: string;
   preco_venda: string | number;
+  imagem_url?: string | null;
   estoque_id: number | null;
   estoque_nome: string | null;
   estoque_atual: string | number;
@@ -570,6 +583,7 @@ function mapInventoryItem(r: RawInventoryItem): InventoryCurrentItem {
     expirationDate: r.data_validade ?? null,
     unit: r.unidade,
     price: Number(r.preco_venda),
+    imageUrl: normalizeAssetUrl(r.imagem_url),
     estoqueId: r.estoque_id,
     estoqueNome: r.estoque_nome,
     stock: Number(r.estoque_atual),
@@ -785,6 +799,31 @@ export async function adminLogin(matricula: string, senha: string): Promise<Auth
   };
 }
 
+export interface MasterRecoveryResult {
+  recoveryKey: string;
+  recoveryKeyCreatedAt: string;
+}
+
+export async function recoverMasterPassword(payload: {
+  matricula: string;
+  chaveRecuperacao: string;
+  novaSenha: string;
+  confirmarSenha: string;
+}): Promise<MasterRecoveryResult> {
+  const data = await request<MasterRecoveryResult>("/usuarios/master/recuperar-senha", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return data;
+}
+
+export async function generateMasterRecoveryKey(): Promise<MasterRecoveryResult> {
+  return request<MasterRecoveryResult>("/usuarios/master/chave-recuperacao", {
+    method: "POST",
+    auth: true,
+  });
+}
+
 /* ----------------- SETUP ----------------- */
 
 export interface InitialSetupPayload {
@@ -825,8 +864,14 @@ export async function getSetupStatus(): Promise<{
   return request<{ precisaSetup: boolean; setupConcluido: boolean }>("/setup/status");
 }
 
-export async function createInitialSetup(payload: InitialSetupPayload): Promise<void> {
-  await request<void>("/setup/inicial", {
+export interface InitialSetupResult {
+  master: AuthUser;
+  masterRecovery?: MasterRecoveryResult;
+  estoques?: string[];
+}
+
+export async function createInitialSetup(payload: InitialSetupPayload): Promise<InitialSetupResult> {
+  return request<InitialSetupResult>("/setup/inicial", {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -1251,6 +1296,36 @@ export async function updateProduct(id: number, payload: UpdateProductPayload): 
   return mapProduct(r);
 }
 
+export async function uploadProductImage(id: number, file: File): Promise<Product> {
+  const formData = new FormData();
+  formData.append("imagem", file);
+
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${API_URL}/produtos/${id}/imagem`, {
+    method: "PUT",
+    headers,
+    body: formData,
+  });
+
+  const body = (await res.json().catch(() => null)) as ApiEnvelope<RawProduct> | null;
+  if (!res.ok || (body && body.success === false)) {
+    throw new ApiError(body?.message || `Erro ${res.status}`, res.status, body?.data ?? null);
+  }
+
+  return mapProduct(body?.data as RawProduct);
+}
+
+export async function removeProductImage(id: number): Promise<Product> {
+  const r = await request<RawProduct>(`/produtos/${id}/imagem`, {
+    method: "DELETE",
+    auth: true,
+  });
+  return mapProduct(r);
+}
+
 export async function setProductStatus(id: number, ativo: boolean): Promise<Product> {
   const r = await request<RawProduct>(`/produtos/${id}/status`, {
     method: "PATCH",
@@ -1493,6 +1568,22 @@ export async function setUserStatus(id: number, ativo: boolean): Promise<SystemU
     method: "PATCH",
     auth: true,
     body: JSON.stringify({ ativo }),
+  });
+  return mapUser(r);
+}
+
+export async function archiveUser(id: number): Promise<SystemUser> {
+  const r = await request<RawUser>(`/usuarios/${id}/arquivar`, {
+    method: "PATCH",
+    auth: true,
+  });
+  return mapUser(r);
+}
+
+export async function restoreUser(id: number): Promise<SystemUser> {
+  const r = await request<RawUser>(`/usuarios/${id}/restaurar`, {
+    method: "PATCH",
+    auth: true,
   });
   return mapUser(r);
 }

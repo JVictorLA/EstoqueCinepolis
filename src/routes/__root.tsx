@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
@@ -79,6 +80,19 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
+  useEffect(() => {
+    const preventAssetDrag = (event: DragEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("img, svg, a")) {
+        event.preventDefault();
+      }
+    };
+
+    document.addEventListener("dragstart", preventAssetDrag);
+    return () => document.removeEventListener("dragstart", preventAssetDrag);
+  }, []);
+
   return (
     <ThemeProvider>
       <Outlet />

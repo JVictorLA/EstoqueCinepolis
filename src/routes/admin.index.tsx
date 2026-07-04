@@ -69,11 +69,29 @@ function Dashboard() {
       />
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:mb-6 sm:gap-4 lg:grid-cols-4">
-        <StatCard label="Total de produtos" value={activeProducts.length} icon={Package} />
-        <StatCard label="Abaixo do mínimo" value={lowStock} icon={AlertTriangle} tone="warning" />
-        <StatCard label="Itens em estoque" value={totalUnits} icon={Boxes} tone="success" />
+        <StatCard
+          label="Total de produtos"
+          mobileLabel="Produtos"
+          value={activeProducts.length}
+          icon={Package}
+        />
+        <StatCard
+          label="Abaixo do mínimo"
+          mobileLabel="Abaixo mín."
+          value={lowStock}
+          icon={AlertTriangle}
+          tone="warning"
+        />
+        <StatCard
+          label="Itens em estoque"
+          mobileLabel="Em estoque"
+          value={totalUnits}
+          icon={Boxes}
+          tone="success"
+        />
         <StatCard
           label="Valor em estoque"
+          mobileLabel="Valor"
           value={money(total)}
           icon={DollarSign}
           tone="success"
@@ -173,7 +191,7 @@ function Dashboard() {
               description="Nenhum produto com problema de estoque."
             />
           ) : (
-            <div className="space-y-3 max-h-[260px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted-foreground/30">
+            <div className="space-y-3 sm:max-h-[260px] sm:overflow-y-auto sm:pr-2 sm:scrollbar-thin sm:scrollbar-thumb-muted-foreground/30">
               {criticalProducts.slice(0, 6).map((p) => (
                 <div
                   key={p.id}

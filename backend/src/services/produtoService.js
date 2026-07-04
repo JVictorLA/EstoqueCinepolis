@@ -12,6 +12,7 @@ const SELECT_SPECIFIC_STOCK = `
     COALESCE(c.exige_validade, 0) AS exige_validade,
     p.unidade,
     p.preco_venda,
+    p.imagem_url,
     ep.estoque_id,
     e.nome AS estoque_nome,
     COALESCE(lotes.data_validade, ep.data_validade) AS data_validade,
@@ -56,6 +57,7 @@ const SELECT_ALL_STOCKS = `
     COALESCE(c.exige_validade, 0) AS exige_validade,
     p.unidade,
     p.preco_venda,
+    p.imagem_url,
     NULL AS estoque_id,
     'Todos os estoques' AS estoque_nome,
     MIN(COALESCE(lotes.data_validade, ep.data_validade)) AS data_validade,
@@ -100,6 +102,7 @@ const GROUP_ALL_STOCKS = `
     c.exige_validade,
     p.unidade,
     p.preco_venda,
+    p.imagem_url,
     p.ativo,
     p.criado_em,
     p.atualizado_em
@@ -559,6 +562,43 @@ async function setStatus(id, ativo) {
   return findById(id, "all");
 }
 
+async function updateImage(id, imagemUrl) {
+  const existing = await findById(id, "all");
+  if (!existing) {
+    throw Object.assign(new Error("Produto não encontrado"), {
+      status: 404,
+    });
+  }
+
+  await pool.query("UPDATE produtos SET imagem_url = ?, atualizado_em = NOW() WHERE id = ?", [
+    imagemUrl,
+    id,
+  ]);
+
+  return {
+    previousImageUrl: existing.imagem_url || null,
+    product: await findById(id, "all"),
+  };
+}
+
+async function clearImage(id) {
+  const existing = await findById(id, "all");
+  if (!existing) {
+    throw Object.assign(new Error("Produto não encontrado"), {
+      status: 404,
+    });
+  }
+
+  await pool.query("UPDATE produtos SET imagem_url = NULL, atualizado_em = NOW() WHERE id = ?", [
+    id,
+  ]);
+
+  return {
+    previousImageUrl: existing.imagem_url || null,
+    product: await findById(id, "all"),
+  };
+}
+
 async function remove(id) {
   const [movements] = await pool.query(
     "SELECT id FROM movimentacoes WHERE produto_id = ? LIMIT 1",
@@ -603,6 +643,8 @@ module.exports = {
   create,
   createMany,
   update,
+  updateImage,
+  clearImage,
   setStatus,
   remove,
   listLotes,
