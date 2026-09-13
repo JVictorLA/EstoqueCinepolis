@@ -47,12 +47,13 @@ import {
   getEstoques,
   getStoredUser,
   getPasswordChallenge,
+  getPasswordWarning,
   getProductLots,
   getProducts,
   ApiError,
 } from "@/services/api";
 
-import type { AuthUser, Estoque, Product, ProductLot, FefoWarning } from "@/types";
+import type { AuthUser, Estoque, Product, ProductLot, FefoWarning, PasswordWarning } from "@/types";
 import { isExpired, isNearExpiration } from "@/lib/expiration";
 import {
   clampQuantityToLimit,
@@ -184,8 +185,13 @@ export function MovementForm({
 
   // PRIMEIRO ACESSO
   const [showChangePassword, setShowChangePassword] = useState(false);
-  const [passwordStatus, setPasswordStatus] = useState<"first_access" | "expired">("first_access");
+  const [passwordStatus, setPasswordStatus] = useState<"first_access" | "expired" | "expiring">(
+    "first_access",
+  );
   const [currentPassword, setCurrentPassword] = useState("");
+  const [passwordWarningPrompt, setPasswordWarningPrompt] = useState<PasswordWarning | null>(null);
+  const [pendingAdminAuthorization, setPendingAdminAuthorization] =
+    useState<AdminAuthorization | null>(null);
 
   const [newPassword, setNewPassword] = useState("");
 
@@ -499,7 +505,7 @@ export function MovementForm({
     setPassword("");
   };
 
-  const doSubmit = async (adminAuthorization?: AdminAuthorization) => {
+  const doSubmit = async (adminAuthorization?: AdminAuthorization, postponePasswordChange = false) => {
     setSubmitting(true);
 
     try {
@@ -511,6 +517,7 @@ export function MovementForm({
           matricula,
           senha: password,
           observacao: note || undefined,
+          adiar_troca_senha: postponePasswordChange || undefined,
           autorizacao_admin: adminAuthorization,
           itens: transferCart.map((item) => ({
             codigo_barras: item.barcode,
@@ -529,6 +536,7 @@ export function MovementForm({
           tipo: type,
           quantidade: parseInt(quantity),
           observacao: note || undefined,
+          adiar_troca_senha: postponePasswordChange || undefined,
           lote: lot.trim(),
           data_validade: type === "entrada" ? expirationDate || null : undefined,
           confirmar_ignorar_fefo: ignoreFefo,
@@ -572,6 +580,17 @@ export function MovementForm({
         setReviewOpen(false);
         setAdminAuthOpen(false);
         toast.warning(e.message);
+        return;
+      }
+      const passwordWarning = getPasswordWarning(e);
+      if (passwordWarning) {
+        setUserId(passwordWarning.usuario?.id ?? user?.id ?? null);
+        setCurrentPassword(password);
+        setPasswordWarningPrompt(passwordWarning.warning);
+        setPendingAdminAuthorization(adminAuthorization ?? null);
+        setConfirmOpen(false);
+        setReviewOpen(false);
+        setAdminAuthOpen(false);
         return;
       }
       const challenge = getPasswordChallenge(e);
@@ -1504,19 +1523,66 @@ export function MovementForm({
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!passwordWarningPrompt} onOpenChange={(open) => !open && setPasswordWarningPrompt(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Sua senha vence em breve</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Faltam {passwordWarningPrompt?.days_remaining ?? 0} dia
+              {(passwordWarningPrompt?.days_remaining ?? 0) === 1 ? "" : "s"} para sua senha
+              vencer. Deseja trocar agora?
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={submitting}
+              onClick={() => {
+                const adminAuthorization = pendingAdminAuthorization ?? undefined;
+                setPasswordWarningPrompt(null);
+                setPendingAdminAuthorization(null);
+                doSubmit(adminAuthorization, true);
+              }}
+            >
+              Talvez mais tarde
+            </Button>
+            <Button
+              onClick={() => {
+                setPasswordWarningPrompt(null);
+                setPendingAdminAuthorization(null);
+                setPasswordStatus("expiring");
+                setShowChangePassword(true);
+              }}
+            >
+              Trocar senha
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showChangePassword} onOpenChange={setShowChangePassword}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {passwordStatus === "expired" ? "Senha vencida" : "Primeiro acesso"}
+              {passwordStatus === "expired"
+                ? "Senha vencida"
+                : passwordStatus === "expiring"
+                  ? "Trocar senha"
+                  : "Primeiro acesso"}
             </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="text-sm text-muted-foreground">
               {passwordStatus === "expired"
-                ? "Sua senha venceu após 7 dias. Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. A movimentação não foi executada."
-                : "Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. A movimentação não foi executada."}
+                ? "Sua senha venceu após 14 dias. Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. A movimentação não foi executada."
+                : passwordStatus === "expiring"
+                  ? "Crie uma nova senha para renovar o prazo por mais 14 dias. Depois, repita a movimentação usando a nova senha."
+                  : "Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. A movimentação não foi executada."}
             </div>
 
             <div className="space-y-2">

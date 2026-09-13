@@ -9,6 +9,8 @@ lerna-debug.log*
 
 node_modules
 backend/uploads/
+backend/backups/*
+!backend/backups/.gitkeep
 dist
 dist-ssr
 .output

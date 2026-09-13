@@ -46,6 +46,7 @@ import {
   type MasterRecoveryResult,
 } from "@/services/api";
 import { passwordChallengeMessage, resolvePasswordStatus } from "@/lib/passwordChallenge";
+import type { PasswordWarning } from "@/types";
 
 import zyntraIcon from "@/icones/android-chrome-512x512.png";
 
@@ -331,6 +332,11 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
       if (!payload.master.nome.trim()) return (toast.error("Informe o nome do master"), false);
       if (!payload.master.matricula.trim())
         return (toast.error("Informe a matrícula do master"), false);
+      if (!payload.master.email.trim()) return (toast.error("Informe o email do master"), false);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.master.email.trim())) {
+        toast.error("Informe um email valido para o master");
+        return false;
+      }
       if (!payload.master.senha) return (toast.error("Informe a senha do master"), false);
       if (!payload.master.confirmarSenha) return (toast.error("Confirme a senha do master"), false);
       if (payload.master.senha.length < 6) {
@@ -374,7 +380,7 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
         master: {
           nome: payload.master.nome,
           matricula: payload.master.matricula,
-          email: payload.master.email,
+          email: payload.master.email.trim(),
           senha: payload.master.senha,
         },
       });
@@ -579,7 +585,7 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
                   onChange={(e) => updateMaster("matricula", e.target.value)}
                 />
               </SetupField>
-              <SetupField label="Email">
+              <SetupField label="Email" required>
                 <Input
                   type="email"
                   value={payload.master.email}
@@ -621,7 +627,7 @@ function SetupWizard({ onDone }: { onDone: () => void }) {
                 items={[
                   payload.master.nome,
                   payload.master.matricula,
-                  payload.master.email || "Email não informado",
+                  payload.master.email,
                 ]}
               />
             </div>
@@ -742,7 +748,10 @@ function LoginPage() {
 
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [userId, setUserId] = useState<number | null>(null);
-  const [passwordStatus, setPasswordStatus] = useState<"first_access" | "expired">("first_access");
+  const [passwordStatus, setPasswordStatus] = useState<"first_access" | "expired" | "expiring">(
+    "first_access",
+  );
+  const [passwordWarningPrompt, setPasswordWarningPrompt] = useState<PasswordWarning | null>(null);
   const [currentPassword, setCurrentPassword] = useState("");
   const [isMasterMatricula, setIsMasterMatricula] = useState(false);
   const [checkingMasterMatricula, setCheckingMasterMatricula] = useState(false);
@@ -759,6 +768,42 @@ function LoginPage() {
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+
+  useEffect(() => {
+    if (showIntro || needsSetup) return;
+
+    const media = window.matchMedia("(max-width: 1023px)");
+    if (!media.matches) return;
+
+    const { body, documentElement } = document;
+    const scrollY = window.scrollY;
+    const previousBodyOverflow = body.style.overflow;
+    const previousBodyOverscroll = body.style.overscrollBehavior;
+    const previousBodyPosition = body.style.position;
+    const previousBodyTop = body.style.top;
+    const previousBodyWidth = body.style.width;
+    const previousDocumentOverflow = documentElement.style.overflow;
+    const previousDocumentOverscroll = documentElement.style.overscrollBehavior;
+
+    body.style.overflow = "hidden";
+    body.style.overscrollBehavior = "none";
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
+    documentElement.style.overflow = "hidden";
+    documentElement.style.overscrollBehavior = "none";
+
+    return () => {
+      body.style.overflow = previousBodyOverflow;
+      body.style.overscrollBehavior = previousBodyOverscroll;
+      body.style.position = previousBodyPosition;
+      body.style.top = previousBodyTop;
+      body.style.width = previousBodyWidth;
+      documentElement.style.overflow = previousDocumentOverflow;
+      documentElement.style.overscrollBehavior = previousDocumentOverscroll;
+      window.scrollTo(0, scrollY);
+    };
+  }, [showIntro, needsSetup]);
 
   useEffect(() => {
     let active = true;
@@ -897,6 +942,12 @@ function LoginPage() {
       setTheme(response.themePreference);
 
       toast.success(`Bem-vindo, ${response.nome}!`);
+      if (response.passwordWarning) {
+        setUserId(response.id);
+        setCurrentPassword(pass);
+        setPasswordWarningPrompt(response.passwordWarning);
+        return;
+      }
       setAdminLoginTransitioning(true);
     } catch (err: unknown) {
       const lockInfo = getTemporaryUserLockInfo(err);
@@ -1100,7 +1151,7 @@ function LoginPage() {
         <button
           type="button"
           onClick={() => setMode("choose")}
-          className="hidden items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground sm:inline-flex"
+          className="hidden items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground lg:inline-flex"
         >
           <ArrowLeft className="h-4 w-4" />
           Voltar
@@ -1156,7 +1207,7 @@ function LoginPage() {
 
   return renderPageTransition(
     <>
-      <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
+      <main className="fixed inset-0 h-dvh overflow-hidden bg-background text-foreground lg:relative lg:inset-auto lg:min-h-screen">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_0%,rgba(34,211,238,0.11),transparent_28rem),radial-gradient(circle_at_88%_12%,rgba(139,92,246,0.1),transparent_28rem)] dark:bg-[radial-gradient(circle_at_10%_0%,rgba(34,211,238,0.08),transparent_28rem),radial-gradient(circle_at_88%_12%,rgba(139,92,246,0.08),transparent_28rem)]" />
 
         <header className="relative z-10 mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-8 sm:py-7">
@@ -1164,20 +1215,20 @@ function LoginPage() {
           <ThemeSegmentedControl />
         </header>
 
-        <div className="relative z-10 mx-auto grid min-h-[calc(100vh-5rem)] w-full max-w-6xl items-center gap-5 px-4 pb-8 sm:gap-10 sm:px-8 lg:grid-cols-[0.95fr_1.05fr]">
-          <section className="mx-auto hidden w-full max-w-lg space-y-4 sm:block sm:space-y-8 lg:mx-0">
+        <div className="relative z-10 mx-auto grid h-[calc(100dvh-4.5rem)] min-h-0 w-full max-w-6xl items-center gap-5 px-4 pb-4 sm:h-[calc(100dvh-6rem)] sm:gap-10 sm:px-8 sm:pb-6 lg:h-auto lg:min-h-[calc(100vh-5rem)] lg:grid-cols-[0.95fr_1.05fr] lg:pb-8">
+          <section className="mx-auto hidden w-full max-w-lg space-y-8 lg:mx-0 lg:block">
             <BrandLogo size="lg" />
-            <p className="hidden max-w-md text-base leading-7 text-muted-foreground sm:block">
+            <p className="hidden max-w-md text-base leading-7 text-muted-foreground lg:block">
               Plataforma inteligente para controle de estoque, lotes, validade e movimentações.
             </p>
-            <div className="hidden h-0.5 w-16 rounded-full bg-[linear-gradient(135deg,#22D3EE_0%,#4F7CFF_45%,#8B5CF6_100%)] sm:block" />
+            <div className="hidden h-0.5 w-16 rounded-full bg-[linear-gradient(135deg,#22D3EE_0%,#4F7CFF_45%,#8B5CF6_100%)] lg:block" />
           </section>
 
           <section className="border-border/80 lg:border-l lg:pl-12">
             <div className="rounded-xl border bg-card/95 p-4 shadow-[var(--shadow-card)] backdrop-blur sm:rounded-3xl sm:p-7">
-              <div className="sm:hidden">{renderAdminLoginForm(false)}</div>
+              <div className="lg:hidden">{renderAdminLoginForm(false)}</div>
 
-              <div className="hidden sm:block">
+              <div className="hidden lg:block">
                 {mode === "choose" ? (
                   <div className="space-y-6">
                     <div className="flex items-start gap-4">
@@ -1395,6 +1446,39 @@ function LoginPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!passwordWarningPrompt} onOpenChange={(open) => !open && setPasswordWarningPrompt(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Sua senha vence em breve</DialogTitle>
+            <DialogDescription>
+              Faltam {passwordWarningPrompt?.days_remaining ?? 0} dia
+              {(passwordWarningPrompt?.days_remaining ?? 0) === 1 ? "" : "s"} para sua senha
+              vencer. Voce pode trocar agora ou continuar e deixar para mais tarde.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPasswordWarningPrompt(null);
+                setAdminLoginTransitioning(true);
+              }}
+            >
+              Talvez mais tarde
+            </Button>
+            <Button
+              onClick={() => {
+                setPasswordWarningPrompt(null);
+                setPasswordStatus("expiring");
+                setShowChangePassword(true);
+              }}
+            >
+              Trocar senha
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {adminLoginTransitioning && (
         <WaveTransition
           onComplete={() => {
@@ -1410,12 +1494,18 @@ function LoginPage() {
               <BrandMark />
               <div className="min-w-0 flex-1">
                 <h2 className="text-xl font-bold text-foreground">
-                  {passwordStatus === "expired" ? "Senha vencida" : "Primeiro acesso"}
+                  {passwordStatus === "expired"
+                    ? "Senha vencida"
+                    : passwordStatus === "expiring"
+                      ? "Trocar senha"
+                      : "Primeiro acesso"}
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {passwordStatus === "expired"
-                    ? "Sua senha venceu após 7 dias. Crie uma nova senha para continuar. A nova senha não pode ser igual à atual."
-                    : "Você está utilizando a senha padrão do sistema. Crie uma nova senha para continuar. A nova senha não pode ser igual à atual."}
+                    ? "Sua senha venceu após 14 dias. Crie uma nova senha para continuar. A nova senha não pode ser igual à atual."
+                    : passwordStatus === "expiring"
+                      ? "Crie uma nova senha para renovar o prazo por mais 14 dias. A nova senha não pode ser igual à atual."
+                      : "Você está utilizando a senha padrão do sistema. Crie uma nova senha para continuar. A nova senha não pode ser igual à atual."}
                 </p>
               </div>
             </div>

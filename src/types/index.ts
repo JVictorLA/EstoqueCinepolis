@@ -124,6 +124,7 @@ export interface TransferStockBatchPayload {
   matricula: string;
   senha: string;
   observacao?: string;
+  adiar_troca_senha?: boolean;
   autorizacao_admin?: {
     matricula: string;
     senha: string;
@@ -169,9 +170,18 @@ export interface AuthUser {
   themePreference: "light" | "dark";
   precisaTrocarSenha?: boolean;
   senhaExpirada?: boolean;
+  passwordWarning?: PasswordWarning | null;
 }
 
-export type PasswordStatus = "first_access" | "expired";
+export type PasswordStatus = "first_access" | "expired" | "expiring";
+
+export interface PasswordWarning {
+  type: "expiring";
+  days_remaining: number;
+  threshold_days: 7 | 3 | number;
+  expires_at?: string;
+  message?: string;
+}
 
 export interface PasswordChallengeUser {
   id: number;
@@ -289,6 +299,8 @@ export interface InventoryCurrentItem {
 
 export type ConferenceStatus = "aberta" | "finalizada";
 export type ConferenceItemStatus = "ok" | "falta" | "sobra";
+export type ConferenceAnomalyType = "falta" | "sobra";
+export type ConferenceAnomalyStatus = "pendente" | "em_analise" | "corrigida" | "ignorada";
 
 export interface ConferenceHistory {
   id: number;
@@ -303,6 +315,8 @@ export interface ConferenceHistory {
   finalizedAt: string | null;
   itemsCount: number;
   divergencesCount: number;
+  anomaliesCreated?: number;
+  anomaliesPending?: number;
 }
 
 export interface ConferenceItem {
@@ -332,6 +346,58 @@ export interface ConferenceProductOption {
   estoqueId: number;
   estoqueNome: string;
   systemQuantity: number;
+}
+
+export interface ConferenceAnomaly {
+  id: number;
+  conferenceId: number;
+  conferenceItemId: number | null;
+  productId: number;
+  productName: string | null;
+  barcode: string | null;
+  estoqueId: number;
+  estoqueNome: string | null;
+  lot: string | null;
+  type: ConferenceAnomalyType;
+  systemQuantity: number;
+  countedQuantity: number;
+  difference: number;
+  status: ConferenceAnomalyStatus;
+  resolutionNote: string | null;
+  adjustmentMovementId: number | null;
+  createdBy: number | null;
+  createdByName: string | null;
+  updatedBy: number | null;
+  updatedByName: string | null;
+  resolvedBy: number | null;
+  resolvedByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt: string | null;
+  conferenceFinalizedAt: string | null;
+}
+
+export interface ConferenceAnomalyHistory {
+  id: number;
+  anomalyId: number;
+  action: string;
+  previousStatus: ConferenceAnomalyStatus | null;
+  newStatus: ConferenceAnomalyStatus | null;
+  note: string | null;
+  userId: number | null;
+  userName: string | null;
+  createdAt: string;
+}
+
+export interface ConferenceAnomalySummary {
+  total: number;
+  pendentes: number;
+  emAnalise: number;
+  corrigidas: number;
+  ignoradas: number;
+  abertas: number;
+  faltasAbertas: number;
+  sobrasAbertas: number;
 }
 
 export type KitStatus =

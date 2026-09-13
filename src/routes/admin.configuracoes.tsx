@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { Link, Outlet, createFileRoute, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Copy, Loader2 } from "lucide-react";
+import { Copy, HardDriveDownload, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -42,7 +42,7 @@ async function copyTextToClipboard(text: string) {
 
 export const Route = createFileRoute("/admin/configuracoes")({
   head: () => ({ meta: [{ title: "Configurações · Zytrex Inventory" }] }),
-  component: ConfigPage,
+  component: ConfigRoutePage,
 });
 
 type SettingsState = {
@@ -83,6 +83,15 @@ function boolFromConfig(value: string | undefined, fallback: boolean) {
   if (["true", "1", "sim", "yes", "on"].includes(normalized)) return true;
   if (["false", "0", "nao", "não", "no", "off"].includes(normalized)) return false;
   return fallback;
+}
+
+function ConfigRoutePage() {
+  const path = useRouterState({ select: (state) => state.location.pathname });
+  if (path !== "/admin/configuracoes") {
+    return <Outlet />;
+  }
+
+  return <ConfigPage />;
 }
 
 function ConfigPage() {
@@ -415,6 +424,20 @@ function ConfigPage() {
             title="Configurações avançadas"
             description="Opções reservadas para o usuário master."
           >
+            <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-medium">Backup do banco</div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Gerencie backups manuais, automaticos e historico.
+                </p>
+              </div>
+              <Button type="button" variant="outline" asChild>
+                <Link to="/admin/configuracoes/backup">
+                  <HardDriveDownload className="h-4 w-4" />
+                  Abrir backup
+                </Link>
+              </Button>
+            </div>
             <Field label="Nome da empresa">
               <Input
                 value={settings.nomeEmpresa}
@@ -468,7 +491,12 @@ function ConfigPage() {
                     <p className="text-xs text-muted-foreground">
                       Visivel por {masterRecoveryKeySeconds}s. Depois disso, so gerando outra.
                     </p>
-                    <Button type="button" variant="outline" size="sm" onClick={copyMasterRecoveryKey}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={copyMasterRecoveryKey}
+                    >
                       <Copy className="h-4 w-4" />
                       Copiar chave
                     </Button>

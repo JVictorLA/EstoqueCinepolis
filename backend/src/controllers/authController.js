@@ -3,6 +3,27 @@ const config = require("../config");
 const usuarioService = require("../services/usuarioService");
 const { ok, fail } = require("../utils/response");
 
+function scaleFail(res, status, message) {
+  return res.status(status).json({
+    success: false,
+    message,
+  });
+}
+
+function buildScaleToken(user) {
+  return jwt.sign(
+    {
+      sub: user.id,
+      matricula: user.matricula,
+      nome: user.nome,
+      tipo: user.tipo,
+      aud: "zytrex-scale",
+    },
+    config.jwt.secret,
+    { expiresIn: config.jwt.expiresIn },
+  );
+}
+
 async function login(req, res) {
   const { matricula, senha } = req.body || {};
 
@@ -87,10 +108,61 @@ async function login(req, res) {
         themePreference: result.theme_preference === "dark" ? "dark" : "light",
         precisaTrocarSenha: !!result.precisa_trocar_senha,
         senhaExpirada: !!result.senha_expirada,
+        passwordWarning: result.password_warning || null,
       },
     },
     "Login realizado",
   );
 }
 
-module.exports = { login };
+async function scaleLogin(req, res) {
+  const { matricula, senha } = req.body || {};
+
+  if (!matricula || !senha) {
+    return scaleFail(res, 400, "Informe matricula e senha");
+  }
+
+  const result = await usuarioService.validateCredentials(matricula, senha);
+
+  if (!result) {
+    return scaleFail(res, 401, "Matricula ou senha invalidos");
+  }
+
+  if (result.error === "inactive") {
+    return scaleFail(res, 403, "Usuario inativo");
+  }
+
+  if (result.error === "locked") {
+    return scaleFail(res, 403, result.message);
+  }
+
+  if (result.error === "disabled_by_password_attempts") {
+    return scaleFail(res, result.status || 403, result.message);
+  }
+
+  if (result.password_status) {
+    const message =
+      result.password_status === "expired"
+        ? "Senha vencida. Troque a senha no Zytrex Inventory para continuar."
+        : "Troca de senha obrigatoria no Zytrex Inventory.";
+
+    return scaleFail(res, 403, message);
+  }
+
+  if (!["admin", "master"].includes(result.tipo)) {
+    return scaleFail(res, 403, "Acesso permitido apenas para administradores autorizados");
+  }
+
+  return res.json({
+    success: true,
+    usuario: {
+      id: result.id,
+      nome: result.nome,
+      matricula: result.matricula,
+      tipo: result.tipo,
+    },
+    token: buildScaleToken(result),
+  });
+}
+
+module.exports = { login, scaleLogin };

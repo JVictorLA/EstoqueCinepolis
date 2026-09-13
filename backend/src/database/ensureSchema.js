@@ -38,6 +38,63 @@ async function ensureColumn(tableName, columnName, sql) {
 
 async function ensureDatabaseSchema() {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS backups (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      nome_arquivo VARCHAR(255) NOT NULL,
+      caminho_arquivo VARCHAR(500) NOT NULL,
+      tamanho_bytes BIGINT NULL,
+      tipo ENUM('manual', 'automatico') NOT NULL DEFAULT 'manual',
+      status ENUM('sucesso', 'falha') NOT NULL DEFAULT 'sucesso',
+      mensagem_erro TEXT NULL,
+      criado_por INT NULL,
+      criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_backups_usuario
+        FOREIGN KEY (criado_por)
+        REFERENCES usuarios(id)
+        ON DELETE SET NULL
+    )
+  `);
+
+  await ensureIndex(
+    "backups",
+    "idx_backups_criado_em",
+    "CREATE INDEX idx_backups_criado_em ON backups(criado_em)",
+  );
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS email_alertas_validade (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      alerta_data DATE NOT NULL,
+      usuario_id INT NULL,
+      destinatario_email VARCHAR(255) NOT NULL,
+      status ENUM('pendente', 'enviado', 'falha') NOT NULL DEFAULT 'pendente',
+      quantidade_itens INT NOT NULL DEFAULT 0,
+      erro TEXT NULL,
+      enviado_em DATETIME NULL,
+      criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+      atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      CONSTRAINT fk_email_alertas_validade_usuario
+        FOREIGN KEY (usuario_id)
+        REFERENCES usuarios(id)
+        ON DELETE SET NULL
+    )
+  `);
+
+  await ensureIndex(
+    "email_alertas_validade",
+    "uq_email_alertas_validade_data_email",
+    `ALTER TABLE email_alertas_validade
+     ADD CONSTRAINT uq_email_alertas_validade_data_email
+     UNIQUE (alerta_data, destinatario_email)`,
+  );
+
+  await ensureIndex(
+    "email_alertas_validade",
+    "idx_email_alertas_validade_status",
+    "CREATE INDEX idx_email_alertas_validade_status ON email_alertas_validade(status, criado_em)",
+  );
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS motivos_desperdicio (
       id INT AUTO_INCREMENT PRIMARY KEY,
       nome VARCHAR(100) NOT NULL,
@@ -290,6 +347,66 @@ async function ensureDatabaseSchema() {
     "desperdicios",
     "idx_desperdicios_motivo",
     "CREATE INDEX idx_desperdicios_motivo ON desperdicios(motivo_id)",
+  );
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS conferencia_anomalias (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      conferencia_id INT NOT NULL,
+      conferencia_item_id INT NULL,
+      produto_id INT NOT NULL,
+      estoque_id INT NOT NULL,
+      lote VARCHAR(100) NULL,
+      tipo ENUM('falta', 'sobra') NOT NULL,
+      quantidade_sistema DECIMAL(10,2) NOT NULL,
+      quantidade_contada DECIMAL(10,2) NOT NULL,
+      diferenca DECIMAL(10,2) NOT NULL,
+      status ENUM('pendente', 'em_analise', 'corrigida', 'ignorada') NOT NULL DEFAULT 'pendente',
+      resolucao_observacao TEXT NULL,
+      ajuste_movimentacao_id INT NULL,
+      criado_por INT NULL,
+      atualizado_por INT NULL,
+      resolvido_por INT NULL,
+      criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+      atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      resolvido_em DATETIME NULL
+    )
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS conferencia_anomalia_historico (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      anomalia_id INT NOT NULL,
+      acao VARCHAR(40) NOT NULL,
+      status_anterior VARCHAR(40) NULL,
+      status_novo VARCHAR(40) NULL,
+      observacao TEXT NULL,
+      usuario_id INT NULL,
+      criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT fk_conf_anomalia_hist_anomalia
+        FOREIGN KEY (anomalia_id) REFERENCES conferencia_anomalias(id)
+    )
+  `);
+
+  await ensureIndex(
+    "conferencia_anomalias",
+    "uq_conf_anomalia_item",
+    "ALTER TABLE conferencia_anomalias ADD CONSTRAINT uq_conf_anomalia_item UNIQUE (conferencia_item_id)",
+  );
+  await ensureIndex(
+    "conferencia_anomalias",
+    "idx_conf_anomalias_status",
+    "CREATE INDEX idx_conf_anomalias_status ON conferencia_anomalias(status, criado_em)",
+  );
+  await ensureIndex(
+    "conferencia_anomalias",
+    "idx_conf_anomalias_conferencia",
+    "CREATE INDEX idx_conf_anomalias_conferencia ON conferencia_anomalias(conferencia_id)",
+  );
+  await ensureIndex(
+    "conferencia_anomalia_historico",
+    "idx_conf_anomalia_hist_anomalia",
+    "CREATE INDEX idx_conf_anomalia_hist_anomalia ON conferencia_anomalia_historico(anomalia_id, criado_em)",
   );
 
   await pool.query(`

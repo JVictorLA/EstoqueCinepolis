@@ -14,6 +14,7 @@ import type {
   Category,
   AuthUser,
   PasswordChallenge,
+  PasswordWarning,
   UserRole,
   Estoque,
   TransferMovement,
@@ -30,6 +31,11 @@ import type {
   ConferenceProductOption,
   ConferenceStatus,
   ConferenceItemStatus,
+  ConferenceAnomaly,
+  ConferenceAnomalyHistory,
+  ConferenceAnomalyStatus,
+  ConferenceAnomalySummary,
+  ConferenceAnomalyType,
   ProductLot,
   LotStatus,
   Kit,
@@ -108,6 +114,58 @@ export class ApiError<T = unknown> extends Error {
 
 function isPasswordStatus(value: unknown): value is "first_access" | "expired" {
   return value === "first_access" || value === "expired";
+}
+
+function isPasswordWarning(value: unknown): value is PasswordWarning {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return record.type === "expiring" && Number.isFinite(Number(record.days_remaining));
+}
+
+export function getPasswordWarning(error: unknown): {
+  warning: PasswordWarning;
+  usuario?: PasswordChallenge["usuario"];
+} | null {
+  const candidates: unknown[] = [];
+
+  if (error instanceof ApiError) {
+    candidates.push(error.data);
+  }
+
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    candidates.push(record.data);
+    candidates.push(record.response);
+  }
+
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const record = candidate as Record<string, unknown>;
+    if (isPasswordWarning(record.password_warning)) {
+      return {
+        warning: record.password_warning,
+        usuario:
+          record.usuario && typeof record.usuario === "object"
+            ? (record.usuario as PasswordChallenge["usuario"])
+            : undefined,
+      };
+    }
+    const nested = record.data;
+    if (nested && typeof nested === "object") {
+      const nestedRecord = nested as Record<string, unknown>;
+      if (isPasswordWarning(nestedRecord.password_warning)) {
+        return {
+          warning: nestedRecord.password_warning,
+          usuario:
+            nestedRecord.usuario && typeof nestedRecord.usuario === "object"
+              ? (nestedRecord.usuario as PasswordChallenge["usuario"])
+              : undefined,
+        };
+      }
+    }
+  }
+
+  return null;
 }
 
 export function getPasswordChallenge(error: unknown): PasswordChallenge | null {
@@ -611,6 +669,8 @@ interface RawConferenceHistory {
   finalizado_em: string | null;
   itens_count?: number | string;
   divergencias_count?: number | string;
+  anomalias_criadas?: number | string;
+  anomalias_pendentes?: number | string;
 }
 
 interface RawConferenceItem {
@@ -642,6 +702,58 @@ interface RawConferenceProductOption {
   quantidade_sistema: number | string;
 }
 
+interface RawConferenceAnomaly {
+  id: number;
+  conferencia_id: number;
+  conferencia_item_id: number | null;
+  produto_id: number;
+  produto_nome: string | null;
+  codigo_barras: string | null;
+  estoque_id: number;
+  estoque_nome: string | null;
+  lote: string | null;
+  tipo: ConferenceAnomalyType;
+  quantidade_sistema: number | string;
+  quantidade_contada: number | string;
+  diferenca: number | string;
+  status: ConferenceAnomalyStatus;
+  resolucao_observacao: string | null;
+  ajuste_movimentacao_id: number | null;
+  criado_por: number | null;
+  criado_por_nome: string | null;
+  atualizado_por: number | null;
+  atualizado_por_nome: string | null;
+  resolvido_por: number | null;
+  resolvido_por_nome: string | null;
+  criado_em: string;
+  atualizado_em: string;
+  resolvido_em: string | null;
+  conferencia_finalizado_em: string | null;
+}
+
+interface RawConferenceAnomalyHistory {
+  id: number;
+  anomalia_id: number;
+  acao: string;
+  status_anterior: ConferenceAnomalyStatus | null;
+  status_novo: ConferenceAnomalyStatus | null;
+  observacao: string | null;
+  usuario_id: number | null;
+  usuario_nome: string | null;
+  criado_em: string;
+}
+
+interface RawConferenceAnomalySummary {
+  total: number | string;
+  pendentes: number | string;
+  em_analise: number | string;
+  corrigidas: number | string;
+  ignoradas: number | string;
+  abertas: number | string;
+  faltas_abertas: number | string;
+  sobras_abertas: number | string;
+}
+
 function mapConferenceHistory(r: RawConferenceHistory): ConferenceHistory {
   return {
     id: r.id,
@@ -656,6 +768,8 @@ function mapConferenceHistory(r: RawConferenceHistory): ConferenceHistory {
     finalizedAt: r.finalizado_em,
     itemsCount: Number(r.itens_count ?? 0),
     divergencesCount: Number(r.divergencias_count ?? 0),
+    anomaliesCreated: Number(r.anomalias_criadas ?? 0),
+    anomaliesPending: Number(r.anomalias_pendentes ?? 0),
   };
 }
 
@@ -692,6 +806,64 @@ function mapConferenceProductOption(r: RawConferenceProductOption): ConferencePr
     estoqueId: r.estoque_id,
     estoqueNome: r.estoque_nome,
     systemQuantity: Number(r.quantidade_sistema),
+  };
+}
+
+function mapConferenceAnomaly(r: RawConferenceAnomaly): ConferenceAnomaly {
+  return {
+    id: r.id,
+    conferenceId: r.conferencia_id,
+    conferenceItemId: r.conferencia_item_id,
+    productId: r.produto_id,
+    productName: r.produto_nome,
+    barcode: r.codigo_barras,
+    estoqueId: r.estoque_id,
+    estoqueNome: r.estoque_nome,
+    lot: r.lote,
+    type: r.tipo,
+    systemQuantity: Number(r.quantidade_sistema),
+    countedQuantity: Number(r.quantidade_contada),
+    difference: Number(r.diferenca),
+    status: r.status,
+    resolutionNote: r.resolucao_observacao,
+    adjustmentMovementId: r.ajuste_movimentacao_id,
+    createdBy: r.criado_por,
+    createdByName: r.criado_por_nome,
+    updatedBy: r.atualizado_por,
+    updatedByName: r.atualizado_por_nome,
+    resolvedBy: r.resolvido_por,
+    resolvedByName: r.resolvido_por_nome,
+    createdAt: r.criado_em,
+    updatedAt: r.atualizado_em,
+    resolvedAt: r.resolvido_em,
+    conferenceFinalizedAt: r.conferencia_finalizado_em,
+  };
+}
+
+function mapConferenceAnomalyHistory(r: RawConferenceAnomalyHistory): ConferenceAnomalyHistory {
+  return {
+    id: r.id,
+    anomalyId: r.anomalia_id,
+    action: r.acao,
+    previousStatus: r.status_anterior,
+    newStatus: r.status_novo,
+    note: r.observacao,
+    userId: r.usuario_id,
+    userName: r.usuario_nome,
+    createdAt: r.criado_em,
+  };
+}
+
+function mapConferenceAnomalySummary(r: RawConferenceAnomalySummary): ConferenceAnomalySummary {
+  return {
+    total: Number(r.total ?? 0),
+    pendentes: Number(r.pendentes ?? 0),
+    emAnalise: Number(r.em_analise ?? 0),
+    corrigidas: Number(r.corrigidas ?? 0),
+    ignoradas: Number(r.ignoradas ?? 0),
+    abertas: Number(r.abertas ?? 0),
+    faltasAbertas: Number(r.faltas_abertas ?? 0),
+    sobrasAbertas: Number(r.sobras_abertas ?? 0),
   };
 }
 
@@ -852,7 +1024,7 @@ export interface InitialSetupPayload {
   master: {
     nome: string;
     matricula: string;
-    email?: string;
+    email: string;
     senha: string;
   };
 }
@@ -870,7 +1042,9 @@ export interface InitialSetupResult {
   estoques?: string[];
 }
 
-export async function createInitialSetup(payload: InitialSetupPayload): Promise<InitialSetupResult> {
+export async function createInitialSetup(
+  payload: InitialSetupPayload,
+): Promise<InitialSetupResult> {
   return request<InitialSetupResult>("/setup/inicial", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -1131,6 +1305,129 @@ export async function updateSystemConfigs(
   });
 }
 
+/* ----------------- BACKUPS ----------------- */
+
+export type BackupType = "manual" | "automatico";
+export type BackupStatus = "sucesso" | "falha";
+
+export interface BackupRecord {
+  id: number;
+  fileName: string;
+  sizeBytes: number | null;
+  type: BackupType;
+  status: BackupStatus;
+  errorMessage: string | null;
+  createdBy: number | null;
+  createdByName: string | null;
+  createdAt: string;
+}
+
+export interface BackupConfig {
+  backup_automatico_ativo: boolean;
+  backup_horario: string;
+  backup_retencao_dias: number;
+  backup_pasta: string;
+  backup_compactar: boolean;
+  backup_ultimo_status: string;
+  backup_ultimo_em: string;
+  backup_notificar_falha: boolean;
+}
+
+interface RawBackupRecord {
+  id: number;
+  nome_arquivo: string;
+  tamanho_bytes: number | string | null;
+  tipo: BackupType;
+  status: BackupStatus;
+  mensagem_erro: string | null;
+  criado_por: number | null;
+  criado_por_nome: string | null;
+  criado_em: string;
+}
+
+function mapBackupRecord(row: RawBackupRecord): BackupRecord {
+  return {
+    id: row.id,
+    fileName: row.nome_arquivo,
+    sizeBytes: row.tamanho_bytes == null ? null : Number(row.tamanho_bytes),
+    type: row.tipo,
+    status: row.status,
+    errorMessage: row.mensagem_erro ?? null,
+    createdBy: row.criado_por ?? null,
+    createdByName: row.criado_por_nome ?? null,
+    createdAt: row.criado_em,
+  };
+}
+
+export async function getBackups(): Promise<{
+  backups: BackupRecord[];
+  config: BackupConfig;
+  latest: BackupRecord | null;
+}> {
+  const data = await request<{
+    backups: RawBackupRecord[];
+    config: BackupConfig;
+    ultimo: RawBackupRecord | null;
+  }>("/backups", { auth: true });
+  return {
+    backups: (data.backups ?? []).map(mapBackupRecord),
+    config: data.config,
+    latest: data.ultimo ? mapBackupRecord(data.ultimo) : null,
+  };
+}
+
+export async function createManualBackup(): Promise<BackupRecord> {
+  const data = await request<RawBackupRecord>("/backups/manual", {
+    method: "POST",
+    auth: true,
+  });
+  return mapBackupRecord(data);
+}
+
+export async function getBackupConfig(): Promise<BackupConfig> {
+  return request<BackupConfig>("/backups/config", { auth: true });
+}
+
+export async function updateBackupConfig(payload: BackupConfig): Promise<BackupConfig> {
+  return request<BackupConfig>("/backups/config", {
+    method: "PUT",
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteBackup(id: number): Promise<void> {
+  await request<void>(`/backups/${id}`, {
+    method: "DELETE",
+    auth: true,
+  });
+}
+
+export async function downloadBackup(id: number, fallbackFileName: string): Promise<void> {
+  const token = getToken();
+  const res = await fetch(`${API_URL}/backups/${id}/download`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as ApiEnvelope<unknown> | null;
+    throw new ApiError(body?.message || `Erro ${res.status}`, res.status, body?.data ?? null);
+  }
+
+  const blob = await res.blob();
+  const disposition = res.headers.get("content-disposition") || "";
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  const fileName = match?.[1] || fallbackFileName;
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export interface OperationalStatus {
   modo_manutencao: boolean;
   mensagem?: string;
@@ -1234,6 +1531,67 @@ export async function finalizeConference(id: number): Promise<Conference> {
     auth: true,
   });
   return mapConference(row);
+}
+
+export interface ConferenceAnomalyFilters {
+  status?: ConferenceAnomalyStatus | "abertas" | "all";
+  tipo?: ConferenceAnomalyType | "all";
+  estoque_id?: number | string;
+  produto_id?: number;
+  data_inicial?: string;
+  data_final?: string;
+}
+
+function anomalyQuery(filters: ConferenceAnomalyFilters = {}) {
+  const qs = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") qs.set(key, String(value));
+  });
+  return qs.toString();
+}
+
+export async function getConferenceAnomalies(
+  filters: ConferenceAnomalyFilters = {},
+): Promise<ConferenceAnomaly[]> {
+  const qs = anomalyQuery(filters);
+  const rows = await request<RawConferenceAnomaly[]>(
+    `/conferencias/anomalias${qs ? `?${qs}` : ""}`,
+    { auth: true },
+  );
+  return rows.map(mapConferenceAnomaly);
+}
+
+export async function getConferenceAnomalySummary(
+  filters: ConferenceAnomalyFilters = {},
+): Promise<ConferenceAnomalySummary> {
+  const qs = anomalyQuery(filters);
+  const row = await request<RawConferenceAnomalySummary>(
+    `/conferencias/anomalias/resumo${qs ? `?${qs}` : ""}`,
+    { auth: true },
+  );
+  return mapConferenceAnomalySummary(row);
+}
+
+export async function getConferenceAnomalyHistory(
+  id: number,
+): Promise<ConferenceAnomalyHistory[]> {
+  const rows = await request<RawConferenceAnomalyHistory[]>(
+    `/conferencias/anomalias/${id}/historico`,
+    { auth: true },
+  );
+  return rows.map(mapConferenceAnomalyHistory);
+}
+
+export async function updateConferenceAnomalyStatus(
+  id: number,
+  payload: { status: ConferenceAnomalyStatus; observacao?: string },
+): Promise<ConferenceAnomaly> {
+  const row = await request<RawConferenceAnomaly>(`/conferencias/anomalias/${id}/status`, {
+    method: "PATCH",
+    auth: true,
+    body: JSON.stringify(payload),
+  });
+  return mapConferenceAnomaly(row);
 }
 
 /* ----------------- PRODUTOS ----------------- */
@@ -1382,6 +1740,7 @@ export async function registerMovement(payload: {
   data_validade?: string | null;
   confirmar_ignorar_fefo?: boolean;
   justificativa_fefo?: string;
+  adiar_troca_senha?: boolean;
   autorizacao_admin?: {
     matricula: string;
     senha: string;
@@ -1406,6 +1765,7 @@ export async function transferStock(payload: {
   lote: string;
   confirmar_ignorar_fefo?: boolean;
   justificativa_fefo?: string;
+  adiar_troca_senha?: boolean;
   autorizacao_admin?: {
     matricula: string;
     senha: string;

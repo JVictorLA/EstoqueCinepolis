@@ -18,6 +18,7 @@ import {
   Trash2,
   Boxes,
   ChevronUp,
+  HardDriveDownload,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -50,7 +51,7 @@ import zyntraIcon from "@/icones/android-chrome-512x512.png";
 
 const SKIP_LOGIN_INTRO_ONCE_KEY = "zytrex.skipLoginIntroOnce";
 
-type NavItem = { to: string; label: string; icon: LucideIcon };
+type NavItem = { to: string; label: string; icon: LucideIcon; masterOnly?: boolean };
 type HelpTopic = {
   title: string;
   description: string;
@@ -70,6 +71,7 @@ const adminNav: NavItem[] = [
   { to: "/admin/inventario", label: "Inventário", icon: ClipboardList },
   { to: "/admin/usuarios", label: "Usuários", icon: Users },
   { to: "/admin/configuracoes", label: "Configurações", icon: Settings },
+  { to: "/admin/configuracoes/backup", label: "Backup", icon: HardDriveDownload, masterOnly: true },
 ];
 
 const operadorNav: NavItem[] = [
@@ -219,7 +221,11 @@ function Brand() {
 }
 
 export function AppShell({ variant, children }: AppShellProps) {
-  const nav = variant === "admin" ? adminNav : operadorNav;
+  const storedUser = getStoredUser();
+  const nav =
+    variant === "admin"
+      ? adminNav.filter((item) => !item.masterOnly || storedUser?.tipo === "master")
+      : operadorNav;
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -242,8 +248,12 @@ export function AppShell({ variant, children }: AppShellProps) {
           .toUpperCase() || "AD"
       : "OP";
 
-  const isActive = (to: string) =>
-    to === `/${variant}` ? path === to : path === to || path.startsWith(to + "/");
+  const isActive = (to: string) => {
+    if (to === "/admin/configuracoes" && path.startsWith("/admin/configuracoes/backup")) {
+      return false;
+    }
+    return to === `/${variant}` ? path === to : path === to || path.startsWith(to + "/");
+  };
 
   useEffect(() => {
     if (variant !== "operador") return;

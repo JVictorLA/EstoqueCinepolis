@@ -69,6 +69,9 @@ import {
   deleteConference,
   deleteConferenceItem,
   finalizeConference,
+  getConferenceAnomalies,
+  getConferenceAnomalyHistory,
+  getConferenceAnomalySummary,
   getConference,
   getConferences,
   getEstoques,
@@ -76,10 +79,16 @@ import {
   getProductLots,
   saveConferenceItem,
   searchConferenceProduct,
+  updateConferenceAnomalyStatus,
   updateConference,
 } from "@/services/api";
 import type {
   Conference,
+  ConferenceAnomaly,
+  ConferenceAnomalyHistory,
+  ConferenceAnomalyStatus,
+  ConferenceAnomalySummary,
+  ConferenceAnomalyType,
   ConferenceHistory,
   ConferenceItem,
   ConferenceProductOption,
@@ -206,6 +215,36 @@ function conferenceStatusBadge(status: ConferenceItem["status"]) {
     <Badge variant="destructive" className="gap-1">
       <XCircle className="h-3 w-3" /> Falta
     </Badge>
+  );
+}
+
+function anomalyStatusBadge(status: ConferenceAnomalyStatus) {
+  const label: Record<ConferenceAnomalyStatus, string> = {
+    pendente: "Pendente",
+    em_analise: "Em analise",
+    corrigida: "Corrigida",
+    ignorada: "Ignorada",
+  };
+  if (status === "corrigida") {
+    return <Badge className="bg-success/15 text-success border-success/30">{label[status]}</Badge>;
+  }
+  if (status === "ignorada") {
+    return <Badge variant="secondary">{label[status]}</Badge>;
+  }
+  return (
+    <Badge variant="secondary" className="bg-warning/15 text-warning border-warning/30">
+      {label[status]}
+    </Badge>
+  );
+}
+
+function anomalyTypeBadge(type: ConferenceAnomalyType) {
+  return type === "sobra" ? (
+    <Badge variant="secondary" className="bg-warning/15 text-warning border-warning/30">
+      Sobra
+    </Badge>
+  ) : (
+    <Badge variant="destructive">Falta</Badge>
   );
 }
 
@@ -408,6 +447,14 @@ function InventarioPage() {
   const [selectedInventoryItem, setSelectedInventoryItem] = useState<InventoryCurrentItem | null>(null);
   const [selectedInventoryLots, setSelectedInventoryLots] = useState<ProductLot[]>([]);
   const [loadingInventoryLots, setLoadingInventoryLots] = useState(false);
+  const [anomalies, setAnomalies] = useState<ConferenceAnomaly[]>([]);
+  const [anomalySummary, setAnomalySummary] = useState<ConferenceAnomalySummary | null>(null);
+  const [anomalyStatusFilter, setAnomalyStatusFilter] = useState<"abertas" | "all" | ConferenceAnomalyStatus>("abertas");
+  const [anomalyTypeFilter, setAnomalyTypeFilter] = useState<"all" | ConferenceAnomalyType>("all");
+  const [selectedAnomaly, setSelectedAnomaly] = useState<ConferenceAnomaly | null>(null);
+  const [anomalyHistory, setAnomalyHistory] = useState<ConferenceAnomalyHistory[]>([]);
+  const [anomalyAction, setAnomalyAction] = useState<ConferenceAnomalyStatus | null>(null);
+  const [anomalyObservation, setAnomalyObservation] = useState("");
   const [conferenceToDelete, setConferenceToDelete] = useState<ConferenceHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -423,17 +470,39 @@ function InventarioPage() {
   );
   const inventorySummary = useMemo(() => getInventorySummary(inventoryItems), [inventoryItems]);
 
+  const anomalyFilters = () => ({
+    status: anomalyStatusFilter,
+    tipo: anomalyTypeFilter,
+    estoque_id: inventoryStock === "all" ? undefined : inventoryStock,
+  });
+
+  const loadAnomalies = async () => {
+    const stockFilter = inventoryStock === "all" ? undefined : inventoryStock;
+    const [rows, summary] = await Promise.all([
+      getConferenceAnomalies(anomalyFilters()),
+      getConferenceAnomalySummary({ estoque_id: stockFilter }),
+    ]);
+    setAnomalies(rows);
+    setAnomalySummary(summary);
+  };
+
   const loadAll = async () => {
     setLoading(true);
     try {
-      const [stocks, current, conferences] = await Promise.all([
+      const [stocks, current, conferences, anomalyRows, anomalyTotals] = await Promise.all([
         getEstoques(),
         getInventoryCurrent(inventoryStock),
         getConferences(),
+        getConferenceAnomalies(anomalyFilters()),
+        getConferenceAnomalySummary({
+          estoque_id: inventoryStock === "all" ? undefined : inventoryStock,
+        }),
       ]);
       setEstoques(stocks);
       setInventoryItems(current);
       setHistory(conferences);
+      setAnomalies(anomalyRows);
+      setAnomalySummary(anomalyTotals);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Erro ao carregar inventário");
     } finally {
@@ -450,6 +519,12 @@ function InventarioPage() {
       .then(setInventoryItems)
       .catch((err: unknown) => toast.error(err instanceof Error ? err.message : "Erro ao filtrar estoque"));
   }, [inventoryStock]);
+
+  useEffect(() => {
+    loadAnomalies().catch((err: unknown) =>
+      toast.error(err instanceof Error ? err.message : "Erro ao carregar anomalias"),
+    );
+  }, [inventoryStock, anomalyStatusFilter, anomalyTypeFilter]);
 
   useEffect(() => {
     const code = barcode.trim();
@@ -728,9 +803,64 @@ function InventarioPage() {
       const finished = await finalizeConference(id);
       setActiveConference(finished);
       await refreshHistory();
-      toast.success("Conferência finalizada");
+      await loadAnomalies();
+      const total = Number(finished.anomaliesCreated ?? 0);
+      if (total > 0) {
+        setActiveTab("anomalias");
+        toast.warning(`Conferencia finalizada com ${total} anomalia(s) pendente(s)`);
+      } else {
+        toast.success("Conferencia finalizada");
+      }
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro ao finalizar conferência");
+      toast.error(err instanceof Error ? err.message : "Erro ao finalizar conferencia");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openAnomalyHistory = async (anomaly: ConferenceAnomaly) => {
+    setSelectedAnomaly(anomaly);
+    setAnomalyHistory([]);
+    try {
+      const rows = await getConferenceAnomalyHistory(anomaly.id);
+      setAnomalyHistory(rows);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao carregar historico");
+    }
+  };
+
+  const startAnomalyAction = (anomaly: ConferenceAnomaly, status: ConferenceAnomalyStatus) => {
+    if (status === "em_analise") {
+      updateConferenceAnomalyStatus(anomaly.id, { status })
+        .then(async () => {
+          toast.success("Anomalia marcada em analise");
+          await loadAnomalies();
+        })
+        .catch((err: unknown) =>
+          toast.error(err instanceof Error ? err.message : "Erro ao atualizar anomalia"),
+        );
+      return;
+    }
+    setSelectedAnomaly(anomaly);
+    setAnomalyAction(status);
+    setAnomalyObservation("");
+  };
+
+  const confirmAnomalyAction = async () => {
+    if (!selectedAnomaly || !anomalyAction) return;
+    setSaving(true);
+    try {
+      await updateConferenceAnomalyStatus(selectedAnomaly.id, {
+        status: anomalyAction,
+        observacao: anomalyObservation,
+      });
+      toast.success("Anomalia atualizada");
+      setSelectedAnomaly(null);
+      setAnomalyAction(null);
+      setAnomalyObservation("");
+      await loadAnomalies();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Erro ao atualizar anomalia");
     } finally {
       setSaving(false);
     }
@@ -783,11 +913,12 @@ function InventarioPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-5">
         <StatCard label="Produtos no filtro" value={inventorySummary.products} icon={PackageCheck} />
         <StatCard label="Unidades virtuais" value={inventorySummary.units} icon={ClipboardList} tone="success" />
         <StatCard label="Estoque baixo" value={inventorySummary.low} icon={AlertTriangle} tone="warning" />
         <StatCard label="Críticos" value={inventorySummary.critical} icon={XCircle} tone="destructive" />
+        <StatCard label="Anomalias abertas" value={anomalySummary?.abertas ?? 0} icon={AlertTriangle} tone="warning" />
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-4 space-y-4 sm:mt-6">
@@ -795,6 +926,7 @@ function InventarioPage() {
           <TabsTrigger value="estoque">Estoque Atual</TabsTrigger>
           <TabsTrigger value="conferencia">Conferência</TabsTrigger>
           <TabsTrigger value="historico">Histórico</TabsTrigger>
+          <TabsTrigger value="anomalias">Anomalias</TabsTrigger>
         </TabsList>
 
         <TabsContent value="estoque">
@@ -1380,7 +1512,191 @@ function InventarioPage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="anomalias">
+          <Card>
+            <CardHeader className="gap-4 md:flex-row md:items-end md:justify-between">
+              <div>
+                <CardTitle>Anomalias de conferencia</CardTitle>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Faltas e sobras geradas ao finalizar conferencias, mantidas para auditoria.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Select value={anomalyStatusFilter} onValueChange={(value) => setAnomalyStatusFilter(value as typeof anomalyStatusFilter)}>
+                  <SelectTrigger className="w-full sm:w-44">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="abertas">Abertas</SelectItem>
+                    <SelectItem value="pendente">Pendentes</SelectItem>
+                    <SelectItem value="em_analise">Em analise</SelectItem>
+                    <SelectItem value="corrigida">Corrigidas</SelectItem>
+                    <SelectItem value="ignorada">Ignoradas</SelectItem>
+                    <SelectItem value="all">Todas</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={anomalyTypeFilter} onValueChange={(value) => setAnomalyTypeFilter(value as typeof anomalyTypeFilter)}>
+                  <SelectTrigger className="w-full sm:w-36">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos tipos</SelectItem>
+                    <SelectItem value="falta">Faltas</SelectItem>
+                    <SelectItem value="sobra">Sobras</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <StatCard label="Abertas" value={anomalySummary?.abertas ?? 0} icon={AlertTriangle} tone="warning" />
+                <StatCard label="Faltas abertas" value={anomalySummary?.faltasAbertas ?? 0} icon={XCircle} tone="destructive" />
+                <StatCard label="Sobras abertas" value={anomalySummary?.sobrasAbertas ?? 0} icon={AlertTriangle} tone="warning" />
+                <StatCard label="Auditadas" value={(anomalySummary?.corrigidas ?? 0) + (anomalySummary?.ignoradas ?? 0)} icon={ClipboardCheck} tone="success" />
+              </div>
+
+              {anomalies.length === 0 ? (
+                <EmptyState icon={ClipboardCheck} title="Nenhuma anomalia encontrada" description="Quando uma conferencia finalizada tiver falta ou sobra, ela aparece aqui." />
+              ) : (
+                <div className="overflow-x-auto rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Produto</TableHead>
+                        <TableHead>Estoque</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>Sistema</TableHead>
+                        <TableHead>Contado</TableHead>
+                        <TableHead>Diferenca</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="min-w-64">Acoes</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {anomalies.map((anomaly) => (
+                        <TableRow key={anomaly.id}>
+                          <TableCell>
+                            <div className="font-medium">{anomaly.productName ?? "-"}</div>
+                            <div className="font-mono text-xs text-muted-foreground">{anomaly.barcode ?? "-"}</div>
+                          </TableCell>
+                          <TableCell>{anomaly.estoqueNome ?? "-"}</TableCell>
+                          <TableCell>{anomalyTypeBadge(anomaly.type)}</TableCell>
+                          <TableCell>{anomaly.systemQuantity}</TableCell>
+                          <TableCell>{anomaly.countedQuantity}</TableCell>
+                          <TableCell className={anomaly.difference > 0 ? "text-warning" : "text-destructive"}>
+                            {anomaly.difference > 0 ? `+${anomaly.difference}` : anomaly.difference}
+                          </TableCell>
+                          <TableCell>{anomalyStatusBadge(anomaly.status)}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-2">
+                              <Button variant="outline" size="sm" onClick={() => openAnomalyHistory(anomaly)}>
+                                Historico
+                              </Button>
+                              {anomaly.status === "pendente" && (
+                                <Button variant="outline" size="sm" onClick={() => startAnomalyAction(anomaly, "em_analise")}>
+                                  Em analise
+                                </Button>
+                              )}
+                              {(anomaly.status === "pendente" || anomaly.status === "em_analise") && (
+                                <>
+                                  <Button variant="outline" size="sm" onClick={() => startAnomalyAction(anomaly, "corrigida")}>
+                                    Corrigida
+                                  </Button>
+                                  <Button variant="outline" size="sm" className="text-muted-foreground" onClick={() => startAnomalyAction(anomaly, "ignorada")}>
+                                    Ignorar
+                                  </Button>
+                                </>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      <Dialog
+        open={!!selectedAnomaly && !anomalyAction}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedAnomaly(null);
+            setAnomalyHistory([]);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Historico da anomalia</DialogTitle>
+            <DialogDescription>
+              {selectedAnomaly?.productName ?? "Produto"} em {selectedAnomaly?.estoqueNome ?? "estoque"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {anomalyHistory.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                Nenhum historico registrado.
+              </div>
+            ) : (
+              anomalyHistory.map((item) => (
+                <div key={item.id} className="rounded-lg border bg-muted/20 p-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">{item.action.replaceAll("_", " ")}</span>
+                    <span className="text-xs text-muted-foreground">{formatDateTime(item.createdAt)}</span>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {item.previousStatus ?? "-"} {"->"} {item.newStatus ?? "-"} por {item.userName ?? "-"}
+                  </div>
+                  {item.note && <div className="mt-2">{item.note}</div>}
+                </div>
+              ))
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!selectedAnomaly && !!anomalyAction}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedAnomaly(null);
+            setAnomalyAction(null);
+            setAnomalyObservation("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {anomalyAction === "corrigida" ? "Marcar como corrigida" : "Ignorar anomalia"}
+            </DialogTitle>
+            <DialogDescription>
+              Informe a justificativa para manter a auditoria completa.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Observacao</Label>
+            <Textarea
+              value={anomalyObservation}
+              onChange={(event) => setAnomalyObservation(event.target.value)}
+              placeholder="Ex.: ajuste de estoque realizado na movimentacao #123"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAnomalyAction(null)} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button onClick={confirmAnomalyAction} disabled={saving || !anomalyObservation.trim()}>
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={!!selectedInventoryItem}

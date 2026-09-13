@@ -176,7 +176,7 @@ function EstoquesPage() {
           />
         ) : (
           <>
-            <div className="divide-y md:hidden">
+            <div className="divide-y lg:hidden">
               {visibleEstoques.map((estoque) => (
                 <div key={estoque.id} className="p-3">
                   <div className="grid grid-cols-[minmax(0,1fr)_96px] items-center gap-3">
@@ -185,7 +185,7 @@ function EstoquesPage() {
                         <Warehouse className="h-4 w-4 text-muted-foreground" />
                       </div>
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-medium">{estoque.nome}</div>
+                        <div className="line-clamp-2 text-sm font-medium leading-snug">{estoque.nome}</div>
                         <div className="mt-1 flex flex-wrap gap-1.5">
                           <StockBadges estoque={estoque} />
                         </div>
@@ -214,7 +214,7 @@ function EstoquesPage() {
                 </div>
               ))}
             </div>
-            <div className="hidden md:block">
+            <div className="hidden lg:block">
               <Table className="table-fixed">
                 <TableHeader>
                   <TableRow>

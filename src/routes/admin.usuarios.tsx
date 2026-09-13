@@ -1,30 +1,21 @@
-import { createFileRoute } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Outlet,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import {
-  archiveUser,
-  changeUserPassword,
-  createUser,
   deleteUser,
   getStoredUser,
   getUsers,
-  resetUserPassword,
   restoreUser,
   setUserStatus,
-  updateUser,
 } from "@/services/api";
 import { Archive, Plus, RotateCcw, Trash2, Users } from "lucide-react";
 import { PageHeader, EmptyState } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Table,
@@ -35,14 +26,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -63,13 +46,11 @@ export const Route = createFileRoute("/admin/usuarios")({
 });
 
 function UsuariosPage() {
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [users, setUsers] = useState<SystemUser[]>([]);
-  const [open, setOpen] = useState(false);
   const [view, setView] = useState<UserView>("usuarios");
-  const [editUser, setEditUser] = useState<SystemUser | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<SystemUser | null>(null);
-  const [archiveTarget, setArchiveTarget] = useState<SystemUser | null>(null);
-  const [archiving, setArchiving] = useState(false);
   const [restoringId, setRestoringId] = useState<number | null>(null);
   const loggedUserId = getStoredUser()?.id;
 
@@ -91,8 +72,10 @@ function UsuariosPage() {
   };
 
   useEffect(() => {
-    loadUsers();
-  }, []);
+    if (pathname === "/admin/usuarios") {
+      loadUsers();
+    }
+  }, [pathname]);
 
   const toggleUserStatus = async (id: number, ativo: boolean) => {
     try {
@@ -105,24 +88,9 @@ function UsuariosPage() {
   };
 
   const canShowDelete = (user: SystemUser) => user.canDelete && user.id !== loggedUserId;
-  const canArchive = (user: SystemUser) =>
-    user.role !== "master" && user.id !== loggedUserId && !user.archived;
 
-  const confirmArchiveUser = async () => {
-    if (!archiveTarget) return;
-
-    setArchiving(true);
-    try {
-      const updated = await archiveUser(archiveTarget.id);
-      setUsers((prev) => prev.map((user) => (user.id === updated.id ? updated : user)));
-      setEditUser(null);
-      setArchiveTarget(null);
-      toast.success("Usuario arquivado");
-    } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Erro ao arquivar usuario");
-    } finally {
-      setArchiving(false);
-    }
+  const openEditUser = (user: SystemUser) => {
+    navigate({ to: "/admin/usuarios/editar/$userId", params: { userId: String(user.id) } });
   };
 
   const restoreArchivedUser = async (user: SystemUser) => {
@@ -155,20 +123,19 @@ function UsuariosPage() {
   const emptyTitle =
     view === "arquivados" ? "Nenhum usuario arquivado" : "Nenhum usuario cadastrado";
 
+  if (pathname === "/admin/usuarios/cadastro" || pathname.startsWith("/admin/usuarios/editar/")) {
+    return <Outlet />;
+  }
+
   return (
     <>
       <PageHeader
         title="Usuarios"
         subtitle={visibleCountLabel}
         actions={
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button className="gap-2">
-                <Plus className="h-4 w-4" /> Novo usuario
-              </Button>
-            </DialogTrigger>
-            <NewUserDialog onClose={() => setOpen(false)} onSuccess={loadUsers} />
-          </Dialog>
+          <Button className="gap-2" onClick={() => navigate({ to: "/admin/usuarios/cadastro" })}>
+            <Plus className="h-4 w-4" /> Novo usuario
+          </Button>
         }
       />
 
@@ -198,7 +165,7 @@ function UsuariosPage() {
             view={view}
             loggedUserId={loggedUserId}
             restoringId={restoringId}
-            onEdit={setEditUser}
+            onEdit={openEditUser}
             onDelete={setDeleteTarget}
             onRestore={restoreArchivedUser}
             onToggleStatus={toggleUserStatus}
@@ -213,7 +180,7 @@ function UsuariosPage() {
                 view={view}
                 loggedUserId={loggedUserId}
                 restoringId={restoringId}
-                onEdit={setEditUser}
+                onEdit={openEditUser}
                 onDelete={setDeleteTarget}
                 onRestore={restoreArchivedUser}
                 onToggleStatus={toggleUserStatus}
@@ -232,7 +199,7 @@ function UsuariosPage() {
                 view={view}
                 loggedUserId={loggedUserId}
                 restoringId={restoringId}
-                onEdit={setEditUser}
+                onEdit={openEditUser}
                 onDelete={setDeleteTarget}
                 onRestore={restoreArchivedUser}
                 onToggleStatus={toggleUserStatus}
@@ -246,48 +213,6 @@ function UsuariosPage() {
           </>
         )}
       </div>
-
-      <Dialog open={!!editUser} onOpenChange={() => setEditUser(null)}>
-        {editUser && (
-          <EditUserDialog
-            user={editUser}
-            canArchive={canArchive(editUser)}
-            onArchive={() => setArchiveTarget(editUser)}
-            onClose={() => setEditUser(null)}
-            onSuccess={loadUsers}
-          />
-        )}
-      </Dialog>
-
-      <AlertDialog
-        open={!!archiveTarget}
-        onOpenChange={(open) => {
-          if (!open && !archiving) setArchiveTarget(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Arquivar usuario?</AlertDialogTitle>
-            <AlertDialogDescription>
-              O usuario {archiveTarget?.name} saira da lista principal e ficara inativo. Ele podera
-              ser restaurado depois pela aba Arquivados.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={archiving}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              disabled={archiving}
-              onClick={(event) => {
-                event.preventDefault();
-                confirmArchiveUser();
-              }}
-            >
-              Arquivar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
@@ -504,237 +429,5 @@ function UserStatusBadge({ user }: { user: SystemUser }) {
     <Badge variant={user.active ? "default" : "secondary"}>
       {user.active ? "Ativo" : "Inativo"}
     </Badge>
-  );
-}
-
-function EditUserDialog({
-  user,
-  canArchive,
-  onArchive,
-  onClose,
-  onSuccess,
-}: {
-  user: SystemUser;
-  canArchive: boolean;
-  onArchive: () => void;
-  onClose: () => void;
-  onSuccess: () => void;
-}) {
-  const [name, setName] = useState(user.name);
-  const [role, setRole] = useState<"admin" | "operador">(
-    user.role === "admin" ? "admin" : "operador",
-  );
-  const isMaster = user.role === "master";
-
-  const [changePassword, setChangePassword] = useState(false);
-  const [oldPassword, setOldPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [resetPassword, setResetPassword] = useState(false);
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    try {
-      await updateUser(user.id, {
-        nome: name,
-        tipo: isMaster ? undefined : role,
-      });
-
-      if (changePassword) {
-        await changeUserPassword(user.id, oldPassword, newPassword);
-      }
-
-      if (resetPassword && !isMaster) {
-        await resetUserPassword(user.id);
-      }
-      toast.success("Usuario atualizado");
-
-      onSuccess();
-      onClose();
-    } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Erro ao atualizar");
-    }
-  };
-
-  return (
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Editar usuario</DialogTitle>
-      </DialogHeader>
-
-      <form onSubmit={submit} className="space-y-4">
-        <div>
-          <Label>Nome</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-
-        <div>
-          <Label>Matricula</Label>
-          <Input value={user.matricula} disabled />
-        </div>
-
-        <div>
-          <Label>Tipo</Label>
-          <Select
-            value={isMaster ? "master" : role}
-            onValueChange={(value) => setRole(value as "admin" | "operador")}
-            disabled={isMaster}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {isMaster && <SelectItem value="master">Master</SelectItem>}
-              <SelectItem value="operador">Operador</SelectItem>
-              <SelectItem value="admin">Administrador</SelectItem>
-            </SelectContent>
-          </Select>
-          {isMaster && (
-            <p className="mt-1 text-xs text-muted-foreground">
-              Usuario master nao pode ter o tipo alterado pelo CRUD comum.
-            </p>
-          )}
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setChangePassword(!changePassword)}
-          >
-            Alterar senha
-          </Button>
-
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={isMaster}
-            onClick={() => setResetPassword(!resetPassword)}
-          >
-            Resetar senha
-          </Button>
-        </div>
-
-        {resetPassword && (
-          <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-600">
-            A senha sera redefinida para uma senha temporaria.
-            <br />O usuario sera obrigado a criar uma nova senha no proximo acesso.
-          </div>
-        )}
-        {isMaster && (
-          <div className="rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
-            Usuario master nao pode ser desativado, resetado, arquivado ou transformado pelo CRUD
-            comum.
-          </div>
-        )}
-        {changePassword && (
-          <>
-            <Input
-              type="password"
-              placeholder="Senha atual"
-              value={oldPassword}
-              onChange={(e) => setOldPassword(e.target.value)}
-            />
-            <Input
-              type="password"
-              placeholder="Nova senha"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-            />
-          </>
-        )}
-
-        <DialogFooter className="gap-2 sm:justify-between">
-          <Button
-            type="button"
-            variant="outline"
-            className="gap-2 border-yellow-500/40 bg-yellow-500/15 text-yellow-700 hover:bg-yellow-500/25 hover:text-yellow-800 dark:text-yellow-300 dark:hover:text-yellow-200"
-            disabled={!canArchive}
-            onClick={onArchive}
-          >
-            <Archive className="h-4 w-4" />
-            Arquivar usuario
-          </Button>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={onClose}>
-              Cancelar
-            </Button>
-            <Button type="submit">Salvar</Button>
-          </div>
-        </DialogFooter>
-      </form>
-    </DialogContent>
-  );
-}
-
-function NewUserDialog({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [name, setName] = useState("");
-  const [matricula, setMatricula] = useState("");
-  const [role, setRole] = useState<"admin" | "operador">("operador");
-
-  const resetForm = () => {
-    setName("");
-    setMatricula("");
-    setRole("operador");
-  };
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    try {
-      await createUser({
-        nome: name,
-        matricula,
-        tipo: role,
-        ativo: true,
-        email: "",
-      });
-
-      toast.success(
-        "Usuario criado com senha temporaria. A troca sera obrigatoria no proximo acesso.",
-      );
-
-      onSuccess();
-      onClose();
-      resetForm();
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro ao criar usuario");
-    }
-  };
-
-  return (
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Novo usuario</DialogTitle>
-      </DialogHeader>
-
-      <form onSubmit={submit} className="space-y-4">
-        <Input placeholder="Nome" value={name} onChange={(e) => setName(e.target.value)} />
-
-        <Input
-          placeholder="Matricula"
-          value={matricula}
-          onChange={(e) => setMatricula(e.target.value)}
-        />
-
-        <Select value={role} onValueChange={(v) => setRole(v as "admin" | "operador")}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="operador">Operador</SelectItem>
-            <SelectItem value="admin">Administrador</SelectItem>
-          </SelectContent>
-        </Select>
-
-        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-600">
-          O usuario sera criado com uma senha temporaria e devera troca-la no proximo acesso.
-        </div>
-
-        <DialogFooter>
-          <Button type="submit">Cadastrar</Button>
-        </DialogFooter>
-      </form>
-    </DialogContent>
   );
 }

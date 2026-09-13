@@ -11,7 +11,8 @@ const configuracaoService = require("./configuracaoService");
 
 const PUBLIC_FIELDS =
   "id, matricula, nome, email, tipo, ativo, arquivado, arquivado_em, criado_em, atualizado_em, senha_atualizada_em, precisa_trocar_senha, theme_preference";
-const PASSWORD_MAX_AGE_DAYS = 7;
+const PASSWORD_MAX_AGE_DAYS = 14;
+const PASSWORD_WARNING_DAYS = [7, 3];
 const MAX_FAILED_PASSWORD_ATTEMPTS = 5;
 const FAILED_ATTEMPTS_AFTER_LOCK = 3;
 const PASSWORD_LOCK_SECONDS = [15, 30, 60];
@@ -63,17 +64,44 @@ function parseDate(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function isPasswordExpired(user) {
+function getPasswordAgeInfo(user) {
   const passwordUpdatedAt = parseDate(user.senha_atualizada_em) || parseDate(user.criado_em);
-  if (!passwordUpdatedAt) return false;
+  if (!passwordUpdatedAt) return null;
   const diffMs = Date.now() - passwordUpdatedAt.getTime();
-  return diffMs >= PASSWORD_MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
+  const ageDays = diffMs / (24 * 60 * 60 * 1000);
+  const daysRemaining = Math.ceil(PASSWORD_MAX_AGE_DAYS - ageDays);
+  return {
+    ageDays,
+    daysRemaining: Math.max(0, daysRemaining),
+    expiresAt: new Date(passwordUpdatedAt.getTime() + PASSWORD_MAX_AGE_DAYS * 24 * 60 * 60 * 1000),
+  };
+}
+
+function isPasswordExpired(user) {
+  const info = getPasswordAgeInfo(user);
+  if (!info) return false;
+  return info.ageDays >= PASSWORD_MAX_AGE_DAYS;
 }
 
 function getPasswordStatus(user) {
   if (user.precisa_trocar_senha) return "first_access";
   if (isPasswordExpired(user)) return "expired";
   return null;
+}
+
+function getPasswordWarning(user) {
+  if (getPasswordStatus(user)) return null;
+  const info = getPasswordAgeInfo(user);
+  if (!info) return null;
+  const maxWarningDays = Math.max(...PASSWORD_WARNING_DAYS);
+  if (info.daysRemaining <= 0 || info.daysRemaining > maxWarningDays) return null;
+  return {
+    type: "expiring",
+    days_remaining: info.daysRemaining,
+    threshold_days: info.daysRemaining <= 3 ? 3 : 7,
+    expires_at: info.expiresAt.toISOString(),
+    message: `Sua senha vence em ${info.daysRemaining} dia${info.daysRemaining === 1 ? "" : "s"}. Deseja trocar agora?`,
+  };
 }
 
 function getLockRemainingSeconds(user) {
@@ -111,6 +139,7 @@ function buildAutoDisabledCredentialResult() {
 
 function buildAuthUser(user) {
   const passwordStatus = getPasswordStatus(user);
+  const passwordWarning = getPasswordWarning(user);
   return {
     id: user.id,
     matricula: user.matricula,
@@ -122,6 +151,7 @@ function buildAuthUser(user) {
     precisa_trocar_senha: !!user.precisa_trocar_senha,
     senha_expirada: passwordStatus === "expired",
     password_status: passwordStatus,
+    password_warning: passwordWarning,
   };
 }
 
@@ -152,6 +182,34 @@ async function listAll({ includeMaster = false } = {}) {
       can_delete: await canDelete(row.id),
     })),
   );
+}
+
+async function listForScaleSync({ atualizadoDesde = null } = {}) {
+  const where = [];
+  const params = [];
+
+  if (atualizadoDesde) {
+    where.push("atualizado_em >= ?");
+    params.push(atualizadoDesde);
+  }
+
+  const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const [rows] = await pool.query(
+    `SELECT id, nome, matricula, tipo, ativo, atualizado_em
+       FROM usuarios
+       ${whereClause}
+      ORDER BY atualizado_em ASC, id ASC`,
+    params,
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    nome: row.nome,
+    matricula: row.matricula,
+    tipo: row.tipo,
+    ativo: !!row.ativo,
+    atualizado_em: row.atualizado_em,
+  }));
 }
 
 async function findById(id) {
@@ -681,6 +739,7 @@ async function remove(id) {
 
 module.exports = {
   listAll,
+  listForScaleSync,
   findById,
   findByMatricula,
   findByIdWithPassword,

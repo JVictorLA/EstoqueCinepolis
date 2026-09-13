@@ -29,7 +29,10 @@ import { Route as AdminEstoquesRouteImport } from './routes/admin.estoques'
 import { Route as AdminEntradaRouteImport } from './routes/admin.entrada'
 import { Route as AdminDesperdiciosRouteImport } from './routes/admin.desperdicios'
 import { Route as AdminConfiguracoesRouteImport } from './routes/admin.configuracoes'
+import { Route as AdminUsuariosCadastroRouteImport } from './routes/admin.usuarios.cadastro'
 import { Route as AdminProdutosCadastroRouteImport } from './routes/admin.produtos.cadastro'
+import { Route as AdminConfiguracoesBackupRouteImport } from './routes/admin.configuracoes.backup'
+import { Route as AdminUsuariosEditarUserIdRouteImport } from './routes/admin.usuarios.editar.$userId'
 
 const OperadorRoute = OperadorRouteImport.update({
   id: '/operador',
@@ -131,17 +134,34 @@ const AdminConfiguracoesRoute = AdminConfiguracoesRouteImport.update({
   path: '/configuracoes',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminUsuariosCadastroRoute = AdminUsuariosCadastroRouteImport.update({
+  id: '/cadastro',
+  path: '/cadastro',
+  getParentRoute: () => AdminUsuariosRoute,
+} as any)
 const AdminProdutosCadastroRoute = AdminProdutosCadastroRouteImport.update({
   id: '/cadastro',
   path: '/cadastro',
   getParentRoute: () => AdminProdutosRoute,
 } as any)
+const AdminConfiguracoesBackupRoute =
+  AdminConfiguracoesBackupRouteImport.update({
+    id: '/backup',
+    path: '/backup',
+    getParentRoute: () => AdminConfiguracoesRoute,
+  } as any)
+const AdminUsuariosEditarUserIdRoute =
+  AdminUsuariosEditarUserIdRouteImport.update({
+    id: '/editar/$userId',
+    path: '/editar/$userId',
+    getParentRoute: () => AdminUsuariosRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
   '/operador': typeof OperadorRouteWithChildren
-  '/admin/configuracoes': typeof AdminConfiguracoesRoute
+  '/admin/configuracoes': typeof AdminConfiguracoesRouteWithChildren
   '/admin/desperdicios': typeof AdminDesperdiciosRoute
   '/admin/entrada': typeof AdminEntradaRoute
   '/admin/estoques': typeof AdminEstoquesRoute
@@ -150,7 +170,7 @@ export interface FileRoutesByFullPath {
   '/admin/movimentacoes': typeof AdminMovimentacoesRoute
   '/admin/produtos': typeof AdminProdutosRouteWithChildren
   '/admin/retirada': typeof AdminRetiradaRoute
-  '/admin/usuarios': typeof AdminUsuariosRoute
+  '/admin/usuarios': typeof AdminUsuariosRouteWithChildren
   '/operador/desperdicio': typeof OperadorDesperdicioRoute
   '/operador/entrada': typeof OperadorEntradaRoute
   '/operador/historico': typeof OperadorHistoricoRoute
@@ -158,11 +178,14 @@ export interface FileRoutesByFullPath {
   '/operador/retirada': typeof OperadorRetiradaRoute
   '/admin/': typeof AdminIndexRoute
   '/operador/': typeof OperadorIndexRoute
+  '/admin/configuracoes/backup': typeof AdminConfiguracoesBackupRoute
   '/admin/produtos/cadastro': typeof AdminProdutosCadastroRoute
+  '/admin/usuarios/cadastro': typeof AdminUsuariosCadastroRoute
+  '/admin/usuarios/editar/$userId': typeof AdminUsuariosEditarUserIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/admin/configuracoes': typeof AdminConfiguracoesRoute
+  '/admin/configuracoes': typeof AdminConfiguracoesRouteWithChildren
   '/admin/desperdicios': typeof AdminDesperdiciosRoute
   '/admin/entrada': typeof AdminEntradaRoute
   '/admin/estoques': typeof AdminEstoquesRoute
@@ -171,7 +194,7 @@ export interface FileRoutesByTo {
   '/admin/movimentacoes': typeof AdminMovimentacoesRoute
   '/admin/produtos': typeof AdminProdutosRouteWithChildren
   '/admin/retirada': typeof AdminRetiradaRoute
-  '/admin/usuarios': typeof AdminUsuariosRoute
+  '/admin/usuarios': typeof AdminUsuariosRouteWithChildren
   '/operador/desperdicio': typeof OperadorDesperdicioRoute
   '/operador/entrada': typeof OperadorEntradaRoute
   '/operador/historico': typeof OperadorHistoricoRoute
@@ -179,14 +202,17 @@ export interface FileRoutesByTo {
   '/operador/retirada': typeof OperadorRetiradaRoute
   '/admin': typeof AdminIndexRoute
   '/operador': typeof OperadorIndexRoute
+  '/admin/configuracoes/backup': typeof AdminConfiguracoesBackupRoute
   '/admin/produtos/cadastro': typeof AdminProdutosCadastroRoute
+  '/admin/usuarios/cadastro': typeof AdminUsuariosCadastroRoute
+  '/admin/usuarios/editar/$userId': typeof AdminUsuariosEditarUserIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
   '/operador': typeof OperadorRouteWithChildren
-  '/admin/configuracoes': typeof AdminConfiguracoesRoute
+  '/admin/configuracoes': typeof AdminConfiguracoesRouteWithChildren
   '/admin/desperdicios': typeof AdminDesperdiciosRoute
   '/admin/entrada': typeof AdminEntradaRoute
   '/admin/estoques': typeof AdminEstoquesRoute
@@ -195,7 +221,7 @@ export interface FileRoutesById {
   '/admin/movimentacoes': typeof AdminMovimentacoesRoute
   '/admin/produtos': typeof AdminProdutosRouteWithChildren
   '/admin/retirada': typeof AdminRetiradaRoute
-  '/admin/usuarios': typeof AdminUsuariosRoute
+  '/admin/usuarios': typeof AdminUsuariosRouteWithChildren
   '/operador/desperdicio': typeof OperadorDesperdicioRoute
   '/operador/entrada': typeof OperadorEntradaRoute
   '/operador/historico': typeof OperadorHistoricoRoute
@@ -203,7 +229,10 @@ export interface FileRoutesById {
   '/operador/retirada': typeof OperadorRetiradaRoute
   '/admin/': typeof AdminIndexRoute
   '/operador/': typeof OperadorIndexRoute
+  '/admin/configuracoes/backup': typeof AdminConfiguracoesBackupRoute
   '/admin/produtos/cadastro': typeof AdminProdutosCadastroRoute
+  '/admin/usuarios/cadastro': typeof AdminUsuariosCadastroRoute
+  '/admin/usuarios/editar/$userId': typeof AdminUsuariosEditarUserIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -228,7 +257,10 @@ export interface FileRouteTypes {
     | '/operador/retirada'
     | '/admin/'
     | '/operador/'
+    | '/admin/configuracoes/backup'
     | '/admin/produtos/cadastro'
+    | '/admin/usuarios/cadastro'
+    | '/admin/usuarios/editar/$userId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -249,7 +281,10 @@ export interface FileRouteTypes {
     | '/operador/retirada'
     | '/admin'
     | '/operador'
+    | '/admin/configuracoes/backup'
     | '/admin/produtos/cadastro'
+    | '/admin/usuarios/cadastro'
+    | '/admin/usuarios/editar/$userId'
   id:
     | '__root__'
     | '/'
@@ -272,7 +307,10 @@ export interface FileRouteTypes {
     | '/operador/retirada'
     | '/admin/'
     | '/operador/'
+    | '/admin/configuracoes/backup'
     | '/admin/produtos/cadastro'
+    | '/admin/usuarios/cadastro'
+    | '/admin/usuarios/editar/$userId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -423,6 +461,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminConfiguracoesRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/usuarios/cadastro': {
+      id: '/admin/usuarios/cadastro'
+      path: '/cadastro'
+      fullPath: '/admin/usuarios/cadastro'
+      preLoaderRoute: typeof AdminUsuariosCadastroRouteImport
+      parentRoute: typeof AdminUsuariosRoute
+    }
     '/admin/produtos/cadastro': {
       id: '/admin/produtos/cadastro'
       path: '/cadastro'
@@ -430,8 +475,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminProdutosCadastroRouteImport
       parentRoute: typeof AdminProdutosRoute
     }
+    '/admin/configuracoes/backup': {
+      id: '/admin/configuracoes/backup'
+      path: '/backup'
+      fullPath: '/admin/configuracoes/backup'
+      preLoaderRoute: typeof AdminConfiguracoesBackupRouteImport
+      parentRoute: typeof AdminConfiguracoesRoute
+    }
+    '/admin/usuarios/editar/$userId': {
+      id: '/admin/usuarios/editar/$userId'
+      path: '/editar/$userId'
+      fullPath: '/admin/usuarios/editar/$userId'
+      preLoaderRoute: typeof AdminUsuariosEditarUserIdRouteImport
+      parentRoute: typeof AdminUsuariosRoute
+    }
   }
 }
+
+interface AdminConfiguracoesRouteChildren {
+  AdminConfiguracoesBackupRoute: typeof AdminConfiguracoesBackupRoute
+}
+
+const AdminConfiguracoesRouteChildren: AdminConfiguracoesRouteChildren = {
+  AdminConfiguracoesBackupRoute: AdminConfiguracoesBackupRoute,
+}
+
+const AdminConfiguracoesRouteWithChildren =
+  AdminConfiguracoesRoute._addFileChildren(AdminConfiguracoesRouteChildren)
 
 interface AdminProdutosRouteChildren {
   AdminProdutosCadastroRoute: typeof AdminProdutosCadastroRoute
@@ -445,8 +515,22 @@ const AdminProdutosRouteWithChildren = AdminProdutosRoute._addFileChildren(
   AdminProdutosRouteChildren,
 )
 
+interface AdminUsuariosRouteChildren {
+  AdminUsuariosCadastroRoute: typeof AdminUsuariosCadastroRoute
+  AdminUsuariosEditarUserIdRoute: typeof AdminUsuariosEditarUserIdRoute
+}
+
+const AdminUsuariosRouteChildren: AdminUsuariosRouteChildren = {
+  AdminUsuariosCadastroRoute: AdminUsuariosCadastroRoute,
+  AdminUsuariosEditarUserIdRoute: AdminUsuariosEditarUserIdRoute,
+}
+
+const AdminUsuariosRouteWithChildren = AdminUsuariosRoute._addFileChildren(
+  AdminUsuariosRouteChildren,
+)
+
 interface AdminRouteChildren {
-  AdminConfiguracoesRoute: typeof AdminConfiguracoesRoute
+  AdminConfiguracoesRoute: typeof AdminConfiguracoesRouteWithChildren
   AdminDesperdiciosRoute: typeof AdminDesperdiciosRoute
   AdminEntradaRoute: typeof AdminEntradaRoute
   AdminEstoquesRoute: typeof AdminEstoquesRoute
@@ -455,12 +539,12 @@ interface AdminRouteChildren {
   AdminMovimentacoesRoute: typeof AdminMovimentacoesRoute
   AdminProdutosRoute: typeof AdminProdutosRouteWithChildren
   AdminRetiradaRoute: typeof AdminRetiradaRoute
-  AdminUsuariosRoute: typeof AdminUsuariosRoute
+  AdminUsuariosRoute: typeof AdminUsuariosRouteWithChildren
   AdminIndexRoute: typeof AdminIndexRoute
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
-  AdminConfiguracoesRoute: AdminConfiguracoesRoute,
+  AdminConfiguracoesRoute: AdminConfiguracoesRouteWithChildren,
   AdminDesperdiciosRoute: AdminDesperdiciosRoute,
   AdminEntradaRoute: AdminEntradaRoute,
   AdminEstoquesRoute: AdminEstoquesRoute,
@@ -469,7 +553,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminMovimentacoesRoute: AdminMovimentacoesRoute,
   AdminProdutosRoute: AdminProdutosRouteWithChildren,
   AdminRetiradaRoute: AdminRetiradaRoute,
-  AdminUsuariosRoute: AdminUsuariosRoute,
+  AdminUsuariosRoute: AdminUsuariosRouteWithChildren,
   AdminIndexRoute: AdminIndexRoute,
 }
 

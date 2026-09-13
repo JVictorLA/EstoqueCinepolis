@@ -94,8 +94,15 @@ async function finalizar(req, res) {
   if (!id) return fail(res, 400, "Conferência inválida");
 
   try {
-    const conference = await conferenciaService.finalizar(id);
-    return ok(res, conference, "Conferencia finalizada");
+    const conference = await conferenciaService.finalizar(id, req.user?.id);
+    const total = Number(conference.anomalias_criadas || 0);
+    return ok(
+      res,
+      conference,
+      total
+        ? `Conferencia finalizada com ${total} anomalia(s) pendente(s)`
+        : "Conferencia finalizada",
+    );
   } catch (e) {
     return fail(res, e.status || 500, e.message || "Erro ao finalizar conferencia");
   }

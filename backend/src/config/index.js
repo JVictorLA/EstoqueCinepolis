@@ -28,4 +28,25 @@ module.exports = {
   cors: {
     origin: process.env.CORS_ORIGIN || "*",
   },
+
+  scaleWebhook: {
+    enabled: process.env.SCALE_WEBHOOK_ENABLED !== "false",
+    url: process.env.SCALE_WEBHOOK_URL || "",
+    token: process.env.SCALE_WEBHOOK_TOKEN || "",
+  },
+
+  smtp: {
+    host: process.env.SMTP_HOST || "",
+    port: parseInt(process.env.SMTP_PORT, 10) || 587,
+    secure: process.env.SMTP_SECURE === "true",
+    user: process.env.SMTP_USER || "",
+    pass: process.env.SMTP_PASS || "",
+    from: process.env.SMTP_FROM || process.env.SMTP_USER || "",
+  },
+
+  validityAlert: {
+    horario: process.env.VALIDADE_ALERTA_EMAIL_HORARIO || "08:00",
+  },
+
+  inventoryInternalToken: process.env.INVENTORY_INTERNAL_TOKEN || "",
 };

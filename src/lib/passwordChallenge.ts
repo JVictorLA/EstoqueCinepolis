@@ -20,7 +20,7 @@ export function resolvePasswordStatus(source?: PasswordStatusSource | null): Pas
 }
 
 export function passwordChallengeMessage(status: PasswordStatus) {
-  return status === "expired"
-    ? "Sua senha venceu. Troque-a para continuar."
-    : "Primeiro acesso detectado. Crie uma nova senha.";
+  if (status === "expired") return "Sua senha venceu. Troque-a para continuar.";
+  if (status === "expiring") return "Sua senha esta perto de vencer. Deseja trocar agora?";
+  return "Primeiro acesso detectado. Crie uma nova senha.";
 }

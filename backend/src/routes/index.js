@@ -13,7 +13,9 @@ const configuracaoCtrl = require("../controllers/configuracaoController");
 const statusCtrl = require("../controllers/statusController");
 const inventarioCtrl = require("../controllers/inventarioController");
 const conferenciaCtrl = require("../controllers/conferenciaController");
+const conferenciaAnomaliaCtrl = require("../controllers/conferenciaAnomaliaController");
 const kitCtrl = require("../controllers/kitController");
+const backupCtrl = require("../controllers/backupController");
 const estoqueRoutes = require("./estoqueRoutes");
 const desperdicioRoutes = require("./desperdicioRoutes");
 
@@ -47,6 +49,12 @@ router.get("/health", (_req, res) =>
 
 // Auth (somente admin)
 router.post("/login", asyncHandler(authCtrl.login));
+router.post("/api/auth/scale-login", asyncHandler(authCtrl.scaleLogin));
+router.get(
+  "/api/scale/usuarios-sync",
+  auth.scaleTokenOnly,
+  asyncHandler(usuarioCtrl.listarParaSyncScale),
+);
 router.post("/usuarios/master/recuperar-senha", asyncHandler(usuarioCtrl.recuperarSenhaMaster));
 
 // Status operacional publico
@@ -69,6 +77,39 @@ router.put(
   auth.authMiddleware,
   auth.adminOnly,
   asyncHandler(configuracaoCtrl.atualizar),
+);
+
+// Backups (somente master)
+router.get("/backups", auth.authMiddleware, auth.masterOnly, asyncHandler(backupCtrl.listar));
+router.post(
+  "/backups/manual",
+  auth.authMiddleware,
+  auth.masterOnly,
+  asyncHandler(backupCtrl.executarManual),
+);
+router.get(
+  "/backups/config",
+  auth.authMiddleware,
+  auth.masterOnly,
+  asyncHandler(backupCtrl.buscarConfig),
+);
+router.put(
+  "/backups/config",
+  auth.authMiddleware,
+  auth.masterOnly,
+  asyncHandler(backupCtrl.atualizarConfig),
+);
+router.get(
+  "/backups/:id/download",
+  auth.authMiddleware,
+  auth.masterOnly,
+  asyncHandler(backupCtrl.download),
+);
+router.delete(
+  "/backups/:id",
+  auth.authMiddleware,
+  auth.masterOnly,
+  asyncHandler(backupCtrl.remover),
 );
 
 // Produtos
@@ -160,6 +201,30 @@ router.get(
   auth.authMiddleware,
   auth.adminOnly,
   asyncHandler(conferenciaCtrl.buscarProduto),
+);
+router.get(
+  "/conferencias/anomalias/resumo",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(conferenciaAnomaliaCtrl.resumo),
+);
+router.get(
+  "/conferencias/anomalias",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(conferenciaAnomaliaCtrl.listar),
+);
+router.get(
+  "/conferencias/anomalias/:id/historico",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(conferenciaAnomaliaCtrl.historico),
+);
+router.patch(
+  "/conferencias/anomalias/:id/status",
+  auth.authMiddleware,
+  auth.adminOnly,
+  asyncHandler(conferenciaAnomaliaCtrl.atualizarStatus),
 );
 router.get(
   "/conferencias",

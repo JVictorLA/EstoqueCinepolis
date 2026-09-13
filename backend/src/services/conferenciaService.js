@@ -1,6 +1,7 @@
 const { pool } = require("../database/connection");
 const estoqueService = require("./estoqueService");
 const inventarioService = require("./inventarioService");
+const conferenciaAnomaliaService = require("./conferenciaAnomaliaService");
 
 function normalizeOptionalEstoqueId(value) {
   if (value === undefined || value === null || value === "" || value === "all") return null;
@@ -30,6 +31,8 @@ function mapConference(row) {
     finalizado_em: row.finalizado_em,
     itens_count: Number(row.itens_count || 0),
     divergencias_count: Number(row.divergencias_count || 0),
+    anomalias_criadas: Number(row.anomalias_criadas || 0),
+    anomalias_pendentes: Number(row.anomalias_pendentes || 0),
   };
 }
 
@@ -340,15 +343,47 @@ async function remover(id) {
   }
 }
 
-async function finalizar(id) {
-  await assertEditable(id);
-  await pool.query(
-    `UPDATE conferencias_estoque
-     SET status = 'finalizada', finalizado_em = NOW(), atualizado_em = NOW()
-     WHERE id = ?`,
-    [id],
-  );
-  return buscarCompleta(id);
+async function finalizar(id, usuarioId) {
+  const conn = await pool.getConnection();
+  let anomalies = { total: 0 };
+
+  try {
+    await conn.beginTransaction();
+
+    const [rows] = await conn.query(
+      "SELECT id, status FROM conferencias_estoque WHERE id = ? LIMIT 1 FOR UPDATE",
+      [id],
+    );
+    const conference = rows[0];
+    if (!conference) {
+      throw Object.assign(new Error("Conferencia nao encontrada"), { status: 404 });
+    }
+    if (conference.status === "finalizada") {
+      throw Object.assign(new Error("Conferencia finalizada nao pode ser editada"), { status: 409 });
+    }
+
+    await conn.query(
+      `UPDATE conferencias_estoque
+       SET status = 'finalizada', finalizado_em = NOW(), atualizado_em = NOW()
+       WHERE id = ?`,
+      [id],
+    );
+
+    anomalies = await conferenciaAnomaliaService.createFromConference(id, usuarioId, conn);
+    await conn.commit();
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally {
+    conn.release();
+  }
+
+  const conference = await buscarCompleta(id);
+  return {
+    ...conference,
+    anomalias_criadas: anomalies.total,
+    anomalias_pendentes: anomalies.total,
+  };
 }
 
 async function buscarProdutoPorCodigo(codigoBarras, estoqueId) {

@@ -9,8 +9,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getProducts, getMovements, getEstoques } from "@/services/api";
-import type { Product, Movement, Estoque } from "@/types";
+import { getProducts, getMovements, getEstoques, getConferenceAnomalySummary } from "@/services/api";
+import type { Product, Movement, Estoque, ConferenceAnomalySummary } from "@/types";
 
 function money(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -25,6 +25,7 @@ function Dashboard() {
   const [products, setProducts] = useState<Product[]>([]);
   const [movs, setMovs] = useState<Movement[]>([]);
   const [estoques, setEstoques] = useState<Estoque[]>([]);
+  const [anomalySummary, setAnomalySummary] = useState<ConferenceAnomalySummary | null>(null);
   const [selectedEstoqueId, setSelectedEstoqueId] = useState("all");
 
   useEffect(() => {
@@ -38,6 +39,9 @@ function Dashboard() {
     getMovements({
       estoque_id: selectedEstoqueId === "all" ? undefined : selectedEstoqueId,
     }).then(setMovs);
+    getConferenceAnomalySummary({
+      estoque_id: selectedEstoqueId === "all" ? undefined : selectedEstoqueId,
+    }).then(setAnomalySummary);
   }, [selectedEstoqueId]);
 
   const activeProducts = products.filter((p) => p.active);
@@ -68,7 +72,7 @@ function Dashboard() {
         }
       />
 
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:mb-6 sm:gap-4 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:mb-6 sm:gap-4 lg:grid-cols-5">
         <StatCard
           label="Total de produtos"
           mobileLabel="Produtos"
@@ -97,7 +101,30 @@ function Dashboard() {
           tone="success"
           valueClassName="whitespace-nowrap text-[clamp(1rem,4.4vw,1.25rem)] sm:text-2xl"
         />
+        <StatCard
+          label="Anomalias abertas"
+          mobileLabel="Anomalias"
+          value={anomalySummary?.abertas ?? 0}
+          icon={AlertTriangle}
+          tone="warning"
+        />
       </div>
+
+      {(anomalySummary?.abertas ?? 0) > 0 && (
+        <div className="mb-4 rounded-lg border border-warning/30 bg-warning/10 p-4 text-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="font-semibold">Existem anomalias de conferencia pendentes</div>
+              <div className="text-muted-foreground">
+                {anomalySummary?.faltasAbertas ?? 0} falta(s) e {anomalySummary?.sobrasAbertas ?? 0} sobra(s) precisam de revisao no Inventario.
+              </div>
+            </div>
+            <a href="/admin/inventario" className="inline-flex h-9 items-center justify-center rounded-md border bg-background px-3 text-sm font-medium">
+              Ver no inventario
+            </a>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-3 lg:gap-6">
         <div className="min-h-[260px] rounded-lg border bg-card p-4 shadow-[var(--shadow-soft)] sm:min-h-[320px] sm:rounded-xl sm:p-6 lg:col-span-2">

@@ -1,6 +1,38 @@
 const bcrypt = require("bcrypt");
+const scaleWebhookService = require("../services/scaleWebhookService");
 const usuarioService = require("../services/usuarioService");
 const { ok, created, fail } = require("../utils/response");
+
+function scaleFail(res, status, message) {
+  return res.status(status).json({
+    success: false,
+    message,
+  });
+}
+
+function parseAtualizadoDesde(value) {
+  if (!value) return null;
+
+  const parsed = new Date(String(value));
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+}
+
+async function listarParaSyncScale(req, res) {
+  const { atualizado_desde } = req.query || {};
+  const atualizadoDesde = parseAtualizadoDesde(atualizado_desde);
+
+  if (atualizado_desde && !atualizadoDesde) {
+    return scaleFail(res, 400, "Parametro atualizado_desde invalido");
+  }
+
+  const usuarios = await usuarioService.listForScaleSync({ atualizadoDesde });
+  return res.json(usuarios);
+}
 
 async function buscarPorMatricula(req, res) {
   const { matricula } = req.params;
@@ -63,6 +95,7 @@ async function criar(req, res) {
     ativo: ativo === undefined ? true : !!ativo,
   });
 
+  await scaleWebhookService.notifyUsuarioChanged(novo, "criar");
   return created(res, novo, "Usuário criado");
 }
 
@@ -103,6 +136,7 @@ async function atualizar(req, res) {
     ativo,
   });
 
+  await scaleWebhookService.notifyUsuarioChanged(atualizado, "atualizar");
   return ok(res, atualizado, "Usuário atualizado");
 }
 
@@ -191,6 +225,7 @@ async function alterarStatus(req, res) {
   }
 
   const atualizado = await usuarioService.setStatus(id, !!ativo);
+  await scaleWebhookService.notifyUsuarioChanged(atualizado, "alterar_status");
   return ok(res, atualizado, "Status atualizado");
 }
 
@@ -211,6 +246,7 @@ async function arquivar(req, res) {
   }
 
   const atualizado = await usuarioService.archiveUser(id);
+  await scaleWebhookService.notifyUsuarioChanged(atualizado, "arquivar");
   return ok(res, atualizado, "Usuario arquivado");
 }
 
@@ -226,6 +262,7 @@ async function restaurar(req, res) {
   }
 
   const atualizado = await usuarioService.restoreUser(id);
+  await scaleWebhookService.notifyUsuarioChanged(atualizado, "restaurar");
   return ok(res, atualizado, "Usuario restaurado");
 }
 
@@ -305,6 +342,7 @@ async function remover(req, res) {
 
 module.exports = {
   buscarPorMatricula,
+  listarParaSyncScale,
   listar,
   criar,
   atualizar,

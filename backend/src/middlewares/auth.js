@@ -2,6 +2,13 @@ const jwt = require("jsonwebtoken");
 const config = require("../config");
 const { fail } = require("../utils/response");
 
+function scaleFail(res, status, message) {
+  return res.status(status).json({
+    success: false,
+    message,
+  });
+}
+
 function authMiddleware(req, res, next) {
   const header = req.headers.authorization || "";
   const [scheme, token] = header.split(" ");
@@ -24,6 +31,46 @@ function authMiddleware(req, res, next) {
   }
 }
 
+function scaleTokenOnly(req, res, next) {
+  const header = req.headers.authorization || "";
+  const [scheme, token] = header.split(" ");
+
+  if (scheme !== "Bearer" || !token) {
+    return scaleFail(res, 401, "Token interno nao informado");
+  }
+
+  if (config.inventoryInternalToken && token === config.inventoryInternalToken) {
+    req.scaleUser = {
+      tipo: "internal",
+      origem: "inventory_internal_token",
+    };
+    return next();
+  }
+
+  try {
+    const payload = jwt.verify(token, config.jwt.secret);
+
+    if (payload.aud !== "zytrex-scale") {
+      return scaleFail(res, 403, "Token nao autorizado para sincronizacao do Scale");
+    }
+
+    if (!["admin", "master"].includes(payload.tipo)) {
+      return scaleFail(res, 403, "Acesso restrito a administradores autorizados");
+    }
+
+    req.scaleUser = {
+      id: payload.sub,
+      matricula: payload.matricula,
+      nome: payload.nome,
+      tipo: payload.tipo,
+    };
+
+    return next();
+  } catch {
+    return scaleFail(res, 401, "Token interno invalido ou expirado");
+  }
+}
+
 function adminOnly(req, res, next) {
   if (!req.user) return fail(res, 401, "Não autenticado");
   if (!["admin", "master"].includes(req.user.tipo)) {
@@ -38,4 +85,4 @@ function masterOnly(req, res, next) {
   return next();
 }
 
-module.exports = { authMiddleware, adminOnly, masterOnly };
+module.exports = { authMiddleware, adminOnly, masterOnly, scaleTokenOnly };

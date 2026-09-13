@@ -35,6 +35,7 @@ function validatePayload(payload) {
   const sistema = payload?.sistema || {};
   const master = payload?.master || {};
   const estoques = uniqueStockNames(payload?.estoques);
+  const masterEmail = String(master.email || "").trim();
 
   if (!String(empresa.nome_empresa || "").trim()) {
     return { error: "nome_empresa é obrigatório" };
@@ -44,6 +45,12 @@ function validatePayload(payload) {
   }
   if (!String(master.nome || "").trim() || !String(master.matricula || "").trim() || !master.senha) {
     return { error: "nome, matrícula e senha do master são obrigatórios" };
+  }
+  if (!masterEmail) {
+    return { error: "email do master e obrigatorio" };
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(masterEmail)) {
+    return { error: "email do master invalido" };
   }
   if (String(master.senha).length < 6) {
     return { error: "A senha deve ter pelo menos 6 caracteres" };
@@ -58,7 +65,7 @@ function validatePayload(payload) {
     return { error: "dias_alerta_validade deve ser maior ou igual a 1" };
   }
 
-  return { empresa, sistema, master, estoques };
+  return { empresa, sistema, master: { ...master, email: masterEmail }, estoques };
 }
 
 function buildConfigItems(empresa, sistema, estoques) {
@@ -186,7 +193,7 @@ async function executarSetupInicial(payload) {
       [
         String(master.matricula).trim(),
         String(master.nome).trim(),
-        master.email ? String(master.email).trim() : null,
+        master.email,
         senhaHash,
       ],
     );
@@ -217,7 +224,7 @@ async function executarSetupInicial(payload) {
         id: userResult.insertId,
         nome: String(master.nome).trim(),
         matricula: String(master.matricula).trim(),
-        email: master.email ? String(master.email).trim() : null,
+        email: master.email,
         tipo: "master",
         ativo: true,
       },

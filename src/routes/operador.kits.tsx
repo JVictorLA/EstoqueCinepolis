@@ -624,7 +624,7 @@ function OperatorKitActionDialog({
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
               {passwordStatus === "expired"
-                ? "Sua senha venceu após 7 dias. Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. A ação do kit não foi executada."
+                ? "Sua senha venceu após 14 dias. Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. A ação do kit não foi executada."
                 : "Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. A ação do kit não foi executada."}
             </p>
 

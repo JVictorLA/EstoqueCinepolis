@@ -508,7 +508,7 @@ export function WasteDialog({
           <div className="space-y-4">
             <div className="text-sm text-muted-foreground">
               {passwordStatus === "expired"
-                ? "Sua senha venceu após 7 dias. Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. O desperdício não foi registrado."
+                ? "Sua senha venceu após 14 dias. Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. O desperdício não foi registrado."
                 : "Crie uma nova senha para continuar. A nova senha não pode ser igual à atual. O desperdício não foi registrado."}
             </div>
             <div className="space-y-2">

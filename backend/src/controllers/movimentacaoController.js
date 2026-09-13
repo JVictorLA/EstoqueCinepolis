@@ -17,6 +17,27 @@ function sendPasswordChallenge(res, cred) {
   });
 }
 
+function sendPasswordWarning(res, cred) {
+  const warning = cred.password_warning;
+  const message = warning?.message || "Sua senha esta perto de vencer. Deseja trocar agora?";
+
+  return res.status(409).json({
+    success: false,
+    message,
+    data: {
+      password_warning: warning,
+      usuario: {
+        id: cred.id,
+        matricula: cred.matricula,
+        nome: cred.nome,
+        tipo: cred.tipo,
+        themePreference: cred.theme_preference === "dark" ? "dark" : "light",
+      },
+    },
+    error: message,
+  });
+}
+
 function sendStockTimeBlock(res, error) {
   return res.status(error.status || 403).json({
     success: false,
@@ -107,6 +128,7 @@ async function criar(req, res) {
     confirmar_ignorar_fefo,
     justificativa_fefo,
     autorizacao_admin,
+    adiar_troca_senha,
   } = req.body || {};
 
   if (!codigo_barras) return fail(res, 400, "codigo_barras é obrigatório");
@@ -126,6 +148,7 @@ async function criar(req, res) {
   if (cred.error === "locked") return sendTemporaryUserLock(res, cred);
   if (cred.error === "disabled_by_password_attempts") return sendAutoDisabledUser(res, cred);
   if (cred.password_status) return sendPasswordChallenge(res, cred);
+  if (cred.password_warning && !adiar_troca_senha) return sendPasswordWarning(res, cred);
 
   const produto =
     tipo === "entrada"
@@ -216,6 +239,7 @@ async function transferir(req, res) {
     confirmar_ignorar_fefo,
     justificativa_fefo,
     autorizacao_admin,
+    adiar_troca_senha,
   } = req.body || {};
 
   if (!codigo_barras) return fail(res, 400, "codigo_barras é obrigatório");
@@ -237,6 +261,7 @@ async function transferir(req, res) {
   if (cred.error === "locked") return sendTemporaryUserLock(res, cred);
   if (cred.error === "disabled_by_password_attempts") return sendAutoDisabledUser(res, cred);
   if (cred.password_status) return sendPasswordChallenge(res, cred);
+  if (cred.password_warning && !adiar_troca_senha) return sendPasswordWarning(res, cred);
 
   const produto = await produtoService.findByBarcode(codigo_barras, estoque_origem_id);
   if (!produto) return fail(res, 404, "Produto não encontrado no estoque de origem");
@@ -297,45 +322,47 @@ async function transferirLote(req, res) {
     observacao,
     itens,
     autorizacao_admin,
+    adiar_troca_senha,
   } = req.body || {};
 
-  if (!Number(estoque_origem_id)) return fail(res, 400, "estoque_origem_id Ã© obrigatÃ³rio");
-  if (!Number(estoque_destino_id)) return fail(res, 400, "estoque_destino_id Ã© obrigatÃ³rio");
+  if (!Number(estoque_origem_id)) return fail(res, 400, "estoque_origem_id é obrigatório");
+  if (!Number(estoque_destino_id)) return fail(res, 400, "estoque_destino_id é obrigatório");
   if (Number(estoque_origem_id) === Number(estoque_destino_id)) {
     return fail(res, 400, "Estoque de destino deve ser diferente da origem");
   }
-  if (!matricula || !senha) return fail(res, 400, "matrÃ­cula e senha sÃ£o obrigatÃ³rias");
+  if (!matricula || !senha) return fail(res, 400, "matrícula e senha são obrigatórias");
   if (!Array.isArray(itens) || !itens.length) {
     return fail(res, 400, "itens deve conter pelo menos um produto");
   }
 
   const cred = await usuarioService.validateCredentials(matricula, senha);
-  if (!cred) return fail(res, 401, "MatrÃ­cula ou senha invÃ¡lidos");
-  if (cred.error === "inactive") return fail(res, 403, "UsuÃ¡rio inativo");
+  if (!cred) return fail(res, 401, "Matrícula ou senha inválidos");
+  if (cred.error === "inactive") return fail(res, 403, "Usuário inativo");
   if (cred.error === "locked") return sendTemporaryUserLock(res, cred);
   if (cred.error === "disabled_by_password_attempts") return sendAutoDisabledUser(res, cred);
   if (cred.password_status) return sendPasswordChallenge(res, cred);
+  if (cred.password_warning && !adiar_troca_senha) return sendPasswordWarning(res, cred);
 
   const itensResolvidos = [];
   for (const [index, item] of itens.entries()) {
     if (!item?.codigo_barras) {
-      return fail(res, 400, `codigo_barras Ã© obrigatÃ³rio no item ${index + 1}`);
+      return fail(res, 400, `codigo_barras é obrigatório no item ${index + 1}`);
     }
     const qtd = Number(item.quantidade);
     if (!Number.isFinite(qtd) || qtd <= 0) {
-      return fail(res, 400, `quantidade invÃ¡lida no item ${index + 1}`);
+      return fail(res, 400, `quantidade inválida no item ${index + 1}`);
     }
 
     const produto = await produtoService.findByBarcode(item.codigo_barras, estoque_origem_id);
     if (!produto) {
-      return fail(res, 404, `Produto nÃ£o encontrado no estoque de origem: ${item.codigo_barras}`);
+      return fail(res, 404, `Produto não encontrado no estoque de origem: ${item.codigo_barras}`);
     }
     if (!produto.ativo) return fail(res, 400, `Produto inativo: ${produto.nome}`);
     if (produto.exige_validade && !item.lote) {
-      return fail(res, 400, `lote Ã© obrigatÃ³rio para ${produto.nome}`);
+      return fail(res, 400, `lote é obrigatório para ${produto.nome}`);
     }
     if (!produto.estoque_id) {
-      return fail(res, 404, `Produto nÃ£o vinculado ao estoque de origem: ${produto.nome}`);
+      return fail(res, 404, `Produto não vinculado ao estoque de origem: ${produto.nome}`);
     }
 
     itensResolvidos.push({
